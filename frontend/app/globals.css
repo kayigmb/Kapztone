@@ -1,0 +1,224 @@
+/* app/globals.css — ChainTrack theme for Tailwind CSS v4.
+   Copy this file as-is. Colours swap between light and dark through CSS variables,
+   so components never need `dark:` variants for colour. */
+@import "tailwindcss";
+
+/* Dark mode: follows the OS; <html data-theme="dark|light"> overrides it. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) { &:where(:not([data-theme=light], [data-theme=light] *)) { @slot; } }
+  &:where([data-theme=dark], [data-theme=dark] *) { @slot; }
+}
+
+/* ---------- Raw values (light) ---------- */
+:root, [data-theme="light"] {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-sunken: #eceef2;
+  --border: #d6dae1;
+  --border-strong: #7f8898;
+  --ink: #0f1a2c;
+  --ink-muted: #475367;
+  --ink-subtle: #5b677a;
+  --primary: #15294b;
+  --primary-hover: #0d1d38;
+  --on-primary: #ffffff;
+  --primary-soft: #e7ecf5;
+  --verified: #0a7266;
+  --on-verified: #ffffff;
+  --verified-soft: #e2f3f0;
+  --verified-ink: #075a51;
+  --warning: #b45309;
+  --on-warning: #ffffff;
+  --warning-soft: #fcf1df;
+  --warning-ink: #874006;
+  --danger: #b42318;
+  --on-danger: #ffffff;
+  --danger-soft: #fdeceb;
+  --danger-ink: #8c1c13;
+  --pending: #3a5a8c;
+  --pending-soft: #e8eef8;
+  --pending-ink: #2c4875;
+  --focus: #1d5bd6;
+  --map-land: #eceee6;
+  --map-water: #c8dae8;
+  --map-contour: #cdd4c9;
+  --map-road: #ffffff;
+  --scanner-bg: #0b111c;
+  --scanner-ink: #f2f5fa;
+  --elevation-card: 0 1px 2px rgba(15,26,44,0.06);
+  --elevation-overlay: 0 8px 24px rgba(15,26,44,0.14);
+}
+
+/* ---------- Raw values (dark) ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1120;
+    --surface: #111b2e;
+    --surface-sunken: #0c1424;
+    --border: #24314a;
+    --border-strong: #66748d;
+    --ink: #e8edf5;
+    --ink-muted: #b0bccd;
+    --ink-subtle: #97a3b7;
+    --primary: #a8c1ec;
+    --primary-hover: #c3d5f3;
+    --on-primary: #0b1426;
+    --primary-soft: #1b2a47;
+    --verified: #45c4b1;
+    --on-verified: #06201c;
+    --verified-soft: #0f2f2c;
+    --verified-ink: #7adccc;
+    --warning: #f0a43c;
+    --on-warning: #241503;
+    --warning-soft: #33240e;
+    --warning-ink: #f6c06e;
+    --danger: #f47b70;
+    --on-danger: #2a0b08;
+    --danger-soft: #3b1714;
+    --danger-ink: #f9a39b;
+    --pending: #8fb0e6;
+    --pending-soft: #182742;
+    --pending-ink: #a9c3ef;
+    --focus: #7aa6ff;
+    --map-land: #1b2a42;
+    --map-water: #0b1524;
+    --map-contour: #22324a;
+    --map-road: #2b3b57;
+    --scanner-bg: #05080f;
+    --scanner-ink: #f2f5fa;
+    --elevation-card: 0 1px 2px rgba(0,0,0,0.45);
+    --elevation-overlay: 0 8px 24px rgba(0,0,0,0.55);
+  }
+}
+[data-theme="dark"] {
+  --bg: #0a1120;
+  --surface: #111b2e;
+  --surface-sunken: #0c1424;
+  --border: #24314a;
+  --border-strong: #66748d;
+  --ink: #e8edf5;
+  --ink-muted: #b0bccd;
+  --ink-subtle: #97a3b7;
+  --primary: #a8c1ec;
+  --primary-hover: #c3d5f3;
+  --on-primary: #0b1426;
+  --primary-soft: #1b2a47;
+  --verified: #45c4b1;
+  --on-verified: #06201c;
+  --verified-soft: #0f2f2c;
+  --verified-ink: #7adccc;
+  --warning: #f0a43c;
+  --on-warning: #241503;
+  --warning-soft: #33240e;
+  --warning-ink: #f6c06e;
+  --danger: #f47b70;
+  --on-danger: #2a0b08;
+  --danger-soft: #3b1714;
+  --danger-ink: #f9a39b;
+  --pending: #8fb0e6;
+  --pending-soft: #182742;
+  --pending-ink: #a9c3ef;
+  --focus: #7aa6ff;
+  --map-land: #1b2a42;
+  --map-water: #0b1524;
+  --map-contour: #22324a;
+  --map-road: #2b3b57;
+  --scanner-bg: #05080f;
+  --scanner-ink: #f2f5fa;
+  --elevation-card: 0 1px 2px rgba(0,0,0,0.45);
+  --elevation-overlay: 0 8px 24px rgba(0,0,0,0.55);
+}
+
+/* ---------- Tailwind theme ---------- */
+@theme inline {
+  /* Colours → bg-surface, text-ink-muted, border-border-strong, bg-verified-soft, text-on-primary … */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-verified: var(--verified);
+  --color-on-verified: var(--on-verified);
+  --color-verified-soft: var(--verified-soft);
+  --color-verified-ink: var(--verified-ink);
+  --color-warning: var(--warning);
+  --color-on-warning: var(--on-warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-ink: var(--warning-ink);
+  --color-danger: var(--danger);
+  --color-on-danger: var(--on-danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-ink: var(--danger-ink);
+  --color-pending: var(--pending);
+  --color-pending-soft: var(--pending-soft);
+  --color-pending-ink: var(--pending-ink);
+  --color-focus: var(--focus);
+  --color-map-land: var(--map-land);
+  --color-map-water: var(--map-water);
+  --color-map-contour: var(--map-contour);
+  --color-map-road: var(--map-road);
+  --color-scanner-bg: var(--scanner-bg);
+  --color-scanner-ink: var(--scanner-ink);
+
+  /* Fonts (set by next/font in app/layout.tsx) → font-sans, font-mono */
+  --font-sans: var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Shadows → shadow-card, shadow-overlay */
+  --shadow-card: var(--elevation-card);
+  --shadow-overlay: var(--elevation-overlay);
+}
+
+@theme {
+  /* Type scale → text-verdict, text-page, text-section, text-title, text-body, text-small, text-label, text-code, text-figure, text-hash */
+  --text-verdict: 32px;   --text-verdict--line-height: 38px;  --text-verdict--font-weight: 600; --text-verdict--letter-spacing: -0.01em;
+  --text-verdict-lg: 40px; --text-verdict-lg--line-height: 46px; --text-verdict-lg--font-weight: 600; --text-verdict-lg--letter-spacing: -0.01em;
+  --text-page: 24px;      --text-page--line-height: 30px;     --text-page--font-weight: 600;    --text-page--letter-spacing: -0.005em;
+  --text-section: 18px;   --text-section--line-height: 24px;  --text-section--font-weight: 600;
+  --text-title: 16px;     --text-title--line-height: 22px;    --text-title--font-weight: 600;
+  --text-body: 15px;      --text-body--line-height: 22px;
+  --text-small: 13px;     --text-small--line-height: 18px;
+  --text-label: 12px;     --text-label--line-height: 16px;    --text-label--font-weight: 600;   --text-label--letter-spacing: 0.04em;
+  --text-code: 14px;      --text-code--line-height: 20px;     --text-code--font-weight: 500;
+  --text-figure: 15px;    --text-figure--line-height: 22px;   --text-figure--font-weight: 500;
+  --text-hash: 12px;      --text-hash--line-height: 18px;
+
+  /* Radii → rounded-sm (4) rounded-md (6) rounded-lg (10) rounded-full (pills) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Sizes → h-tap / min-h-tap (44), h-tap-scan (56), size-icon-sm (16), size-icon-md (20) */
+  --spacing-tap: 44px;
+  --spacing-tap-scan: 56px;
+  --spacing-icon-sm: 16px;
+  --spacing-icon-md: 20px;
+
+  /* Content width → max-w-content */
+  --container-content: 1120px;
+}
+
+/* ---------- Base ---------- */
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-bg text-ink font-sans text-body; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+}
+
+/* ---------- Two helpers used everywhere ---------- */
+@utility label { @apply text-label uppercase text-ink-muted; }       /* field and key-value labels */
+@utility code { @apply font-mono text-code tabular-nums; }          /* lot codes, IDs, licence numbers */
+@utility fig { @apply font-mono font-medium tabular-nums; }         /* quantities and percentages */

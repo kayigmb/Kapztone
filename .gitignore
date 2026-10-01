@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+
+# contracts
+contracts/artifacts/
+contracts/cache/
+contracts/types/
+contracts/dist/
+
+# local learner notes
+.vibe-wise/
