@@ -24,7 +24,7 @@ A commodity-agnostic **digital product passport** for business shipments:
 
 | Layer        | Choice                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------- |
-| Front end    | Next.js (App Router), React, TypeScript, Tailwind CSS, Leaflet, React Flow, html5-qrcode |
+| Front end    | Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui (Base UI), react-hook-form + zod, TanStack Table, MapLibre GL (react-map-gl), qrcode, @zxing/browser, Sonner; React Flow for genealogy (undecided) |
 | Back end     | Go (chi router), REST + OpenAPI, JWT, pgx, sqlc, golang-migrate                          |
 | Database     | PostgreSQL 16 + PostGIS                                                                  |
 | Blockchain   | Solidity, OpenZeppelin, Hardhat, Polygon Amoy testnet                                    |

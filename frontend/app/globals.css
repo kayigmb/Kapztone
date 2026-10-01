@@ -2,15 +2,24 @@
    Copy this file as-is. Colours swap between light and dark through CSS variables,
    so components never need `dark:` variants for colour. */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /* Dark mode: follows the OS; <html data-theme="dark|light"> overrides it. */
 @custom-variant dark {
-  @media (prefers-color-scheme: dark) { &:where(:not([data-theme=light], [data-theme=light] *)) { @slot; } }
-  &:where([data-theme=dark], [data-theme=dark] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *)) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
 }
 
 /* ---------- Raw values (light) ---------- */
-:root, [data-theme="light"] {
+:root,
+[data-theme="light"] {
   --bg: #f4f5f7;
   --surface: #ffffff;
   --surface-sunken: #eceef2;
@@ -45,8 +54,8 @@
   --map-road: #ffffff;
   --scanner-bg: #0b111c;
   --scanner-ink: #f2f5fa;
-  --elevation-card: 0 1px 2px rgba(15,26,44,0.06);
-  --elevation-overlay: 0 8px 24px rgba(15,26,44,0.14);
+  --elevation-card: 0 1px 2px rgba(15, 26, 44, 0.06);
+  --elevation-overlay: 0 8px 24px rgba(15, 26, 44, 0.14);
 }
 
 /* ---------- Raw values (dark) ---------- */
@@ -86,8 +95,8 @@
     --map-road: #2b3b57;
     --scanner-bg: #05080f;
     --scanner-ink: #f2f5fa;
-    --elevation-card: 0 1px 2px rgba(0,0,0,0.45);
-    --elevation-overlay: 0 8px 24px rgba(0,0,0,0.55);
+    --elevation-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --elevation-overlay: 0 8px 24px rgba(0, 0, 0, 0.55);
   }
 }
 [data-theme="dark"] {
@@ -125,8 +134,8 @@
   --map-road: #2b3b57;
   --scanner-bg: #05080f;
   --scanner-ink: #f2f5fa;
-  --elevation-card: 0 1px 2px rgba(0,0,0,0.45);
-  --elevation-overlay: 0 8px 24px rgba(0,0,0,0.55);
+  --elevation-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --elevation-overlay: 0 8px 24px rgba(0, 0, 0, 0.55);
 }
 
 /* ---------- Tailwind theme ---------- */
@@ -173,8 +182,10 @@
   --color-scanner-ink: var(--scanner-ink);
 
   /* Fonts (set by next/font in app/layout.tsx) → font-sans, font-mono */
-  --font-sans: var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-sans:
+    var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* Shadows → shadow-card, shadow-overlay */
   --shadow-card: var(--elevation-card);
@@ -183,17 +194,40 @@
 
 @theme {
   /* Type scale → text-verdict, text-page, text-section, text-title, text-body, text-small, text-label, text-code, text-figure, text-hash */
-  --text-verdict: 32px;   --text-verdict--line-height: 38px;  --text-verdict--font-weight: 600; --text-verdict--letter-spacing: -0.01em;
-  --text-verdict-lg: 40px; --text-verdict-lg--line-height: 46px; --text-verdict-lg--font-weight: 600; --text-verdict-lg--letter-spacing: -0.01em;
-  --text-page: 24px;      --text-page--line-height: 30px;     --text-page--font-weight: 600;    --text-page--letter-spacing: -0.005em;
-  --text-section: 18px;   --text-section--line-height: 24px;  --text-section--font-weight: 600;
-  --text-title: 16px;     --text-title--line-height: 22px;    --text-title--font-weight: 600;
-  --text-body: 15px;      --text-body--line-height: 22px;
-  --text-small: 13px;     --text-small--line-height: 18px;
-  --text-label: 12px;     --text-label--line-height: 16px;    --text-label--font-weight: 600;   --text-label--letter-spacing: 0.04em;
-  --text-code: 14px;      --text-code--line-height: 20px;     --text-code--font-weight: 500;
-  --text-figure: 15px;    --text-figure--line-height: 22px;   --text-figure--font-weight: 500;
-  --text-hash: 12px;      --text-hash--line-height: 18px;
+  --text-verdict: 32px;
+  --text-verdict--line-height: 38px;
+  --text-verdict--font-weight: 600;
+  --text-verdict--letter-spacing: -0.01em;
+  --text-verdict-lg: 40px;
+  --text-verdict-lg--line-height: 46px;
+  --text-verdict-lg--font-weight: 600;
+  --text-verdict-lg--letter-spacing: -0.01em;
+  --text-page: 24px;
+  --text-page--line-height: 30px;
+  --text-page--font-weight: 600;
+  --text-page--letter-spacing: -0.005em;
+  --text-section: 18px;
+  --text-section--line-height: 24px;
+  --text-section--font-weight: 600;
+  --text-title: 16px;
+  --text-title--line-height: 22px;
+  --text-title--font-weight: 600;
+  --text-body: 15px;
+  --text-body--line-height: 22px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-label--font-weight: 600;
+  --text-label--letter-spacing: 0.04em;
+  --text-code: 14px;
+  --text-code--line-height: 20px;
+  --text-code--font-weight: 500;
+  --text-figure: 15px;
+  --text-figure--line-height: 22px;
+  --text-figure--font-weight: 500;
+  --text-hash: 12px;
+  --text-hash--line-height: 18px;
 
   /* Radii → rounded-sm (4) rounded-md (6) rounded-lg (10) rounded-full (pills) */
   --radius-sm: 4px;
@@ -209,16 +243,65 @@
   /* Content width → max-w-content */
   --container-content: 1120px;
 }
+/* ---------- shadcn/ui colour names → ChainTrack tokens ---------- */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--surface-sunken);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-sunken);
+  --color-muted-foreground: var(--ink-muted);
+  --color-accent: var(--primary-soft);
+  --color-accent-foreground: var(--primary);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--on-danger);
+  --color-input: var(--border-strong);
+  --color-ring: var(--focus);
+  --color-sidebar: var(--surface);
+  --color-sidebar-foreground: var(--ink);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-primary-foreground: var(--on-primary);
+  --color-sidebar-accent: var(--primary-soft);
+  --color-sidebar-accent-foreground: var(--primary);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--focus);
+}
 
 /* ---------- Base ---------- */
 @layer base {
-  html { -webkit-font-smoothing: antialiased; }
-  body { @apply bg-bg text-ink font-sans text-body; }
-  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-bg text-ink font-sans text-body;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 /* ---------- Two helpers used everywhere ---------- */
-@utility label { @apply text-label uppercase text-ink-muted; }       /* field and key-value labels */
-@utility code { @apply font-mono text-code tabular-nums; }          /* lot codes, IDs, licence numbers */
-@utility fig { @apply font-mono font-medium tabular-nums; }         /* quantities and percentages */
+@utility label {
+  @apply text-label uppercase text-ink-muted;
+} /* field and key-value labels */
+@utility code {
+  @apply font-mono text-code tabular-nums;
+} /* lot codes, IDs, licence numbers */
+@utility fig {
+  @apply font-mono font-medium tabular-nums;
+} /* quantities and percentages */
