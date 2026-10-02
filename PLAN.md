@@ -101,9 +101,9 @@ chaintrack/
 ├── contracts/                # Hardhat project (Solidity + tests)
 ├── tools/sim/                # synthetic dataset + fraud injection (Go or Python)
 ├── tools/baseline/           # document-based baseline system for the experiment
-├── infra/                    # docker-compose, nginx, deploy scripts
+├── infra/                    # compose.infra.yml (db + migrate), compose.dev.yml, compose.prod.yml; nginx, deploy scripts
 ├── docs/                     # design.md, architecture, ADRs, evaluation protocol
-├── Makefile                  # up / down / logs / api / web / test
+├── Makefile                  # infra / dev / prod / down / prod-down / logs / test
 └── .github/workflows/        # CI: lint, test, contract tests, build
 ```
 
@@ -113,7 +113,7 @@ chaintrack/
 
 ### 4.1 Data model (PostgreSQL)
 
-`organisation` · `app_user` · `facility` (PostGIS `geo_polygon`, `annual_capacity`, `status`) · `commodity_template` (`stage_rules` JSONB, `max_yield`, `required_evidence` JSONB) · `passport` (`quantity`, `remaining_qty`, `status`, `on_chain_id`) · `passport_link` (parent → child, `quantity_used`) · `trace_event` (`data_hash`, `sig_from`, `sig_to`, `tx_hash`) · `attestation` (`issuer_org_id`, `valid_from/to`, `doc_hash`, `revoked`) · `flag` · `audit_log` · `chain_outbox` (queued transactions).
+`organisations` (`slug`, `kind`, `status`) · `users` · `roles` · `permissions` (`resource:action`) · `role_permissions` · `userscope` (user + role + organisation) · `documents` (KYB) · `facility` (PostGIS `geo_polygon`, `annual_capacity`, `status`) · `commodity_template` (`stage_rules` JSONB, `max_yield`, `required_evidence` JSONB) · `passport` (`quantity`, `remaining_qty`, `status`, `on_chain_id`) · `passport_link` (parent → child, `quantity_used`) · `trace_event` (`data_hash`, `sig_from`, `sig_to`, `tx_hash`) · `attestation` (`issuer_org_id`, `valid_from/to`, `doc_hash`, `revoked`) · `flag` · `audit_log` · `chain_outbox` (queued transactions).
 
 Every provenance row stores `data_hash` (SHA-256 of a canonical JSON form) and `tx_hash`.
 
@@ -204,7 +204,7 @@ GET    /reports/...                    GET  /audit
 
 | Sprint | Dates             | Goal                                                                                                                                                                                             | Done when                                                                                                                                  |
 | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **0**  | Oct – 15 Nov 2026 | Claude Design screens, design system, expert review; repo, CI, Docker skeleton; ERD and OpenAPI draft                                                                                            | Phase 0 checklist complete; `docker compose up` runs empty API + web                                                                       |
+| **0**  | Oct – 15 Nov 2026 | Claude Design screens, design system, expert review; repo, CI, Docker skeleton; ERD and OpenAPI draft                                                                                            | Phase 0 checklist complete; `make dev` runs empty API + web                                                                       |
 | **1**  | 16 – 29 Nov       | Go API foundation: auth (JWT + 2FA), RBAC, organisations, KYB flow, facilities (PostGIS), templates                                                                                              | Admin can verify an org; producer can register a facility on a map; template CRUD; ≥ 80% Go test coverage on these packages                |
 | **2**  | 30 Nov – 13 Dec   | Smart contracts: all 5 contracts, EIP-712 signatures, mass balance, capacity, nonces; Go bindings; relayer                                                                                       | Contracts deployed to Amoy; ≥ 90% contract coverage; Slither clean of high findings; issue + dual-signed handover works end-to-end via API |
 | **3**  | 14 – 27 Dec       | Attestations + IPFS; transform / split / merge with genealogy; flags and revocation cascade; notifications (in-app, e-mail)                                                                      | Coffee and mineral chains can be run end-to-end through the API; revoking a passport revokes its descendants                               |

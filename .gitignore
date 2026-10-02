@@ -12,3 +12,9 @@ contracts/dist/
 
 # local learner notes
 .vibe-wise/
+
+# air (backend auto-reload) scratch dir
+backend/tmp/
+
+.pnpm-store/
+.pnpm-debug.log*

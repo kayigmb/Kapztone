@@ -1,0 +1,56 @@
+# Development: source is bind-mounted and both services reload on save.
+services:
+  api:
+    image: golang:1.26-alpine
+    working_dir: /src
+    # air rebuilds and restarts the API whenever a .go file changes.
+    command:
+      - go
+      - run
+      - github.com/air-verse/air@v1.67.4
+      - --build.cmd=go build -o /tmp/api ./cmd/api
+      - --build.bin=/tmp/api
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-chaintrack}:${POSTGRES_PASSWORD:-chaintrack}@db:5432/${POSTGRES_DB:-chaintrack}?sslmode=disable
+      APP_ENV: dev
+      BASE_DOMAIN: ${BASE_DOMAIN:-localhost}
+      # Dev-only defaults. Production must supply its own (see compose.prod.yml).
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-dev-only-secret-dev-only}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@chaintrack.local}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-chaintrack-dev-admin}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../backend:/src
+      - go-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm dev --hostname 0.0.0.0"
+    environment:
+      CI: "true"
+      npm_config_store_dir: /pnpm-store
+      API_URL: http://api:8080
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      # The container keeps its own Linux node_modules and build output.
+      - web-node-modules:/app/node_modules
+      - web-next:/app/.next
+      - pnpm-store:/pnpm-store
+    depends_on:
+      - api
+
+volumes:
+  go-cache:
+  go-build-cache:
+  web-node-modules:
+  web-next:
+  pnpm-store:

@@ -1,21 +1,29 @@
-COMPOSE := docker compose -f infra/docker-compose.yml
+ENV_FILE := $(if $(wildcard .env),--env-file .env)
+COMPOSE  := docker compose $(ENV_FILE)
+INFRA    := -f infra/compose.infra.yml
+# dev and prod are separate compose projects, so each keeps its own database volume.
+DEV      := $(COMPOSE) -p chaintrack $(INFRA) -f infra/compose.dev.yml
+PROD     := $(COMPOSE) -p chaintrack-prod $(INFRA) -f infra/compose.prod.yml
 
-.PHONY: up down logs api web test
+.PHONY: infra dev prod down prod-down logs test
 
-up: ## build and start db + api + web
-	$(COMPOSE) up --build -d
+infra: ## database + migrations only
+	$(DEV) up -d db migrate
+
+dev: ## database + API + web, reloading on save
+	$(DEV) up -d
+
+prod: ## built images (needs POSTGRES_PASSWORD)
+	$(PROD) up --build -d
 
 down:
-	$(COMPOSE) down
+	$(DEV) down
+
+prod-down:
+	$(PROD) down
 
 logs:
-	$(COMPOSE) logs -f
-
-api: ## run the API natively on :8080
-	cd backend && go run ./cmd/api
-
-web: ## run the web app natively on :3000
-	cd frontend && pnpm dev
+	$(DEV) logs -f
 
 test:
 	cd backend && go vet ./... && go test ./...

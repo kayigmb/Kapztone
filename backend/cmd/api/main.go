@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -11,33 +10,65 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/server"
 )
 
-func newRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger, middleware.Recoverer)
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
-	return r
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	port := envOr("PORT", "8080")
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL is required")
 	}
-	srv := &http.Server{
-		Addr:              ":" + port,
-		Handler:           newRouter(),
-		ReadHeaderTimeout: 5 * time.Second,
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if len(jwtSecret) < 32 {
+		log.Fatal("JWT_SECRET is required and must be at least 32 characters")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// The pool connects lazily, so the API starts even if the database is briefly down.
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("database config: %v", err)
+	}
+	defer pool.Close()
+
+	store := auth.PgStore{Pool: pool}
+	if email := os.Getenv("SUPERADMIN_EMAIL"); email != "" {
+		created, err := store.EnsureSuperadmin(ctx, email, os.Getenv("SUPERADMIN_PASSWORD"))
+		if err != nil {
+			log.Fatalf("seed superadmin: %v", err)
+		}
+		if created {
+			log.Printf("created superadmin %s", email)
+		}
+	}
+
+	a := &auth.Auth{
+		Store:      store,
+		Secret:     []byte(jwtSecret),
+		TokenTTL:   12 * time.Hour,
+		BaseDomain: envOr("BASE_DOMAIN", "localhost"),
+		Dev:        os.Getenv("APP_ENV") == "dev",
+	}
+
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           server.NewRouter(pool.Ping, a),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

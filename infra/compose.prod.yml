@@ -1,0 +1,33 @@
+# Production: built images. Secrets must be set; dev defaults are refused.
+services:
+  db:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD for production}
+
+  api:
+    build: ../backend
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-chaintrack}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chaintrack}?sslmode=disable
+      APP_ENV: prod
+      BASE_DOMAIN: ${BASE_DOMAIN:?set BASE_DOMAIN for production}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET for production}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:?set SUPERADMIN_EMAIL for production}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:?set SUPERADMIN_PASSWORD for production}
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build: ../frontend
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
