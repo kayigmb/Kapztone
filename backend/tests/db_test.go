@@ -19,14 +19,19 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/cache"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
+	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
+	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
 // These tests run the real SQL against a migrated Postgres, and the cache
@@ -59,6 +64,10 @@ type env struct {
 	suffix string
 	// passports is kept so tests can set its clock and signing domain.
 	passports *passport.Handlers
+	// certificates is kept so tests can turn IPFS pinning on.
+	certificates *attestation.Handlers
+	// verify is kept so tests can point it at their chain and give it a cache.
+	verify *verify.Handlers
 }
 
 // countingStore counts lookups that reach the database.
@@ -104,10 +113,20 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			`DELETE FROM chain_outbox WHERE subject_id IN ` + orgs + `
 			    OR subject_id IN (SELECT id FROM facilities WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM handovers WHERE from_org IN ` + orgs + `)
-			    OR subject_id IN (SELECT p.id FROM passports p JOIN facilities f ON f.id = p.facility_id WHERE f.organisation_id IN ` + orgs + `)`,
+			    OR subject_id IN (SELECT id FROM passports WHERE organisation_id IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM transforms WHERE organisation_id IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM attestations WHERE issuer_org_id IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM trace_events WHERE from_org IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM commodity_templates WHERE name LIKE $1)`,
+			`DELETE FROM notifications WHERE organisation_id IN ` + orgs,
+			`DELETE FROM flags WHERE organisation_id IN ` + orgs,
+			`DELETE FROM attestations WHERE issuer_org_id IN ` + orgs,
 			`DELETE FROM trace_events WHERE to_org IN ` + orgs + ` OR from_org IN ` + orgs,
 			`DELETE FROM handovers WHERE from_org IN ` + orgs,
-			`DELETE FROM passports WHERE facility_id IN (SELECT id FROM facilities WHERE organisation_id IN ` + orgs + `)`,
+			`DELETE FROM transform_inputs WHERE transform_id IN (SELECT id FROM transforms WHERE organisation_id IN ` + orgs + `)`,
+			`DELETE FROM passports WHERE organisation_id IN ` + orgs,
+			`DELETE FROM transforms WHERE organisation_id IN ` + orgs,
 			`DELETE FROM documents WHERE organisation_id IN ` + orgs,
 			`DELETE FROM facilities WHERE organisation_id IN ` + orgs,
 			`DELETE FROM commodity_templates WHERE name LIKE $1`,
@@ -141,6 +160,9 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 
 	// The signing domain is filled in by tests that deploy a chain (see newChain).
 	e.passports = &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: testBox(t)}}
+	e.certificates = &attestation.Handlers{Store: attestation.Store{Pool: pool}, UploadDir: t.TempDir()}
+	e.verify = &verify.Handlers{Pool: pool, Passports: passport.Store{Pool: pool}, Certificates: e.certificates.Store,
+		UploadDir: e.certificates.UploadDir}
 	e.a = &auth.Auth{Store: store, Secret: []byte(testSecret), TokenTTL: time.Hour, Dev: true, Secrets: testBox(t)}
 	e.h = server.NewRouter(server.Deps{
 		Ping: pool.Ping,
@@ -148,9 +170,13 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		Org: &org.Handlers{
 			Store: org.Store{Pool: pool}, UploadDir: t.TempDir(), InvalidateOrg: invalidate, Secrets: testBox(t),
 		},
-		Facility: &facility.Handlers{Store: facility.Store{Pool: pool}},
-		Template: &template.Handlers{Store: template.Store{Pool: pool}},
-		Passport: e.passports,
+		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
+		Template:    &template.Handlers{Store: template.Store{Pool: pool}},
+		Passport:    e.passports,
+		Attestation: e.certificates,
+		Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passport.Store{Pool: pool}},
+		Notify:      &notify.Handlers{Pool: pool},
+		Verify:      e.verify,
 	})
 	return e, counting, cached
 }
@@ -217,7 +243,7 @@ func (e *env) upload(token, slug, orgID, docType string, content []byte) *httpte
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	mw.WriteField(org.FormType, docType)
-	fw, _ := mw.CreateFormFile(org.FormFile, "../../licence.pdf") // hostile name: must be reduced to its base
+	fw, _ := mw.CreateFormFile(upload.FormFile, "../../licence.pdf") // hostile name: must be reduced to its base
 	fw.Write(content)
 	mw.Close()
 	req := httptest.NewRequest(http.MethodPost, as(slug, "/orgs/"+orgID+"/documents"), &body)
@@ -397,13 +423,13 @@ func TestKYBFlow(t *testing.T) {
 	doc := decodeTo[org.Document](t, up)
 	sum := sha256.Sum256(pdfBytes)
 	if doc.SHA256 != hex.EncodeToString(sum[:]) || doc.FileName != "licence.pdf" ||
-		doc.ContentType != org.AllowedContentTypes[0] || doc.SizeBytes != int64(len(pdfBytes)) {
+		doc.ContentType != upload.AllowedContentTypes[0] || doc.SizeBytes != int64(len(pdfBytes)) {
 		t.Fatalf("document recorded wrongly: %+v", doc)
 	}
 	want(t, "executable named .pdf", e.upload(admin, acmeSlug, acme.ID, org.DocLicence, exeBytes), http.StatusBadRequest)
 	want(t, "unknown document type", e.upload(admin, acmeSlug, acme.ID, "selfie", pdfBytes), http.StatusBadRequest)
 	want(t, "too large", e.upload(admin, acmeSlug, acme.ID, org.DocLicence,
-		append(slices.Clone(pdfBytes), make([]byte, org.MaxUploadBytes)...)), http.StatusRequestEntityTooLarge)
+		append(slices.Clone(pdfBytes), make([]byte, upload.MaxBytes)...)), http.StatusRequestEntityTooLarge)
 	want(t, "member uploads", e.upload(member, acmeSlug, acme.ID, org.DocLicence, pdfBytes), http.StatusForbidden)
 	want(t, "member lists documents", do(e.h, http.MethodGet, as(acmeSlug, "/orgs/"+acme.ID+"/documents"), member, ""), http.StatusForbidden)
 	want(t, "upload to another organisation", e.upload(admin, acmeSlug, rival.ID, org.DocLicence, pdfBytes), http.StatusNotFound)

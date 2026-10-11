@@ -79,3 +79,6 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - uses: astral-sh/setup-uv@v6
+      - name: Slither (fails on a high finding)
+        run: make -C .. slither

@@ -41,6 +41,9 @@ var errorStatus = map[error]struct {
 	ErrOpenHandover:      {http.StatusConflict, MsgOpenHandover},
 	ErrHandoverClosed:    {http.StatusConflict, MsgHandoverClosed},
 	ErrHandoverStale:     {http.StatusConflict, MsgHandoverStale},
+	ErrInputNotHeld:      {http.StatusBadRequest, MsgInputNotHeld},
+	ErrMixedInputs:       {http.StatusBadRequest, MsgMixedInputs},
+	ErrStageInvalid:      {http.StatusBadRequest, MsgStageInvalid},
 	// Not holding a passport looks the same as the passport not existing.
 	ErrNotHolder: {http.StatusNotFound, httpx.MsgNotFound},
 }
@@ -51,9 +54,14 @@ func respond(w http.ResponseWriter, status int, what string, v any, err error) {
 		httpx.WriteJSON(w, status, v)
 		return
 	}
-	var capacity CapacityError
-	if errors.As(err, &capacity) {
-		httpx.Error(w, http.StatusConflict, capacity.Error())
+	// Refusals that carry numbers: their message says how far off the request was.
+	var (
+		capacity     CapacityError
+		insufficient InsufficientError
+		yield        YieldError
+	)
+	if errors.As(err, &capacity) || errors.As(err, &insufficient) || errors.As(err, &yield) {
+		httpx.Error(w, http.StatusConflict, err.Error())
 		return
 	}
 	for known, out := range errorStatus {
@@ -230,4 +238,40 @@ func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
 	h.answer(w, r, "cancel handover", func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Cancel(r.Context(), id, orgID, userID)
 	})
+}
+
+// Transform processes, splits or merges passports the acting organisation holds.
+func (h *Handlers) Transform(w http.ResponseWriter, r *http.Request) {
+	orgID, userID, ok := acting(w, r)
+	if !ok {
+		return
+	}
+	var in TransformInput
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	if msg := in.Validate(); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
+		return
+	}
+	t, err := h.Store.Transform(r.Context(), orgID, userID, in)
+	respond(w, http.StatusCreated, "transform", t, err)
+}
+
+// Genealogy returns a passport's ancestors (the default) or descendants.
+func (h *Handlers) Genealogy(w http.ResponseWriter, r *http.Request) {
+	id, gate, ok := target(w, r)
+	if !ok {
+		return
+	}
+	direction := r.URL.Query().Get(ParamDirection)
+	if direction == "" {
+		direction = DirectionAncestors
+	}
+	if !slices.Contains(Directions, direction) {
+		listq.BadParam(w, ParamDirection, Directions)
+		return
+	}
+	g, err := h.Store.Genealogy(r.Context(), id, gate, direction)
+	respond(w, http.StatusOK, "genealogy", g, err)
 }

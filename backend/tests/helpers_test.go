@@ -8,13 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
+	"github.com/kayigmb/chaintrack/backend/internal/flag"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
 const (
@@ -86,7 +90,8 @@ func deps(ping func(context.Context) error, a *auth.Auth) server.Deps {
 	return server.Deps{
 		Ping: ping, Auth: a,
 		Org: &org.Handlers{}, Facility: &facility.Handlers{}, Template: &template.Handlers{},
-		Passport: &passport.Handlers{},
+		Passport: &passport.Handlers{}, Attestation: &attestation.Handlers{}, Flag: &flag.Handlers{},
+		Notify: &notify.Handlers{}, Verify: &verify.Handlers{},
 	}
 }
 

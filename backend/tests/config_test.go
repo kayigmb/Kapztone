@@ -35,6 +35,8 @@ func fullEnv() map[string]string {
 		config.EnvPassportRegistry:    testAddress,
 		config.EnvCustodyManager:      testAddress,
 		config.EnvAttestationRegistry: testAddress,
+		config.EnvPinataJWT:           config.Off,
+		config.EnvSMTPURL:             config.Off,
 	}
 }
 
@@ -97,6 +99,8 @@ func TestConfigRejectsInvalidValues(t *testing.T) {
 		{"zero chain id", config.EnvChainID, "0"},
 		{"platform key too short", config.EnvChainPlatformKey, "abcd1234"},
 		{"contract address too short", config.EnvCustodyManager, "0x1234"},
+		{"mail server without a sender", config.EnvSMTPURL, "smtp://mail.test:587"},
+		{"mail server that is not smtp", config.EnvSMTPURL, "https://mail.test:587?from=a@b.test"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

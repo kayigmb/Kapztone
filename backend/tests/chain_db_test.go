@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -55,6 +56,13 @@ func (m *minedOnSend) SendTransaction(ctx context.Context, tx *types.Transaction
 	}
 	m.sim.Commit()
 	return nil
+}
+
+func (m *minedOnSend) CallContract(ctx context.Context, call ethereum.CallMsg, block *big.Int) ([]byte, error) {
+	if m.down {
+		return nil, errChainDown
+	}
+	return m.Client.CallContract(ctx, call, block)
 }
 
 func (m *minedOnSend) HeaderByNumber(ctx context.Context, n *big.Int) (*types.Header, error) {
@@ -107,6 +115,8 @@ func (e *env) newChain() *testChain {
 	a.Passports = deployed(passAddr, tx, err)
 	custAddr, tx, _, err := bindings.DeployCustodyManager(signer, backend, a.Orgs, a.Passports)
 	a.Custody = deployed(custAddr, tx, err)
+	attAddr, tx, _, err := bindings.DeployAttestationRegistry(signer, backend, a.Orgs)
+	a.Attestations = deployed(attAddr, tx, err)
 	must(facilities.SetOriginator(signer, a.Passports))
 	must(passports.SetCustodian(signer, a.Custody))
 
@@ -115,6 +125,7 @@ func (e *env) newChain() *testChain {
 		e.t.Fatal(err)
 	}
 	e.passports.Store.Domain = chain.Domain{ChainID: chainID, Contract: a.Custody}
+	e.verify.Contracts = contracts
 	return &testChain{
 		t: e.t, backend: backend, contract: contracts,
 		relayer: &chain.Relayer{
@@ -293,7 +304,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	p := decodeTo[passport.Passport](t, rec)
 	wantPeriod := passport.PeriodFor(plot.CapacityPeriod, now)
 	if p.OrganisationID != acme.ID || p.Remaining != good.Quantity || p.Status != passport.StatusActive ||
-		p.Period != wantPeriod || p.TxHash != nil {
+		p.Period == nil || *p.Period != wantPeriod || p.TxHash != nil {
 		t.Fatalf("passport recorded wrongly: %+v", p)
 	}
 

@@ -54,6 +54,52 @@ type HandoverSigned struct {
 	SigTo      string `json:"sig_to"`
 }
 
+type MaxYieldSet struct {
+	Commodity       string `json:"commodity"`
+	Stage           string `json:"stage"`
+	PartsPerMillion int64  `json:"parts_per_million"`
+}
+
+type OrgAccredited struct {
+	OrgID      string `json:"org_id"`
+	Accredited bool   `json:"accredited"`
+}
+
+type TransformOutput struct {
+	PassportID string `json:"passport_id"`
+	Quantity   int64  `json:"quantity"`
+	DataHash   string `json:"data_hash"`
+}
+
+type Transform struct {
+	TransformID string            `json:"transform_id"`
+	Inputs      []string          `json:"inputs"` // passport ids
+	InputsUsed  []int64           `json:"inputs_used"`
+	Stage       string            `json:"stage"`
+	Outputs     []TransformOutput `json:"outputs"`
+	DataHash    string            `json:"data_hash"`
+}
+
+type AttestationIssue struct {
+	AttestationID string `json:"attestation_id"`
+	IssuerOrg     string `json:"issuer_org"`
+	SubjectID     string `json:"subject_id"`
+	DocHash       string `json:"doc_hash"`
+	ValidFrom     int64  `json:"valid_from"` // unix seconds
+	ValidTo       int64  `json:"valid_to"`
+}
+
+type AttestationRevoke struct {
+	AttestationID string `json:"attestation_id"`
+}
+
+// PassportReason is the payload of a flag and of a revocation: the passport
+// and the hash of the reason record.
+type PassportReason struct {
+	PassportID string `json:"passport_id"`
+	ReasonHash string `json:"reason_hash"`
+}
+
 // Enqueue queues a change for the chain. It must be called with the database
 // transaction that makes the change itself, so the two are saved together or
 // not at all: nothing is ever changed without being queued, or queued without

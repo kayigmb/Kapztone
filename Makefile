@@ -8,7 +8,7 @@ PROD     := $(COMPOSE) -p chaintrack-prod $(INFRA) -f infra/compose.prod.yml
 # Puts every value from the env file into the environment of the commands that follow.
 LOAD_ENV := set -a && . $(abspath $(ENV_FILE)) && set +a
 
-.PHONY: infra api relayer chain deploy bindings dev prod down prod-down logs test test-db
+.PHONY: infra api relayer chain deploy bindings dev prod down prod-down logs test test-db slither
 
 # Targets that cannot run without the env file.
 infra api relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
@@ -60,6 +60,9 @@ test-db: infra
 	TEST_DATABASE_URL="$$DATABASE_URL" TEST_REDIS_URL="$${REDIS_URL%/*}/1" \
 	go test ./tests/ -count=1 -coverpkg="$$(go list ./internal/... | grep -v /bindings | paste -sd, -)" -coverprofile=coverage.out && \
 	go tool cover -func=coverage.out | tail -1
+
+slither: ## static analysis of the contracts; fails on a high finding (needs uv)
+	cd contracts && uvx --from slither-analyzer slither . --fail-high --filter-paths node_modules
 
 # Go bindings for the contracts, generated from the Hardhat build. Run after
 # changing any contract; the generated files are committed.

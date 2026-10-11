@@ -3,6 +3,7 @@ package org
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,7 @@ var (
 	ErrSlugTaken   = errors.New("slug taken")
 	ErrEmailTaken  = errors.New("email taken")
 	ErrNoDocuments = errors.New("no documents")
+	ErrNotIssuer   = errors.New("not an issuer")
 )
 
 // Unique indexes from the migrations, used to tell which value collided.
@@ -37,9 +39,11 @@ type Organisation struct {
 	ReviewedAt   *time.Time `json:"reviewed_at"`
 	ReviewReason *string    `json:"review_reason"`
 	// SigningAddress identifies the organisation on-chain; set once it is verified.
-	SigningAddress *string   `json:"signing_address"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	SigningAddress *string `json:"signing_address"`
+	// Accredited organisations may issue certificates.
+	Accredited bool      `json:"accredited"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type Document struct {
@@ -72,7 +76,7 @@ var (
 
 const (
 	orgColumns = `o.id::text, o.name, o.slug, o.kind, o.status, o.reviewed_by::text,
-	              o.reviewed_at, o.review_reason, o.signing_address, o.created_at, o.updated_at`
+	              o.reviewed_at, o.review_reason, o.signing_address, o.accredited, o.created_at, o.updated_at`
 	docColumns = `d.id::text, d.organisation_id::text, d.type, d.file_name, d.content_type,
 	              d.size_bytes, d.sha256, d.storage_key, d.uploaded_by::text, d.created_at, d.updated_at`
 )
@@ -80,7 +84,7 @@ const (
 func scanOrg(row pgx.CollectableRow) (Organisation, error) {
 	var o Organisation
 	err := row.Scan(&o.ID, &o.Name, &o.Slug, &o.Kind, &o.Status, &o.ReviewedBy,
-		&o.ReviewedAt, &o.ReviewReason, &o.SigningAddress, &o.CreatedAt, &o.UpdatedAt)
+		&o.ReviewedAt, &o.ReviewReason, &o.SigningAddress, &o.Accredited, &o.CreatedAt, &o.UpdatedAt)
 	return o, err
 }
 
@@ -285,6 +289,46 @@ func (s Store) Review(ctx context.Context, id string, rv Review, reviewerID stri
 		`UPDATE organisations AS o
 		 SET status = $2, reviewed_by = $3::uuid, reviewed_at = now(), review_reason = NULLIF($4, '')
 		 WHERE o.id = $1::uuid RETURNING `+orgColumns, id, rv.Decision, reviewerID, rv.Reason)
+	if err != nil {
+		return Organisation{}, err
+	}
+	o, err := pgx.CollectExactlyOneRow(rows, scanOrg)
+	if err != nil {
+		return Organisation{}, err
+	}
+	return o, tx.Commit(ctx)
+}
+
+// Accredit allows (or stops) an organisation issuing certificates, and queues
+// the change for the chain. Only a verified certifier or regulator qualifies.
+func (s Store) Accredit(ctx context.Context, id string, accredited bool) (Organisation, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Organisation{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var (
+		kind, status string
+		was          bool
+	)
+	err = tx.QueryRow(ctx,
+		`SELECT kind, status, accredited FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
+	).Scan(&kind, &status, &was)
+	if err != nil {
+		return Organisation{}, notFound(err)
+	}
+	if accredited && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
+		return Organisation{}, ErrNotIssuer
+	}
+	// Tell the chain only when the flag actually flips.
+	if accredited != was {
+		if err := chain.Enqueue(ctx, tx, chain.KindOrgAccredited, id, chain.OrgAccredited{OrgID: id, Accredited: accredited}); err != nil {
+			return Organisation{}, err
+		}
+	}
+	rows, err := tx.Query(ctx,
+		`UPDATE organisations AS o SET accredited = $2 WHERE o.id = $1::uuid RETURNING `+orgColumns, id, accredited)
 	if err != nil {
 		return Organisation{}, err
 	}

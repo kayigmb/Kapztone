@@ -7,8 +7,7 @@ export default defineConfig({
     version: "0.8.34",
     settings: {
       optimizer: { enabled: true, runs: 200 },
-      // Conservative target: avoids opcodes newer than Cancun, which the target
-      // testnet may not have yet. Confirm against Amoy before deploying.
+      // Conservative target: no opcodes newer than Cancun, which Polygon Amoy supports.
       evmVersion: "cancun",
     },
   },
@@ -16,7 +15,7 @@ export default defineConfig({
     // The chain .env points at: a local node (`make chain`) or a testnet.
     target: {
       type: "http",
-      chainType: "l1",
+      chainType: "generic",
       url: configVariable("CHAIN_RPC_URL"),
       accounts: [configVariable("CHAIN_PLATFORM_KEY")],
     },

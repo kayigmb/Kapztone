@@ -114,7 +114,7 @@ chaintrack/
 
 ### 4.1 Data model (PostgreSQL)
 
-`organisations` (`slug`, `kind`, `status`, `signing_address`, sealed `signing_key`) · `users` · `roles` · `permissions` (`resource:action`) · `role_permissions` · `userscope` (user + role + organisation) · `documents` (KYB) · `facilities` (PostGIS `geom` point or polygon, `capacity` + `capacity_unit` + `capacity_period`, `status`) · `commodity_templates` (`capacity_rule` JSONB, `stages` JSONB holding events, `maxYield`, `requiredEvidence`) · `passports` (`quantity`, `remaining`, `period`, `status`, `data_hash`, `handover_count`, `tx_hash`) · `handovers` (`sig_from`, `sig_to`, `status`, `deadline`) · `trace_events` (`kind`, `data_hash`, `tx_hash`) · `passport_link` (parent → child, `quantity_used`; Sprint 3) · `attestation` (`issuer_org_id`, `valid_from/to`, `doc_hash`, `revoked`) · `flag` · `audit_log` · `chain_outbox` (queued transactions).
+`organisations` (`slug`, `kind`, `status`, `signing_address`, sealed `signing_key`) · `users` · `roles` · `permissions` (`resource:action`) · `role_permissions` · `userscope` (user + role + organisation) · `documents` (KYB) · `facilities` (PostGIS `geom` point or polygon, `capacity` + `capacity_unit` + `capacity_period`, `status`) · `commodity_templates` (`capacity_rule` JSONB, `stages` JSONB holding events, `maxYield`, `requiredEvidence`) · `passports` (`quantity`, `remaining`, `period`, `status`, `data_hash`, `handover_count`, `tx_hash`; `facility_id` + `period` for an origin passport, `transform_id` for one made by a transform) · `handovers` (`sig_from`, `sig_to`, `status`, `deadline`) · `trace_events` (`kind`, `data_hash`, `tx_hash`) · `transforms` (`stage`, `max_yield_ppm` as applied, `data_hash`) · `transform_inputs` (transform + input passport + `quantity_used`: the parent → child link) · `attestations` (`issuer_org_id`, `subject_type` + `subject_id`, `type`, `valid_from/to`, `doc_hash`, `ipfs_cid`, `status`) · `flags` (`reason`, `status` open / cleared / confirmed) · `notifications` (`kind`, `message`, `read_at`, `emailed_at`) · `audit_log` (not built) · `chain_outbox` (queued transactions).
 
 **Conventions (all tables, all lists):**
 
@@ -174,6 +174,8 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 
 **Handover flow as built.** The sender (current holder) creates the handover; the API signs the typed message with the sender organisation's key and the handover is `awaiting_receiver`, holder unchanged. The receiver accepts: the API signs the same message with the receiver's key, the passport changes holder at once and the chain transaction is queued in the same database transaction. The receiver may instead reject (with a reason), the sender may cancel, and an unanswered handover expires after 7 days; in all three the holder does not change. The relayer later writes `tx_hash` and `anchored_at`.
 
+**Provenance as built (Sprint 3).** No template versions: a template's commodity and unit freeze once passports use it, yields may change, and every transform stores the yield it was judged by. A transform at a stage with `maxYield` 1 is a split or merge. Confirming a flag revokes the passport and all its descendants, including a descendant only partly made from it. Certificates keep their file on the server and their SHA-256 on-chain; pinning to IPFS (public) and e-mail are switched on in `.env`. Not built yet: required evidence per stage (handovers carry no stage), `retire`, audit log, a regulator role for resolving flags.
+
 **One platform key.** `CHAIN_PLATFORM_KEY` currently holds both the admin and the relayer role on-chain. Split them (admin key offline) before any deployment that matters.
 
 ### 4.5 Rules engine (Go, before anything is written)
@@ -194,6 +196,8 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 6. Check certificates: accredited issuer, within validity, not revoked, hash matches.
 7. Return **Verified** (all pass), **Warning** (e.g., expired certificate, open flag) or **Failed** (hash mismatch, breach, revoked), with a list of reasons.
 
+**As built.** `GET /verify/{passportId}` needs no sign-in, is limited to 60 requests a minute per address and cached for 60 seconds. It returns `verdict`, `reasons` (level, check, code, message, subject), `checks` (seven, each verified / warning / failed), the passport with its journey, `origins` (facility name, kind, location; owning organisation), `genealogy` and `certificates`. Failed: a record changed after it was written, a record differing from the chain, no origin, capacity or mass balance broken, a certificate file or fingerprint altered, a revoked passport anywhere in the tree. Warning: not anchored yet, chain unreachable, facility suspended, owner not verified, certificate expired or revoked, issuer not accredited, an open flag. Handovers are checked through the chain's holder and quantity rather than by re-hashing each one.
+
 ### 4.7 API outline (REST, documented in OpenAPI)
 
 No `/admin/...` endpoints. Every endpoint is a regular resource endpoint gated by one permission, and what a caller sees is gated by the organisation they act for (subdomain, or `pslug` in dev): users see only their own organisation's data, the superadmin sees all. The full route table with each route's permission lives in `backend/internal/server/server.go`.
@@ -208,11 +212,16 @@ POST   /facilities                     GET  /facilities?bbox=&status=    GET/DEL
 POST   /facilities/{id}/status
 POST   /templates                      GET  /templates       GET/PUT/DELETE /templates/{id}
 POST   /passports                      GET  /passports       GET /passports/{id} (with journey)
-GET    /passports/{id}/genealogy       (Sprint 3)
+GET    /passports/{id}/genealogy?direction=ancestors|descendants
 POST   /passports/{id}/handovers       GET  /handovers       GET /handovers/{id}
 POST   /handovers/{id}/accept | /reject | /cancel
-POST   /transforms                     POST /attestations     POST /attestations/{id}/revoke
-POST   /flags                          POST /flags/{id}/resolve
+POST   /transforms                     (process, split or merge: inputs, outputs, stage)
+POST   /orgs/{id}/accredit
+POST   /attestations (multipart)       GET  /attestations?subject_id=&status=    GET /attestations/{id}
+GET    /attestations/{id}/file         POST /attestations/{id}/revoke
+POST   /flags                          GET  /flags           GET /flags/{id}
+POST   /flags/{id}/resolve             (confirmed = revoke the passport and its descendants)
+GET    /notifications?unread=true      POST /notifications/{id}/read
 GET    /verify/{passportId}            (public, no auth, cached)
 GET    /reports/...                    GET  /audit
 ```

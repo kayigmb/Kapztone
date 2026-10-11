@@ -18,6 +18,7 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
 )
 
@@ -43,7 +44,15 @@ const (
 	EnvPassportRegistry    = "PASSPORT_REGISTRY_ADDRESS"
 	EnvCustodyManager      = "CUSTODY_MANAGER_ADDRESS"
 	EnvAttestationRegistry = "ATTESTATION_REGISTRY_ADDRESS"
+
+	// Outside services. Each is required like every setting; the value Off
+	// says, in writing, that the service is not used.
+	EnvPinataJWT = "PINATA_JWT" // pins certificate files to public IPFS
+	EnvSMTPURL   = "SMTP_URL"   // sends notification e-mail
 )
+
+// Off is the value that turns an outside service off.
+const Off = "none"
 
 // Values of APP_ENV.
 const (
@@ -71,6 +80,10 @@ type Config struct {
 	ChainID     *big.Int
 	PlatformKey *ecdsa.PrivateKey
 	Contracts   chain.Addresses
+
+	// PinataJWT and SMTPURL are empty when the service is off.
+	PinataJWT string
+	SMTPURL   string
 }
 
 // Domain is the signing domain for handovers on the configured chain.
@@ -161,6 +174,21 @@ func Load() (Config, error) {
 		Passports:    address(EnvPassportRegistry),
 		Custody:      address(EnvCustodyManager),
 		Attestations: address(EnvAttestationRegistry),
+	}
+
+	// service reads a setting that may be Off.
+	service := func(name string) string {
+		if v := get(name); v != Off {
+			return v
+		}
+		return ""
+	}
+	c.PinataJWT = service(EnvPinataJWT)
+	c.SMTPURL = service(EnvSMTPURL)
+	if c.SMTPURL != "" {
+		if _, err := notify.NewMailer(nil, c.SMTPURL); err != nil {
+			invalid(c.SMTPURL, EnvSMTPURL, err.Error()+", or "+Off)
+		}
 	}
 
 	if len(problems) > 0 {

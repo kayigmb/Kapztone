@@ -10,16 +10,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/cache"
+	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/config"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
+	"github.com/kayigmb/chaintrack/backend/internal/flag"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
 // How long access lookups may live in the cache if nothing invalidates them.
@@ -85,15 +91,45 @@ func main() {
 		Secrets:       cfg.Secrets,
 	}
 
+	passports := passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}
+	certificates := &attestation.Handlers{Store: attestation.Store{Pool: pool}, UploadDir: cfg.UploadDir}
+	if cfg.PinataJWT != "" {
+		certificates.Pin = attestation.Pinata{JWT: cfg.PinataJWT, URL: attestation.PinataURL}.Pin
+	}
+	if cfg.SMTPURL != "" {
+		mailer, err := notify.NewMailer(pool, cfg.SMTPURL)
+		if err != nil {
+			log.Fatalf("mail config: %v", err)
+		}
+		go mailer.Run(ctx)
+	}
+
+	// Public verification reads the chain. Dial does not need the chain to be
+	// up; while it is down, verification answers with a warning.
+	client, err := ethclient.DialContext(ctx, cfg.ChainRPCURL)
+	if err != nil {
+		log.Fatalf("chain config: %v", err)
+	}
+	defer client.Close()
+	contracts, err := chain.Bind(cfg.Contracts, client)
+	if err != nil {
+		log.Fatalf("contracts: %v", err)
+	}
+
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: server.NewRouter(server.Deps{
-			Ping:     pool.Ping,
-			Auth:     a,
-			Org:      o,
-			Facility: &facility.Handlers{Store: facility.Store{Pool: pool}},
-			Template: &template.Handlers{Store: template.Store{Pool: pool}},
-			Passport: &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}},
+			Ping:        pool.Ping,
+			Auth:        a,
+			Org:         o,
+			Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
+			Template:    &template.Handlers{Store: template.Store{Pool: pool}},
+			Passport:    &passport.Handlers{Store: passports},
+			Attestation: certificates,
+			Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passports},
+			Notify:      &notify.Handlers{Pool: pool},
+			Verify: &verify.Handlers{Pool: pool, Passports: passports, Certificates: certificates.Store,
+				Contracts: contracts, UploadDir: cfg.UploadDir, Cache: c},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

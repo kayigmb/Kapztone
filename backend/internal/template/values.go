@@ -38,5 +38,14 @@ var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
 
 const keyRule = "lowercase letters, digits and underscores, starting with a letter"
 
+// KeyRule and ValidKey let other packages hold their keys to the same rule:
+// a certificate's type is the evidence key a stage asks for.
+const KeyRule = keyRule
+
+func ValidKey(s string) bool { return keyPattern.MatchString(s) }
+
 // Messages shown to callers.
-const MsgCommodityTaken = "a template for this commodity already exists"
+const (
+	MsgCommodityTaken = "a template for this commodity already exists"
+	MsgInUse          = "passports already use this template; its commodity and unit can no longer change"
+)

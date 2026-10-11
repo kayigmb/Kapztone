@@ -22,7 +22,18 @@ const (
 	KindFacilitySuspended = "facility_set_suspended"
 	KindPassportIssue     = "passport_issue"
 	KindHandover          = "handover"
+	KindMaxYieldSet       = "max_yield_set"
+	KindOrgAccredited     = "org_set_accredited"
+	KindTransform         = "transform"
+	KindAttestationIssue  = "attestation_issue"
+	KindAttestationRevoke = "attestation_revoke"
+	KindFlag              = "flag"
+	KindPassportRevoke    = "passport_revoke"
 )
+
+// YieldScale writes a yield fraction as a whole number: 0.2 is 200_000.
+// It equals PassportRegistry.YIELD_SCALE.
+const YieldScale = 1_000_000
 
 // Where a queued item stands.
 const (

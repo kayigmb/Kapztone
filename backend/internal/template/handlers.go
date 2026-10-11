@@ -20,6 +20,8 @@ func respond(w http.ResponseWriter, status int, what string, t Template, err err
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case errors.Is(err, ErrCommodityTaken):
 		httpx.Error(w, http.StatusConflict, MsgCommodityTaken)
+	case errors.Is(err, ErrInUse):
+		httpx.Error(w, http.StatusConflict, MsgInUse)
 	case err != nil:
 		httpx.ServerError(w, what, err)
 	default:

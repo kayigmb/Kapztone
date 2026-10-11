@@ -10,12 +10,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
+	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
 // Health check response values.
@@ -46,18 +50,23 @@ type Route struct {
 
 // Deps is everything the routes need.
 type Deps struct {
-	Ping     func(context.Context) error // database health; a func so it can be faked
-	Auth     *auth.Auth
-	Org      *org.Handlers
-	Facility *facility.Handlers
-	Template *template.Handlers
-	Passport *passport.Handlers
+	Ping        func(context.Context) error // database health; a func so it can be faked
+	Auth        *auth.Auth
+	Org         *org.Handlers
+	Facility    *facility.Handlers
+	Template    *template.Handlers
+	Passport    *passport.Handlers
+	Attestation *attestation.Handlers
+	Flag        *flag.Handlers
+	Notify      *notify.Handlers
+	Verify      *verify.Handlers
 }
 
 const idPath = "/{" + httpx.ParamID + "}"
 
 func Routes(d Deps) []Route {
 	a, o, f, t, p := d.Auth, d.Org, d.Facility, d.Template, d.Passport
+	c, fl, n, v := d.Attestation, d.Flag, d.Notify, d.Verify
 	const (
 		get, post, put, del = http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete
 	)
@@ -65,15 +74,19 @@ func Routes(d Deps) []Route {
 		{get, "/healthz", Public, "", healthz(d.Ping)},
 		{post, "/auth/login", Public, "", a.Login},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
+		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
 
 		{get, "/me", SignedIn, "", a.Me},
 		{post, "/auth/2fa/setup", SignedIn, "", a.SetupTwoFactor},
 		{post, "/auth/2fa/enable", SignedIn, "", a.EnableTwoFactor},
 		{post, "/auth/2fa/disable", SignedIn, "", a.DisableTwoFactor},
+		{get, "/notifications", SignedIn, "", n.List},
+		{post, "/notifications" + idPath + "/read", SignedIn, "", n.Read},
 
 		{get, "/orgs", Permission, auth.OrgRead, o.List},
 		{get, "/orgs" + idPath, Permission, auth.OrgRead, o.Get},
 		{post, "/orgs" + idPath + "/verify", Permission, auth.OrgVerify, o.Review},
+		{post, "/orgs" + idPath + "/accredit", Permission, auth.OrgVerify, o.Accredit},
 		{get, "/orgs" + idPath + "/documents", Permission, auth.DocumentRead, o.ListDocuments},
 		{post, "/orgs" + idPath + "/documents", Permission, auth.OrgManage, o.Upload},
 		{get, "/documents" + idPath + "/file", Permission, auth.DocumentRead, o.Download},
@@ -93,12 +106,25 @@ func Routes(d Deps) []Route {
 		{post, "/passports", VerifiedPermission, auth.PassportIssue, p.Issue},
 		{get, "/passports", Permission, auth.PassportRead, p.List},
 		{get, "/passports" + idPath, Permission, auth.PassportRead, p.Get},
+		{get, "/passports" + idPath + "/genealogy", Permission, auth.PassportRead, p.Genealogy},
+		{post, "/transforms", VerifiedPermission, auth.TransformCreate, p.Transform},
 		{post, "/passports" + idPath + "/handovers", VerifiedPermission, auth.HandoverCreate, p.StartHandover},
 		{get, "/handovers", Permission, auth.PassportRead, p.ListHandovers},
 		{get, "/handovers" + idPath, Permission, auth.PassportRead, p.GetHandover},
 		{post, "/handovers" + idPath + "/accept", VerifiedPermission, auth.HandoverAccept, p.Accept},
 		{post, "/handovers" + idPath + "/reject", VerifiedPermission, auth.HandoverAccept, p.Reject},
 		{post, "/handovers" + idPath + "/cancel", VerifiedPermission, auth.HandoverCreate, p.Cancel},
+
+		{post, "/attestations", VerifiedPermission, auth.CertificateIssue, c.Issue},
+		{get, "/attestations", Permission, auth.PassportRead, c.List},
+		{get, "/attestations" + idPath, Permission, auth.PassportRead, c.Get},
+		{get, "/attestations" + idPath + "/file", Permission, auth.PassportRead, c.Download},
+		{post, "/attestations" + idPath + "/revoke", Permission, auth.CertificateRevoke, c.Revoke},
+
+		{post, "/flags", VerifiedPermission, auth.FlagCreate, fl.Raise},
+		{get, "/flags", Permission, auth.FlagCreate, fl.List},
+		{get, "/flags" + idPath, Permission, auth.FlagCreate, fl.Get},
+		{post, "/flags" + idPath + "/resolve", Permission, auth.FlagResolve, fl.Resolve},
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
 )
 
@@ -48,22 +49,25 @@ func (e CapacityError) Error() string {
 }
 
 type Passport struct {
-	ID             string     `json:"id"`
-	OrganisationID string     `json:"organisation_id"` // current holder
-	FacilityID     string     `json:"facility_id"`
-	TemplateID     string     `json:"template_id"`
-	Commodity      string     `json:"commodity"`
-	Unit           string     `json:"unit"`
-	Quantity       int64      `json:"quantity"`
-	Remaining      int64      `json:"remaining"`
-	Period         int64      `json:"period"`
-	Status         string     `json:"status"`
-	DataHash       string     `json:"data_hash"`
-	HandoverCount  int64      `json:"handover_count"`
-	TxHash         *string    `json:"tx_hash"`
-	AnchoredAt     *time.Time `json:"anchored_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID             string `json:"id"`
+	OrganisationID string `json:"organisation_id"` // current holder
+	// FacilityID and Period are set on a passport issued at an origin
+	// facility; TransformID on one made by a transform. Never both.
+	FacilityID    *string    `json:"facility_id"`
+	TransformID   *string    `json:"transform_id"`
+	TemplateID    string     `json:"template_id"`
+	Commodity     string     `json:"commodity"`
+	Unit          string     `json:"unit"`
+	Quantity      int64      `json:"quantity"`
+	Remaining     int64      `json:"remaining"`
+	Period        *int64     `json:"period"`
+	Status        string     `json:"status"`
+	DataHash      string     `json:"data_hash"`
+	HandoverCount int64      `json:"handover_count"`
+	TxHash        *string    `json:"tx_hash"`
+	AnchoredAt    *time.Time `json:"anchored_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 	// Events is the journey so far; filled when one passport is fetched.
 	Events []Event `json:"events,omitempty"`
 }
@@ -114,7 +118,7 @@ var (
 )
 
 const (
-	columns = `p.id::text, p.organisation_id::text, p.facility_id::text, p.template_id::text, p.commodity,
+	columns = `p.id::text, p.organisation_id::text, p.facility_id::text, p.transform_id::text, p.template_id::text, p.commodity,
 	           p.unit, p.quantity, p.remaining, p.period, p.status, p.data_hash, p.handover_count,
 	           p.tx_hash, p.anchored_at, p.created_at, p.updated_at`
 
@@ -140,7 +144,7 @@ const (
 
 func scan(row pgx.CollectableRow) (Passport, error) {
 	var p Passport
-	err := row.Scan(&p.ID, &p.OrganisationID, &p.FacilityID, &p.TemplateID, &p.Commodity, &p.Unit,
+	err := row.Scan(&p.ID, &p.OrganisationID, &p.FacilityID, &p.TransformID, &p.TemplateID, &p.Commodity, &p.Unit,
 		&p.Quantity, &p.Remaining, &p.Period, &p.Status, &p.DataHash, &p.HandoverCount,
 		&p.TxHash, &p.AnchoredAt, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
@@ -456,6 +460,9 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	if err != nil {
 		return Handover{}, err
 	}
+	if err := notify.Add(ctx, tx, in.ToOrganisationID, notify.KindHandoverStarted, id, MsgNotifyHandoverStarted); err != nil {
+		return Handover{}, err
+	}
 	return h, tx.Commit(ctx)
 }
 
@@ -555,6 +562,9 @@ func (s Store) Accept(ctx context.Context, id, toOrg, userID string) (Handover, 
 	if err != nil {
 		return Handover{}, err
 	}
+	if err := notify.Add(ctx, tx, h.FromOrg, notify.KindHandoverAccepted, id, MsgNotifyHandoverAccepted); err != nil {
+		return Handover{}, err
+	}
 	return out, tx.Commit(ctx)
 }
 
@@ -575,6 +585,11 @@ func (s Store) close(ctx context.Context, id, side, orgID, userID, status, reaso
 		HandoverAwaiting, HandoverExpired, status, reason, userID, id))
 	if err != nil {
 		return Handover{}, err
+	}
+	if status == HandoverRejected {
+		if err := notify.Add(ctx, tx, h.FromOrg, notify.KindHandoverRejected, id, MsgNotifyHandoverRejected); err != nil {
+			return Handover{}, err
+		}
 	}
 	return h, tx.Commit(ctx)
 }

@@ -24,6 +24,8 @@ var (
 	LoginRate = Rate{Name: "login", Max: 5, Window: 15 * time.Minute}
 	// RegisterRate counts sign-ups per address.
 	RegisterRate = Rate{Name: "register", Max: 10, Window: time.Hour}
+	// VerifyRate counts public verifications per address: each one reads the chain.
+	VerifyRate = Rate{Name: "verify", Max: 60, Window: time.Minute}
 )
 
 // Limiter counts events in the cache. If the cache is unreachable it allows

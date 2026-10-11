@@ -66,3 +66,8 @@ func (r *Review) Validate() string {
 	}
 	return ""
 }
+
+// Accreditation says whether an organisation may issue certificates.
+type Accreditation struct {
+	Accredited bool `json:"accredited"`
+}

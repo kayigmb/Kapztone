@@ -31,10 +31,11 @@ type Backend interface {
 
 // Contracts are the deployed contracts the relayer writes to.
 type Contracts struct {
-	Orgs       *bindings.OrgRegistry
-	Facilities *bindings.FacilityRegistry
-	Passports  *bindings.PassportRegistry
-	Custody    *bindings.CustodyManager
+	Orgs         *bindings.OrgRegistry
+	Facilities   *bindings.FacilityRegistry
+	Passports    *bindings.PassportRegistry
+	Custody      *bindings.CustodyManager
+	Attestations *bindings.AttestationRegistry
 }
 
 // Addresses are where the contracts live on the target chain.
@@ -57,7 +58,10 @@ func Bind(a Addresses, backend bind.ContractBackend) (Contracts, error) {
 	if c.Passports, err = bindings.NewPassportRegistry(a.Passports, backend); err != nil {
 		return c, err
 	}
-	c.Custody, err = bindings.NewCustodyManager(a.Custody, backend)
+	if c.Custody, err = bindings.NewCustodyManager(a.Custody, backend); err != nil {
+		return c, err
+	}
+	c.Attestations, err = bindings.NewAttestationRegistry(a.Attestations, backend)
 	return c, err
 }
 
@@ -251,14 +255,103 @@ func (r *Relayer) send(opts *bind.TransactOpts, it item) (*types.Transaction, er
 			Nonce:      big.NewInt(p.Nonce),
 			Deadline:   big.NewInt(p.Deadline),
 		}, sigFrom, sigTo)
+
+	case KindMaxYieldSet:
+		var p MaxYieldSet
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		return c.Passports.SetMaxYield(opts, Key(p.Commodity), Key(p.Stage), big.NewInt(p.PartsPerMillion))
+
+	case KindOrgAccredited:
+		var p OrgAccredited
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		return c.Orgs.SetAccredited(opts, MustID(p.OrgID), p.Accredited)
+
+	case KindTransform:
+		var p Transform
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		hash, err := FromHex(p.DataHash)
+		if err != nil || len(p.Inputs) != len(p.InputsUsed) {
+			return nil, errRefused{"transform payload is malformed"}
+		}
+		inputs, used := make([][32]byte, len(p.Inputs)), make([]*big.Int, len(p.Inputs))
+		for i := range p.Inputs {
+			inputs[i], used[i] = MustID(p.Inputs[i]), big.NewInt(p.InputsUsed[i])
+		}
+		outputs := make([]bindings.PassportRegistryOutput, len(p.Outputs))
+		for i, o := range p.Outputs {
+			outHash, err := FromHex(o.DataHash)
+			if err != nil {
+				return nil, errRefused{err.Error()}
+			}
+			outputs[i] = bindings.PassportRegistryOutput{Id: MustID(o.PassportID), Quantity: big.NewInt(o.Quantity), DataHash: outHash}
+		}
+		return c.Passports.Transform(opts, inputs, used, Key(p.Stage), outputs, hash)
+
+	case KindAttestationIssue:
+		var p AttestationIssue
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		hash, err := FromHex(p.DocHash)
+		if err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		return c.Attestations.Issue(opts, MustID(p.AttestationID), MustID(p.IssuerOrg), MustID(p.SubjectID),
+			hash, uint64(p.ValidFrom), uint64(p.ValidTo))
+
+	case KindAttestationRevoke:
+		var p AttestationRevoke
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		return c.Attestations.Revoke(opts, MustID(p.AttestationID))
+
+	case KindFlag, KindPassportRevoke:
+		var p PassportReason
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		hash, err := FromHex(p.ReasonHash)
+		if err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		if it.Kind == KindFlag {
+			return c.Passports.Flag(opts, MustID(p.PassportID), hash)
+		}
+		return c.Passports.Revoke(opts, MustID(p.PassportID), hash)
 	}
 	return nil, errRefused{"unknown kind " + it.Kind}
 }
 
-// Which table's row gets the transaction hash once an item is anchored.
-var anchoredTable = map[string]string{
-	KindPassportIssue: "passports",
-	KindHandover:      "handovers",
+// The statements below take the item's subject id ($1) and the transaction hash ($2).
+const (
+	anchorRowFmt = `UPDATE %s SET tx_hash = $2, anchored_at = now() WHERE id = $1::uuid`
+	// Journey events that came from the subject row.
+	anchorEvents = `UPDATE trace_events SET tx_hash = $2 WHERE ref_id = $1::uuid`
+)
+
+func anchorRow(table string) string { return fmt.Sprintf(anchorRowFmt, table) }
+
+// What is written back once an item of each kind is anchored. Kinds not
+// listed change no row but their own.
+var anchored = map[string][]string{
+	KindPassportIssue: {anchorRow("passports"), anchorEvents},
+	KindHandover:      {anchorRow("handovers"), anchorEvents},
+	// A transform also anchors the passports it created.
+	KindTransform: {anchorRow("transforms"), anchorEvents,
+		`UPDATE passports SET tx_hash = $2, anchored_at = now() WHERE transform_id = $1::uuid`},
+	KindAttestationIssue:  {anchorRow("attestations")},
+	KindAttestationRevoke: {`UPDATE attestations SET revoke_tx_hash = $2 WHERE id = $1::uuid`},
+	KindFlag:              {anchorRow("flags"), anchorEvents},
+	// The subject of a revocation is its REVOKE journey event, so the
+	// passport keeps the hash of the transaction that created it.
+	KindPassportRevoke: {`UPDATE trace_events SET tx_hash = $2 WHERE id = $1::uuid`},
 }
 
 // confirm records that the item is on-chain and writes the transaction hash
@@ -275,14 +368,8 @@ func (r *Relayer) confirm(ctx context.Context, it item, hash common.Hash) error 
 		it.ID, StatusConfirmed, hash.Hex()); err != nil {
 		return err
 	}
-	if table, ok := anchoredTable[it.Kind]; ok {
-		// table comes from the map above, never from data.
-		if _, err := tx.Exec(ctx,
-			`UPDATE `+table+` SET tx_hash = $2, anchored_at = now() WHERE id = $1::uuid`, it.SubjectID, hash.Hex()); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE trace_events SET tx_hash = $2 WHERE ref_id = $1::uuid`, it.SubjectID, hash.Hex()); err != nil {
+	for _, sql := range anchored[it.Kind] {
+		if _, err := tx.Exec(ctx, sql, it.SubjectID, hash.Hex()); err != nil {
 			return err
 		}
 	}
@@ -325,4 +412,12 @@ func revertReason(err error) (string, bool) {
 		return err.Error(), true
 	}
 	return "", false
+}
+
+// Refused reports whether err is a contract refusing a call (for a read:
+// the thing asked about is not on-chain), as opposed to the chain being
+// unreachable.
+func Refused(err error) bool {
+	_, ok := revertReason(err)
+	return ok
 }

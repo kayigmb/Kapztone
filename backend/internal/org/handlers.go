@@ -2,15 +2,8 @@ package org
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"io"
-	"mime"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -19,6 +12,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 type Handlers struct {
@@ -153,6 +147,29 @@ func (h *Handlers) Review(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Accredit allows or stops an organisation issuing certificates.
+func (h *Handlers) Accredit(w http.ResponseWriter, r *http.Request) {
+	o, ok := h.visibleOrg(w, r)
+	if !ok {
+		return
+	}
+	var in Accreditation
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	o, err := h.Store.Accredit(r.Context(), o.ID, in.Accredited)
+	switch {
+	case errors.Is(err, ErrNotIssuer):
+		httpx.Error(w, http.StatusConflict, MsgNotIssuer)
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+	case err != nil:
+		httpx.ServerError(w, "accredit organisation", err)
+	default:
+		httpx.WriteJSON(w, http.StatusOK, o)
+	}
+}
+
 func (h *Handlers) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	o, ok := h.visibleOrg(w, r)
 	if !ok {
@@ -176,62 +193,34 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-
-	// The body limit leaves room for the multipart envelope around the file.
-	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes+1<<20)
-	file, header, err := r.FormFile(FormFile)
-	if err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			httpx.Error(w, http.StatusRequestEntityTooLarge, MsgFileTooLarge)
-			return
-		}
-		httpx.Error(w, http.StatusBadRequest, MsgFileNeeded)
+	file, header, ok := upload.Parse(w, r)
+	if !ok {
 		return
 	}
 	defer file.Close()
 	defer r.MultipartForm.RemoveAll()
 
-	if header.Size > MaxUploadBytes {
-		httpx.Error(w, http.StatusRequestEntityTooLarge, MsgFileTooLarge)
-		return
-	}
 	docType := r.FormValue(FormType)
 	if !slices.Contains(DocTypes, docType) {
 		httpx.Error(w, http.StatusBadRequest, FormType+" must be one of: "+strings.Join(DocTypes, ", "))
 		return
 	}
-
-	// Decide the type from the bytes; the uploader's file name and header are not trusted.
-	head := make([]byte, 512)
-	n, _ := io.ReadFull(file, head)
-	contentType := http.DetectContentType(head[:n])
-	if !slices.Contains(AllowedContentTypes, contentType) {
-		httpx.Error(w, http.StatusBadRequest, MsgFileType)
-		return
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		httpx.ServerError(w, "rewind upload", err)
-		return
-	}
-
-	key, sum, err := h.save(file)
-	if err != nil {
-		httpx.ServerError(w, "save upload", err)
+	f, ok := upload.Store(w, h.UploadDir, file, header)
+	if !ok {
 		return
 	}
 	doc, statusChanged, err := h.Store.AddDocument(r.Context(), Document{
 		OrganisationID: o.ID,
 		Type:           docType,
-		FileName:       filepath.Base(header.Filename),
-		ContentType:    contentType,
-		SizeBytes:      header.Size,
-		SHA256:         sum,
-		StorageKey:     key,
+		FileName:       f.Name,
+		ContentType:    f.ContentType,
+		SizeBytes:      f.Size,
+		SHA256:         f.SHA256,
+		StorageKey:     f.Key,
 		UploadedBy:     auth.CurrentUser(r.Context()).ID,
 	})
 	if err != nil {
-		os.Remove(filepath.Join(h.UploadDir, key)) // do not keep a file with no record
+		upload.Remove(h.UploadDir, f.Key) // do not keep a file with no record
 		httpx.ServerError(w, "record document", err)
 		return
 	}
@@ -239,32 +228,6 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 		h.InvalidateOrg(r.Context(), o.Slug)
 	}
 	httpx.WriteJSON(w, http.StatusCreated, doc)
-}
-
-// save writes the file under a random server-chosen name and returns that
-// name and the SHA-256 of the content.
-func (h *Handlers) save(src io.Reader) (key, sum string, err error) {
-	raw := make([]byte, 16)
-	if _, err = rand.Read(raw); err != nil {
-		return "", "", err
-	}
-	key = hex.EncodeToString(raw)
-	path := filepath.Join(h.UploadDir, key)
-
-	dst, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return "", "", err
-	}
-	hash := sha256.New()
-	_, err = io.Copy(io.MultiWriter(dst, hash), src)
-	if cerr := dst.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		os.Remove(path)
-		return "", "", err
-	}
-	return key, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // Download streams a stored document to a caller allowed to see it.
@@ -286,15 +249,5 @@ func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "get document", err)
 		return
 	}
-	f, err := os.Open(filepath.Join(h.UploadDir, d.StorageKey))
-	if err != nil {
-		httpx.ServerError(w, "open document", err)
-		return
-	}
-	defer f.Close()
-
-	w.Header().Set("Content-Type", d.ContentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": d.FileName}))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeContent(w, r, "", d.UpdatedAt, f)
+	upload.Serve(w, r, h.UploadDir, d.StorageKey, d.FileName, d.ContentType, d.UpdatedAt)
 }
