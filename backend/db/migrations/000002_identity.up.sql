@@ -1,72 +1,92 @@
+-- Tables only. Roles, permissions and allowed values (kinds, statuses, slug rule)
+-- are declared once in the application and written or validated from there.
+--
+-- Every table carries the base columns: id, created_at, updated_at, is_deleted.
+
 CREATE EXTENSION IF NOT EXISTS citext;
+
+CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END
+$$;
 
 CREATE TABLE organisations (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name       text NOT NULL,
-    -- The slug is the organisation's subdomain, so it must be a valid, non-reserved hostname label.
-    slug       text NOT NULL UNIQUE
-               CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
-                      AND slug NOT IN ('www', 'api', 'admin', 'app')),
-    kind       text NOT NULL
-               CHECK (kind IN ('producer', 'processor', 'transporter', 'exporter', 'importer', 'certifier', 'regulator')),
-    status     text NOT NULL DEFAULT 'pending'
-               CHECK (status IN ('pending', 'verified', 'rejected')),
-    created_at timestamptz NOT NULL DEFAULT now()
+    slug       text NOT NULL,
+    kind       text NOT NULL,
+    status     text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    is_deleted boolean NOT NULL DEFAULT false
 );
+-- Uniqueness ignores deleted rows, so a deleted organisation's slug can be reused.
+CREATE UNIQUE INDEX organisations_slug_key ON organisations (slug) WHERE NOT is_deleted;
+CREATE TRIGGER organisations_updated_at BEFORE UPDATE ON organisations
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE users (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    email         citext NOT NULL UNIQUE,
+    email         citext NOT NULL,
     password_hash text NOT NULL,
     name          text NOT NULL,
-    status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
-    created_at    timestamptz NOT NULL DEFAULT now()
+    status        text NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    is_deleted    boolean NOT NULL DEFAULT false
 );
+CREATE UNIQUE INDEX users_email_key ON users (email) WHERE NOT is_deleted;
+CREATE TRIGGER users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE roles (
-    id   int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name text NOT NULL UNIQUE
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       text NOT NULL UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    is_deleted boolean NOT NULL DEFAULT false
 );
+CREATE TRIGGER roles_updated_at BEFORE UPDATE ON roles
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- Permission names are "resource:action".
 CREATE TABLE permissions (
-    id   int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name text NOT NULL UNIQUE CHECK (name ~ '^[a-z_]+:[a-z_]+$')
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       text NOT NULL UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    is_deleted boolean NOT NULL DEFAULT false
 );
+CREATE TRIGGER permissions_updated_at BEFORE UPDATE ON permissions
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE role_permissions (
-    role_id       int NOT NULL REFERENCES roles (id) ON DELETE CASCADE,
-    permission_id int NOT NULL REFERENCES permissions (id) ON DELETE CASCADE,
-    PRIMARY KEY (role_id, permission_id)
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_id       uuid NOT NULL REFERENCES roles (id),
+    permission_id uuid NOT NULL REFERENCES permissions (id),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    is_deleted    boolean NOT NULL DEFAULT false,
+    UNIQUE (role_id, permission_id)
 );
+CREATE TRIGGER role_permissions_updated_at BEFORE UPDATE ON role_permissions
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- "This user has this role in this organisation."
 -- A NULL organisation is a platform-wide scope (superadmin).
 CREATE TABLE userscope (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    role_id         int NOT NULL REFERENCES roles (id),
-    organisation_id uuid REFERENCES organisations (id) ON DELETE CASCADE,
+    user_id         uuid NOT NULL REFERENCES users (id),
+    role_id         uuid NOT NULL REFERENCES roles (id),
+    organisation_id uuid REFERENCES organisations (id),
     created_at      timestamptz NOT NULL DEFAULT now(),
-    UNIQUE NULLS NOT DISTINCT (user_id, organisation_id)
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    is_deleted      boolean NOT NULL DEFAULT false
 );
-
-INSERT INTO roles (name) VALUES ('superadmin'), ('org_admin'), ('member');
-
-INSERT INTO permissions (name) VALUES
-    ('org:verify'), ('org:read'), ('user:manage'),
-    ('passport:issue'), ('passport:read'),
-    ('handover:create'), ('handover:accept'),
-    ('transform:create'),
-    ('certificate:issue'), ('certificate:revoke'),
-    ('flag:create'), ('flag:resolve'),
-    ('template:manage');
-
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-JOIN permissions p ON
-    r.name = 'superadmin'
-    OR (r.name = 'org_admin' AND p.name NOT IN ('org:verify', 'template:manage', 'flag:resolve'))
-    OR (r.name = 'member' AND p.name IN ('passport:issue', 'passport:read', 'handover:create',
-                                         'handover:accept', 'transform:create', 'flag:create'));
+-- One live scope per user per organisation (and one platform-wide scope per user).
+CREATE UNIQUE INDEX userscope_user_org_key ON userscope (user_id, organisation_id)
+    NULLS NOT DISTINCT WHERE NOT is_deleted;
+CREATE TRIGGER userscope_updated_at BEFORE UPDATE ON userscope
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

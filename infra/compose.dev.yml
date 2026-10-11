@@ -1,4 +1,5 @@
 # Development: source is bind-mounted and both services reload on save.
+name: chaintrack_dev
 services:
   api:
     image: golang:1.26-alpine
@@ -10,17 +11,46 @@ services:
       - github.com/air-verse/air@v1.67.4
       - --build.cmd=go build -o /tmp/api ./cmd/api
       - --build.bin=/tmp/api
-    environment:
-      PORT: "8080"
-      DATABASE_URL: postgres://${POSTGRES_USER:-chaintrack}:${POSTGRES_PASSWORD:-chaintrack}@db:5432/${POSTGRES_DB:-chaintrack}?sslmode=disable
-      APP_ENV: dev
-      BASE_DOMAIN: ${BASE_DOMAIN:-localhost}
-      # Dev-only defaults. Production must supply its own (see compose.prod.yml).
-      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-dev-only-secret-dev-only}
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@chaintrack.local}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-chaintrack-dev-admin}
+    environment: &api-env
+      PORT: ${PORT:?set PORT in .env}
+      APP_ENV: ${APP_ENV:?set APP_ENV in .env}
+      # Addresses of the other containers; the values in .env are for running the API on your machine.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_TTL: ${JWT_TTL:?set JWT_TTL in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:?set SUPERADMIN_EMAIL in .env}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:?set SUPERADMIN_PASSWORD in .env}
+      # From a container, a chain on your machine is at host.docker.internal, not 127.0.0.1.
+      CHAIN_RPC_URL: ${CHAIN_RPC_URL:?set CHAIN_RPC_URL in .env}
+      CHAIN_ID: ${CHAIN_ID:?set CHAIN_ID in .env}
+      CHAIN_PLATFORM_KEY: ${CHAIN_PLATFORM_KEY:?set CHAIN_PLATFORM_KEY in .env}
+      ORG_REGISTRY_ADDRESS: ${ORG_REGISTRY_ADDRESS:?set ORG_REGISTRY_ADDRESS in .env}
+      FACILITY_REGISTRY_ADDRESS: ${FACILITY_REGISTRY_ADDRESS:?set FACILITY_REGISTRY_ADDRESS in .env}
+      PASSPORT_REGISTRY_ADDRESS: ${PASSPORT_REGISTRY_ADDRESS:?set PASSPORT_REGISTRY_ADDRESS in .env}
+      CUSTODY_MANAGER_ADDRESS: ${CUSTODY_MANAGER_ADDRESS:?set CUSTODY_MANAGER_ADDRESS in .env}
+      ATTESTATION_REGISTRY_ADDRESS: ${ATTESTATION_REGISTRY_ADDRESS:?set ATTESTATION_REGISTRY_ADDRESS in .env}
     ports:
-      - "8080:8080"
+      - "${PORT}:${PORT}"
+    volumes:
+      - ../backend:/src
+      - go-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+      - uploads:/data/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Carries queued changes to the chain. Restart it after changing relayer code.
+  relayer:
+    image: golang:1.26-alpine
+    working_dir: /src
+    command: go run ./cmd/relayer
+    environment: *api-env
     volumes:
       - ../backend:/src
       - go-cache:/go/pkg/mod
@@ -36,7 +66,7 @@ services:
     environment:
       CI: "true"
       npm_config_store_dir: /pnpm-store
-      API_URL: http://api:8080
+      API_URL: http://api:${PORT}
     ports:
       - "3000:3000"
     volumes:
@@ -50,6 +80,7 @@ services:
 
 volumes:
   go-cache:
+  uploads:
   go-build-cache:
   web-node-modules:
   web-next:

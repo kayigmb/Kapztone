@@ -9,7 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PgStore is the Postgres-backed Store.
+// PgStore is the Postgres-backed Store. Every query ignores deleted rows: a
+// deleted user, organisation, role link or scope must grant nothing.
 type PgStore struct {
 	Pool *pgxpool.Pool
 }
@@ -24,9 +25,9 @@ func notFound(err error) error {
 func (s PgStore) UserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id::text, email::text, name, password_hash
-		 FROM users WHERE email = $1 AND status = 'active'`, email,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash)
+		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled
+		 FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`, email, UserActive,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled)
 	return u, notFound(err)
 }
 
@@ -34,7 +35,7 @@ func (s PgStore) ActiveUser(ctx context.Context, id string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
 		`SELECT id::text, email::text, name
-		 FROM users WHERE id = $1::uuid AND status = 'active'`, id,
+		 FROM users WHERE id = $1::uuid AND status = $2 AND NOT is_deleted`, id, UserActive,
 	).Scan(&u.ID, &u.Email, &u.Name)
 	return u, notFound(err)
 }
@@ -46,18 +47,19 @@ func (s PgStore) Scope(ctx context.Context, userID, slug string) (Scope, error) 
 	)
 	// An organisation-specific scope wins over the platform-wide one.
 	err := s.Pool.QueryRow(ctx,
-		`SELECT o.id::text, o.name, o.slug, o.kind, o.status, r.name,
+		`SELECT o.id::text, o.name, o.slug, o.kind, o.status, r.name, us.organisation_id IS NULL,
 		        COALESCE(array_agg(p.name ORDER BY p.name) FILTER (WHERE p.name IS NOT NULL), '{}')
 		 FROM userscope us
-		 JOIN roles r ON r.id = us.role_id
+		 JOIN roles r ON r.id = us.role_id AND NOT r.is_deleted
 		 LEFT JOIN organisations o ON o.id = us.organisation_id
-		 LEFT JOIN role_permissions rp ON rp.role_id = r.id
-		 LEFT JOIN permissions p ON p.id = rp.permission_id
-		 WHERE us.user_id = $1::uuid AND (us.organisation_id IS NULL OR o.slug = $2)
+		 LEFT JOIN role_permissions rp ON rp.role_id = r.id AND NOT rp.is_deleted
+		 LEFT JOIN permissions p ON p.id = rp.permission_id AND NOT p.is_deleted
+		 WHERE us.user_id = $1::uuid AND NOT us.is_deleted
+		   AND (us.organisation_id IS NULL OR (o.slug = $2 AND NOT o.is_deleted))
 		 GROUP BY us.id, o.id, r.name
 		 ORDER BY us.organisation_id IS NULL
 		 LIMIT 1`, userID, slug,
-	).Scan(&oID, &oName, &oSlug, &oKind, &oStatus, &sc.Role, &sc.Permissions)
+	).Scan(&oID, &oName, &oSlug, &oKind, &oStatus, &sc.Role, &sc.Platform, &sc.Permissions)
 	if err != nil {
 		return Scope{}, notFound(err)
 	}
@@ -67,17 +69,30 @@ func (s PgStore) Scope(ctx context.Context, userID, slug string) (Scope, error) 
 	return sc, nil
 }
 
-// EnsureSuperadmin creates the first superadmin if the platform has none.
-// It is safe to call on every start and from several instances at once.
-func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (created bool, err error) {
-	if len(password) < 12 {
-		return false, errors.New("superadmin password must be at least 12 characters")
-	}
-	hash, err := HashPassword(password)
-	if err != nil {
-		return false, fmt.Errorf("hash superadmin password: %w", err)
-	}
+func (s PgStore) SetTOTP(ctx context.Context, userID, sealedSecret string, enabled bool) error {
+	_, err := s.Pool.Exec(ctx,
+		// A new secret starts a new step history; the same secret keeps its
+		// burned steps, so the code that enabled 2FA cannot also sign in.
+		`UPDATE users SET totp_enabled = $3,
+		        totp_last_step = CASE WHEN totp_secret = $2 THEN totp_last_step ELSE 0 END,
+		        totp_secret = $2
+		 WHERE id = $1::uuid AND NOT is_deleted`, userID, sealedSecret, enabled)
+	return err
+}
 
+// UseTOTPStep moves the user's last used time-step forward. The comparison
+// and the update are one statement, so two requests cannot both win.
+func (s PgStore) UseTOTPStep(ctx context.Context, userID string, step int64) (bool, error) {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE users SET totp_last_step = $2
+		 WHERE id = $1::uuid AND totp_last_step < $2 AND NOT is_deleted`, userID, step)
+	return tag.RowsAffected() == 1, err
+}
+
+// EnsureSuperadmin creates the first superadmin if the platform has none.
+// It needs SyncRoles to have run. Safe to call on every start and from
+// several instances at once.
+func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (created bool, err error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -91,23 +106,36 @@ func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (
 	var exists bool
 	err = tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM userscope us JOIN roles r ON r.id = us.role_id
-		                WHERE r.name = 'superadmin')`).Scan(&exists)
+		                WHERE r.name = $1 AND NOT us.is_deleted)`, RoleSuperadmin).Scan(&exists)
 	if err != nil || exists {
 		return false, err
 	}
 
+	// Checked only when one is actually created, so a platform that already
+	// has its superadmin starts whatever the environment holds.
+	if len(password) < MinPasswordLen || len(password) > MaxPasswordLen {
+		return false, fmt.Errorf("superadmin password must be %d to %d characters", MinPasswordLen, MaxPasswordLen)
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return false, fmt.Errorf("hash superadmin password: %w", err)
+	}
+
 	var userID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, name) VALUES ($1, $2, 'Platform admin')
-		 RETURNING id::text`, email, hash).Scan(&userID)
+		`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4)
+		 RETURNING id::text`, email, hash, superadminName, UserActive).Scan(&userID)
 	if err != nil {
 		return false, fmt.Errorf("create superadmin user: %w", err)
 	}
-	_, err = tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`INSERT INTO userscope (user_id, role_id)
-		 SELECT $1::uuid, id FROM roles WHERE name = 'superadmin'`, userID)
+		 SELECT $1::uuid, id FROM roles WHERE name = $2 AND NOT is_deleted`, userID, RoleSuperadmin)
 	if err != nil {
 		return false, err
+	}
+	if tag.RowsAffected() != 1 {
+		return false, fmt.Errorf("role %q is missing: run SyncRoles first", RoleSuperadmin)
 	}
 	return true, tx.Commit(ctx)
 }

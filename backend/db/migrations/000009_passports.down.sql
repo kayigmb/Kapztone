@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS trace_events;
+DROP TABLE IF EXISTS handovers;
+DROP TABLE IF EXISTS passports;

@@ -11,13 +11,41 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Throwaway credentials for the job's own containers.
+    env:
+      TEST_DATABASE_URL: postgres://chaintrack:chaintrack@localhost:5432/chaintrack?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/1
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: chaintrack
+          POSTGRES_PASSWORD: chaintrack
+          POSTGRES_DB: chaintrack
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U chaintrack -d chaintrack"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
       - run: go vet ./...
-      - run: go test ./...
+      - name: Apply migrations
+        run: >-
+          docker run --rm --network host -v "$PWD/db/migrations:/migrations:ro"
+          migrate/migrate:v4.18.3 -path=/migrations -database "$TEST_DATABASE_URL" up
+      - name: Test with coverage
+        run: |
+          go test ./... -count=1 -coverpkg="$(go list ./internal/... | grep -v /bindings | paste -sd, -)" -coverprofile=coverage.out
+          go tool cover -func=coverage.out | tail -1
 
   frontend:
     runs-on: ubuntu-latest
@@ -50,4 +78,4 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
-      - run: pnpm compile
+      - run: pnpm test

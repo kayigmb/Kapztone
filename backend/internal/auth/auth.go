@@ -5,15 +5,17 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
-	"regexp"
-	"slices"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/kayigmb/chaintrack/backend/internal/secret"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -23,6 +25,10 @@ type User struct {
 	Email        string `json:"email"`
 	Name         string `json:"name"`
 	PasswordHash string `json:"-"`
+
+	// Two-factor state; filled by UserByEmail only.
+	TOTPSecret  string `json:"-"` // sealed with secret.Box
+	TOTPEnabled bool   `json:"-"`
 }
 
 type Organisation struct {
@@ -34,15 +40,40 @@ type Organisation struct {
 }
 
 // Scope is what a user may do in the organisation they are acting for.
-// Organisation is nil for a platform-wide scope or when no organisation was named.
 type Scope struct {
+	// Organisation is nil for a platform-wide scope or when none was named.
 	Organisation *Organisation `json:"organisation"`
-	Role         string        `json:"role"`
-	Permissions  []string      `json:"permissions"`
+	// Platform is true for a scope that is not tied to one organisation.
+	Platform    bool     `json:"platform"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+}
+
+// Gate is the one rule for which rows a scope may see. Every query that
+// returns organisation-owned data filters by it.
+//
+//	ok == false           no data access at all
+//	orgID == "" (ok)      platform-wide: all organisations
+//	orgID != ""           only rows belonging to that organisation
+func (s Scope) Gate() (orgID string, ok bool) {
+	switch {
+	case s.Platform:
+		return "", true
+	case s.Organisation != nil:
+		return s.Organisation.ID, true
+	}
+	return "", false
+}
+
+// GateSQL is the SQL form of Gate: a condition on an organisation id column,
+// with the gate's orgID passed as argument number n. An empty argument means
+// "all organisations".
+func GateSQL(column string, n int) string {
+	return fmt.Sprintf("($%d = '' OR %s = NULLIF($%d, '')::uuid)", n, column, n)
 }
 
 // Store is the database access auth needs. Every method returns ErrNotFound
-// when there is no matching row.
+// when there is no matching live row.
 type Store interface {
 	// UserByEmail returns an active user including the password hash.
 	UserByEmail(ctx context.Context, email string) (User, error)
@@ -51,14 +82,27 @@ type Store interface {
 	// Scope returns the user's scope for the organisation with this slug,
 	// falling back to their platform-wide scope if they have one.
 	Scope(ctx context.Context, userID, slug string) (Scope, error)
+	// SetTOTP stores the user's sealed 2FA secret and whether 2FA is on.
+	SetTOTP(ctx context.Context, userID, sealedSecret string, enabled bool) error
+	// UseTOTPStep burns a 2FA time-step; false means it was already used.
+	UseTOTPStep(ctx context.Context, userID string, step int64) (bool, error)
 }
 
 type Auth struct {
-	Store      Store
-	Secret     []byte        // signs sign-in tokens
-	TokenTTL   time.Duration // how long a sign-in lasts
-	BaseDomain string        // organisations live at <slug>.<BaseDomain>
-	Dev        bool          // accept ?pslug= in place of a subdomain
+	Store    Store
+	Secret   []byte           // signs sign-in tokens
+	TokenTTL time.Duration    // how long a sign-in lasts
+	Dev      bool             // accept ?pslug= in place of the frontend subdomain
+	Secrets  *secret.Box      // seals 2FA secrets
+	Limiter  *Limiter         // nil disables rate limiting
+	Now      func() time.Time // the clock; nil means time.Now (tests set it)
+}
+
+func (a *Auth) now() time.Time {
+	if a.Now != nil {
+		return a.Now()
+	}
+	return time.Now()
 }
 
 func HashPassword(password string) (string, error) {
@@ -71,8 +115,8 @@ func CheckPassword(hash, password string) bool {
 }
 
 // IssueToken signs a token that says only who the user is. Roles and
-// permissions are deliberately left out: they are read from the database on
-// every request, so removing them takes effect immediately.
+// permissions are deliberately left out: they are looked up on every request,
+// so removing them takes effect immediately.
 func (a *Auth) IssueToken(userID string, now time.Time) (string, error) {
 	claims := jwt.RegisteredClaims{
 		Subject:   userID,
@@ -87,7 +131,7 @@ func (a *Auth) ParseToken(token string) (string, error) {
 	var claims jwt.RegisteredClaims
 	_, err := jwt.ParseWithClaims(token, &claims,
 		func(*jwt.Token) (any, error) { return a.Secret, nil },
-		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
@@ -99,30 +143,52 @@ func (a *Auth) ParseToken(token string) (string, error) {
 	return claims.Subject, nil
 }
 
-var (
-	slugPattern   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	reservedSlugs = []string{"www", "api", "admin", "app"}
-)
+// Frontend is where the user's browser is: the site that made the request.
+type Frontend struct {
+	Origin string // scheme://host[:port], usable as the base of links back to the site
+	Host   string // lowercase host without port, e.g. "acme.chaintrack.app"
+}
 
-// Slug returns the organisation slug the request names, or "" if none.
-// It is only a claim: ResolveOrg checks the user really belongs there.
+// frontendOf works out the frontend from the request. A browser names the
+// calling site in the Origin header; without one (same-address deployments,
+// curl) the request's own host is used. Either way it is only a claim.
+func frontendOf(r *http.Request) Frontend {
+	if u, err := url.Parse(r.Header.Get(HeaderOrigin)); err == nil && u.Host != "" {
+		return Frontend{Origin: u.Scheme + "://" + u.Host, Host: strings.ToLower(u.Hostname())}
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return Frontend{Origin: scheme + "://" + r.Host, Host: strings.ToLower(host)}
+}
+
+// Slug returns the organisation slug the request names, or "" if none: the
+// first label of the frontend's host ("acme" in acme.chaintrack.app). In dev,
+// ?pslug= names it instead.
+//
+// No domain is configured, so this cannot tell an organisation's subdomain
+// from the platform's own name; it does not need to. The slug is only a
+// candidate: ResolveOrg asks the database whether the user belongs to an
+// organisation with that slug, and anything else means "no organisation".
 func (a *Auth) Slug(r *http.Request) string {
 	slug := ""
 	if a.Dev {
-		slug = r.URL.Query().Get("pslug")
+		slug = r.URL.Query().Get(ParamOrgSlug)
 	}
 	if slug == "" {
-		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
+		host := frontendOf(r).Host
+		label, _, hasMore := strings.Cut(host, ".")
+		if !hasMore || net.ParseIP(host) != nil {
+			return "" // "localhost" or an IP address has no subdomain
 		}
-		sub, ok := strings.CutSuffix(strings.ToLower(host), "."+a.BaseDomain)
-		if !ok {
-			return ""
-		}
-		slug = sub
+		slug = label
 	}
-	if !slugPattern.MatchString(slug) || slices.Contains(reservedSlugs, slug) {
+	if !ValidSlug(slug) {
 		return ""
 	}
 	return slug

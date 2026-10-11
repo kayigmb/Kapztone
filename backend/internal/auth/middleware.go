@@ -2,13 +2,10 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 )
@@ -18,7 +15,22 @@ type ctxKey int
 const (
 	userKey ctxKey = iota
 	scopeKey
+	frontendKey
 )
+
+// WithFrontend records, for every request, which site the user's browser is
+// on, so any handler can ask with FrontendOf.
+func WithFrontend(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), frontendKey, frontendOf(r))))
+	})
+}
+
+// FrontendOf returns the site the request came from. Valid behind WithFrontend.
+func FrontendOf(ctx context.Context) Frontend {
+	f, _ := ctx.Value(frontendKey).(Frontend)
+	return f
+}
 
 // CurrentUser returns the signed-in user. Only valid behind Authenticate.
 func CurrentUser(ctx context.Context) User {
@@ -35,23 +47,23 @@ func CurrentScope(ctx context.Context) Scope {
 // Authenticate requires a valid sign-in token for a user who is still active.
 func (a *Auth) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), bearerPrefix)
 		if !ok {
-			httpx.Error(w, http.StatusUnauthorized, "sign in required")
+			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
 		userID, err := a.ParseToken(token)
 		if err != nil {
-			httpx.Error(w, http.StatusUnauthorized, "sign in required")
+			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
 		user, err := a.Store.ActiveUser(r.Context(), userID)
 		if errors.Is(err, ErrNotFound) {
-			httpx.Error(w, http.StatusUnauthorized, "sign in required")
+			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
 		if err != nil {
-			serverError(w, "authenticate", err)
+			httpx.ServerError(w, "authenticate", err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
@@ -62,17 +74,14 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 // their role and permissions there. Must run after Authenticate.
 func (a *Auth) ResolveOrg(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slug := a.Slug(r)
-		scope, err := a.Store.Scope(r.Context(), CurrentUser(r.Context()).ID, slug)
+		scope, err := a.Store.Scope(r.Context(), CurrentUser(r.Context()).ID, a.Slug(r))
 		switch {
-		case errors.Is(err, ErrNotFound) && slug != "":
-			// The request names an organisation the user does not belong to.
-			httpx.Error(w, http.StatusForbidden, "you do not have access to this organisation")
-			return
 		case errors.Is(err, ErrNotFound):
-			scope = Scope{Permissions: []string{}} // no organisation named: signed in, no permissions
+			// No organisation named, or one the user does not belong to:
+			// signed in, acting for nobody, holding no permissions.
+			scope = Scope{Permissions: []string{}}
 		case err != nil:
-			serverError(w, "resolve organisation", err)
+			httpx.ServerError(w, "resolve organisation", err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKey, scope)))
@@ -80,12 +89,12 @@ func (a *Auth) ResolveOrg(next http.Handler) http.Handler {
 }
 
 // Require allows the request only if the acting scope has the permission,
-// e.g. Require("passport:issue"). Must run after ResolveOrg.
+// e.g. Require(PassportIssue). Must run after ResolveOrg.
 func (a *Auth) Require(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !slices.Contains(CurrentScope(r.Context()).Permissions, permission) {
-				httpx.Error(w, http.StatusForbidden, "you are not allowed to do this")
+				httpx.Error(w, http.StatusForbidden, MsgNotAllowed)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -93,24 +102,63 @@ func (a *Auth) Require(permission string) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireVerified allows the request only when the acting organisation has
+// passed KYB. Must run after ResolveOrg.
+func (a *Auth) RequireVerified(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		o := CurrentScope(r.Context()).Organisation
+		if o == nil {
+			httpx.Error(w, http.StatusForbidden, MsgNoOrgSelected)
+			return
+		}
+		if o.Status != OrgVerified {
+			httpx.Error(w, http.StatusForbidden, MsgOrgNotVerified)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Gate returns the organisation filter for this request (see Scope.Gate), or
+// writes 403 when the caller has no data access.
+func Gate(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
+	orgID, ok = CurrentScope(r.Context()).Gate()
+	if !ok {
+		httpx.Error(w, http.StatusForbidden, MsgNoOrgSelected)
+	}
+	return orgID, ok
+}
+
 // dummyHash is compared against when the email is unknown, so a wrong email
 // takes as long as a wrong password and the two cannot be told apart.
 var dummyHash, _ = HashPassword("chaintrack-dummy-password")
 
-// Login exchanges an email and password for a sign-in token.
+// Login exchanges an email and password (and a 2FA code, if the user has
+// 2FA on) for a sign-in token.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Code     string `json:"code"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "send email and password as JSON")
+	if !httpx.DecodeJSON(w, r, &in) {
 		return
 	}
+	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
+	ctx, ip := r.Context(), clientIP(r)
 
-	user, err := a.Store.UserByEmail(r.Context(), strings.TrimSpace(in.Email))
+	if a.Limiter.blocked(ctx, LoginRate, in.Email, ip) {
+		httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
+		return
+	}
+	fail := func(body map[string]any) {
+		a.Limiter.record(ctx, LoginRate, in.Email, ip)
+		httpx.WriteJSON(w, http.StatusUnauthorized, body)
+	}
+
+	user, err := a.Store.UserByEmail(ctx, in.Email)
 	if err != nil && !errors.Is(err, ErrNotFound) {
-		serverError(w, "login", err)
+		httpx.ServerError(w, "login", err)
 		return
 	}
 	hash := user.PasswordHash
@@ -118,13 +166,30 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		hash = dummyHash
 	}
 	if !CheckPassword(hash, in.Password) || err != nil {
-		httpx.Error(w, http.StatusUnauthorized, "email or password is incorrect")
+		fail(map[string]any{"error": MsgBadCredentials})
 		return
 	}
 
-	token, err := a.IssueToken(user.ID, time.Now())
+	if user.TOTPEnabled {
+		valid, err := a.checkCode(ctx, user, in.Code, a.now())
+		if err != nil {
+			httpx.ServerError(w, "check 2fa code", err)
+			return
+		}
+		if !valid {
+			msg := MsgBadCode
+			if strings.TrimSpace(in.Code) == "" {
+				msg = MsgTwoFactorCode
+			}
+			fail(map[string]any{"error": msg, "two_factor_required": true})
+			return
+		}
+	}
+	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
+
+	token, err := a.IssueToken(user.ID, a.now())
 	if err != nil {
-		serverError(w, "issue token", err)
+		httpx.ServerError(w, "issue token", err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
@@ -142,9 +207,4 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		"role":         scope.Role,
 		"permissions":  scope.Permissions,
 	})
-}
-
-func serverError(w http.ResponseWriter, what string, err error) {
-	log.Printf("%s: %v", what, err)
-	httpx.Error(w, http.StatusInternalServerError, "something went wrong")
 }

@@ -27,6 +27,7 @@ A commodity-agnostic **digital product passport** for business shipments:
 | Front end    | Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui (Base UI), react-hook-form + zod, TanStack Table, MapLibre GL (react-map-gl), qrcode, @zxing/browser, Sonner; React Flow for genealogy (undecided) |
 | Back end     | Go (chi router), REST + OpenAPI, JWT, pgx, sqlc, golang-migrate                          |
 | Database     | PostgreSQL 16 + PostGIS                                                                  |
+| Cache        | Redis 7 (access lookups now; public verification results later)                          |
 | Blockchain   | Solidity, OpenZeppelin, Hardhat, Polygon Amoy testnet                                    |
 | Chain client | go-ethereum (abigen bindings, EIP-712 signing, relayer)                                  |
 | Files        | IPFS via Pinata                                                                          |
@@ -113,7 +114,13 @@ chaintrack/
 
 ### 4.1 Data model (PostgreSQL)
 
-`organisations` (`slug`, `kind`, `status`) · `users` · `roles` · `permissions` (`resource:action`) · `role_permissions` · `userscope` (user + role + organisation) · `documents` (KYB) · `facility` (PostGIS `geo_polygon`, `annual_capacity`, `status`) · `commodity_template` (`stage_rules` JSONB, `max_yield`, `required_evidence` JSONB) · `passport` (`quantity`, `remaining_qty`, `status`, `on_chain_id`) · `passport_link` (parent → child, `quantity_used`) · `trace_event` (`data_hash`, `sig_from`, `sig_to`, `tx_hash`) · `attestation` (`issuer_org_id`, `valid_from/to`, `doc_hash`, `revoked`) · `flag` · `audit_log` · `chain_outbox` (queued transactions).
+`organisations` (`slug`, `kind`, `status`, `signing_address`, sealed `signing_key`) · `users` · `roles` · `permissions` (`resource:action`) · `role_permissions` · `userscope` (user + role + organisation) · `documents` (KYB) · `facilities` (PostGIS `geom` point or polygon, `capacity` + `capacity_unit` + `capacity_period`, `status`) · `commodity_templates` (`capacity_rule` JSONB, `stages` JSONB holding events, `maxYield`, `requiredEvidence`) · `passports` (`quantity`, `remaining`, `period`, `status`, `data_hash`, `handover_count`, `tx_hash`) · `handovers` (`sig_from`, `sig_to`, `status`, `deadline`) · `trace_events` (`kind`, `data_hash`, `tx_hash`) · `passport_link` (parent → child, `quantity_used`; Sprint 3) · `attestation` (`issuer_org_id`, `valid_from/to`, `doc_hash`, `revoked`) · `flag` · `audit_log` · `chain_outbox` (queued transactions).
+
+**Conventions (all tables, all lists):**
+
+- Every table has `id` (uuid), `created_at`, `updated_at`, `is_deleted`. Deleting means setting `is_deleted`; unique rules and every query ignore deleted rows.
+- Migrations create tables only. Roles, permissions and allowed values (kinds, statuses, document types) are declared once in Go (`internal/auth/permissions.go`, `values.go` files) and written or validated from there. Nothing reused is restated.
+- Every list endpoint takes `page`, `size`, `search`, `sort`, `start_date`, `end_date` through `internal/listq` and returns `{data, page, size, total}`.
 
 Every provenance row stores `data_hash` (SHA-256 of a canonical JSON form) and `tx_hash`.
 
@@ -165,6 +172,10 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 - The **relayer** (Go worker) reads `chain_outbox`, submits transactions with a funded relayer account, manages nonces, retries on failure, and writes `tx_hash` back.
 - If the chain is down, events stay queued with original timestamps and are anchored later.
 
+**Handover flow as built.** The sender (current holder) creates the handover; the API signs the typed message with the sender organisation's key and the handover is `awaiting_receiver`, holder unchanged. The receiver accepts: the API signs the same message with the receiver's key, the passport changes holder at once and the chain transaction is queued in the same database transaction. The receiver may instead reject (with a reason), the sender may cancel, and an unanswered handover expires after 7 days; in all three the holder does not change. The relayer later writes `tx_hash` and `anchored_at`.
+
+**One platform key.** `CHAIN_PLATFORM_KEY` currently holds both the admin and the relayer role on-chain. Split them (admin key offline) before any deployment that matters.
+
 ### 4.5 Rules engine (Go, before anything is written)
 
 1. Organisation verified and has the right role.
@@ -185,13 +196,21 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 
 ### 4.7 API outline (REST, documented in OpenAPI)
 
+No `/admin/...` endpoints. Every endpoint is a regular resource endpoint gated by one permission, and what a caller sees is gated by the organisation they act for (subdomain, or `pslug` in dev): users see only their own organisation's data, the superadmin sees all. The full route table with each route's permission lives in `backend/internal/server/server.go`.
+
 ```
-POST   /auth/login                     POST /orgs            GET/PATCH /orgs/{id}
-POST   /orgs/{id}/kyb-documents        POST /admin/orgs/{id}/verify
-POST   /facilities                     GET  /facilities?bbox=
-POST   /templates                      GET  /templates
-POST   /passports                      GET  /passports/{id}   GET /passports/{id}/genealogy
-POST   /passports/{id}/handovers       POST /handovers/{id}/accept | /reject
+POST   /auth/login                     GET  /me
+POST   /orgs (public registration)     GET  /orgs            GET /orgs/{id}
+POST   /orgs/{id}/verify               GET/POST /orgs/{id}/documents
+GET    /documents/{id}/file
+POST   /auth/2fa/setup | /enable | /disable
+POST   /facilities                     GET  /facilities?bbox=&status=    GET/DELETE /facilities/{id}
+POST   /facilities/{id}/status
+POST   /templates                      GET  /templates       GET/PUT/DELETE /templates/{id}
+POST   /passports                      GET  /passports       GET /passports/{id} (with journey)
+GET    /passports/{id}/genealogy       (Sprint 3)
+POST   /passports/{id}/handovers       GET  /handovers       GET /handovers/{id}
+POST   /handovers/{id}/accept | /reject | /cancel
 POST   /transforms                     POST /attestations     POST /attestations/{id}/revoke
 POST   /flags                          POST /flags/{id}/resolve
 GET    /verify/{passportId}            (public, no auth, cached)

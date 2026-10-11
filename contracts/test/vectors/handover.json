@@ -1,0 +1,54 @@
+{
+  "_comment": "Single declaration of the handover message. Read by contracts/test/ChainTrack.ts and backend/tests/chain_test.go. The key below is a public test key: never fund it.",
+  "domain": {
+    "name": "ChainTrack",
+    "version": "1",
+    "chainId": 31337,
+    "verifyingContract": "0x00000000000000000000000000000000000C0FFE"
+  },
+  "types": {
+    "Handover": [
+      {
+        "name": "passportId",
+        "type": "bytes32"
+      },
+      {
+        "name": "fromOrg",
+        "type": "bytes32"
+      },
+      {
+        "name": "toOrg",
+        "type": "bytes32"
+      },
+      {
+        "name": "quantity",
+        "type": "uint256"
+      },
+      {
+        "name": "dataHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "nonce",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      }
+    ]
+  },
+  "message": {
+    "passportId": "0x6baf14c0d389b58993b333f8a59064248f6ec1aa10eed98c27f749c09f250a02",
+    "fromOrg": "0xa12f58b0c1e9adcd35746d36e7e24baa4081113f348f454eb946fd54e7d1ef18",
+    "toOrg": "0x25ee117076765ba10f51f79c1f6f58af2fbd4f9d8237a3e5cae820883fd1f8f4",
+    "quantity": "500000",
+    "dataHash": "0x182ec4122310f642ab7190af7cfdda4b555cf9a445ed6f127f35662c586993f2",
+    "nonce": "3",
+    "deadline": "1900000000"
+  },
+  "privateKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+  "signer": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+  "digest": "0x7f3c6b8e9d0213cbc5245e7c70cedd00f243d9b984fd8dbab9278f001dee1cd2",
+  "signature": "0xa52b6f49041729a87dda4d75919053c4c60a095ef889b7d2f5b3faa661b5e0862ef9280a8284483423334b90f354a02e1a940f1e6e86236037233272098bc6951b"
+}

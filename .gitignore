@@ -9,6 +9,7 @@ contracts/artifacts/
 contracts/cache/
 contracts/types/
 contracts/dist/
+contracts/coverage/
 
 # local learner notes
 .vibe-wise/
@@ -18,3 +19,7 @@ backend/tmp/
 
 .pnpm-store/
 .pnpm-debug.log*
+
+# backend local runs
+backend/coverage.out
+backend/uploads/
