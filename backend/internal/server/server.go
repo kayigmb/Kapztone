@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
+	"github.com/kayigmb/chaintrack/backend/internal/audit"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
@@ -19,6 +20,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
@@ -60,13 +62,16 @@ type Deps struct {
 	Flag        *flag.Handlers
 	Notify      *notify.Handlers
 	Verify      *verify.Handlers
+	User        *user.Handlers
+	// Audit records every successful change; nil turns the audit log off (unit tests).
+	Audit *audit.Handlers
 }
 
 const idPath = "/{" + httpx.ParamID + "}"
 
 func Routes(d Deps) []Route {
 	a, o, f, t, p := d.Auth, d.Org, d.Facility, d.Template, d.Passport
-	c, fl, n, v := d.Attestation, d.Flag, d.Notify, d.Verify
+	c, fl, n, v, u := d.Attestation, d.Flag, d.Notify, d.Verify, d.User
 	const (
 		get, post, put, del = http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete
 	)
@@ -75,19 +80,24 @@ func Routes(d Deps) []Route {
 		{post, "/auth/login", Public, "", a.Login},
 		{post, "/auth/logout", Public, "", a.Logout},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
+		{post, "/invites/{" + user.ParamToken + "}/accept", Public, "", a.LimitIP(auth.RegisterRate, u.Accept)},
 		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
 
 		{get, "/me", SignedIn, "", a.Me},
 		{post, "/auth/2fa/setup", SignedIn, "", a.SetupTwoFactor},
 		{post, "/auth/2fa/enable", SignedIn, "", a.EnableTwoFactor},
 		{post, "/auth/2fa/disable", SignedIn, "", a.DisableTwoFactor},
+		{post, "/auth/2fa/recovery", SignedIn, "", a.RegenerateRecoveryCodes},
+		{post, "/auth/pin", SignedIn, "", a.SetPIN},
 		{get, "/notifications", SignedIn, "", n.List},
 		{post, "/notifications" + idPath + "/read", SignedIn, "", n.Read},
 
+		{get, "/orgs/directory", VerifiedPermission, auth.OrgSearch, o.Directory},
 		{get, "/orgs", Permission, auth.OrgRead, o.List},
 		{get, "/orgs" + idPath, Permission, auth.OrgRead, o.Get},
 		{post, "/orgs" + idPath + "/verify", Permission, auth.OrgVerify, o.Review},
-		{post, "/orgs" + idPath + "/accredit", Permission, auth.OrgVerify, o.Accredit},
+		{get, "/orgs" + idPath + "/accreditations", Permission, auth.OrgRead, o.Accreditations},
+		{put, "/orgs" + idPath + "/accreditations", Permission, auth.OrgVerify, o.SetAccreditations},
 		{get, "/orgs" + idPath + "/documents", Permission, auth.DocumentRead, o.ListDocuments},
 		{post, "/orgs" + idPath + "/documents", Permission, auth.OrgManage, o.Upload},
 		{get, "/documents" + idPath + "/file", Permission, auth.DocumentRead, o.Download},
@@ -108,6 +118,7 @@ func Routes(d Deps) []Route {
 		{get, "/passports", Permission, auth.PassportRead, p.List},
 		{get, "/passports" + idPath, Permission, auth.PassportRead, p.Get},
 		{get, "/passports" + idPath + "/genealogy", Permission, auth.PassportRead, p.Genealogy},
+		{post, "/passports" + idPath + "/retire", VerifiedPermission, auth.PassportRetire, p.Retire},
 		{post, "/transforms", VerifiedPermission, auth.TransformCreate, p.Transform},
 		{post, "/passports" + idPath + "/handovers", VerifiedPermission, auth.HandoverCreate, p.StartHandover},
 		{get, "/handovers", Permission, auth.PassportRead, p.ListHandovers},
@@ -125,7 +136,18 @@ func Routes(d Deps) []Route {
 		{post, "/flags", VerifiedPermission, auth.FlagCreate, fl.Raise},
 		{get, "/flags", Permission, auth.FlagCreate, fl.List},
 		{get, "/flags" + idPath, Permission, auth.FlagCreate, fl.Get},
-		{post, "/flags" + idPath + "/resolve", Permission, auth.FlagResolve, fl.Resolve},
+		// The handler decides who resolves: the superadmin or a verified regulator.
+		{post, "/flags" + idPath + "/resolve", Permission, auth.FlagCreate, fl.Resolve},
+
+		{get, "/users", Permission, auth.UserManage, u.List},
+		{post, "/invites", Permission, auth.UserManage, u.Invite},
+		{put, "/users" + idPath + "/role", Permission, auth.UserManage, u.SetRole},
+		{post, "/users" + idPath + "/suspend", Permission, auth.UserManage, u.Suspend},
+		{post, "/users" + idPath + "/reinstate", Permission, auth.UserManage, u.Reinstate},
+
+		{get, "/audit", Permission, auth.AuditRead, d.Audit.List},
+		{get, "/audit/verify", Permission, auth.AuditVerify, d.Audit.Verify},
+		{get, "/reports/volume", Permission, auth.ReportRead, d.Audit.Volume},
 	}
 }
 
@@ -143,6 +165,10 @@ func NewRouter(d Deps) http.Handler {
 			chain = chi.Middlewares{a.Authenticate, a.ResolveOrg, a.Require(rt.Permission)}
 		case VerifiedPermission:
 			chain = chi.Middlewares{a.Authenticate, a.ResolveOrg, a.Require(rt.Permission), a.RequireVerified}
+		}
+		// Inside the sign-in steps, so the log knows who acted and for whom.
+		if d.Audit != nil && rt.Method != http.MethodGet {
+			chain = append(chain, d.Audit.Record(rt.Method, rt.Path))
 		}
 		r.With(chain...).Method(rt.Method, rt.Path, rt.Handler)
 	}

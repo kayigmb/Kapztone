@@ -73,7 +73,7 @@ var messages = map[string]string{
 	CertificateExpired:  "A certificate has expired.",
 	CertificateRevoked:  "A certificate was revoked by its issuer.",
 	CertificateFileGone: "A certificate's file could not be read to check it.",
-	IssuerNotAccredited: "A certificate's issuer is not accredited.",
+	IssuerNotAccredited: "A certificate's issuer is not accredited for that type of certificate.",
 	PassportRevoked:     "This passport, or one it was made from, has been revoked.",
 	FlagOpen:            "A concern about this passport, or one it was made from, is being looked into.",
 }

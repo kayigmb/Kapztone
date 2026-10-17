@@ -17,10 +17,12 @@ const (
 	OrgRead           = "org:read"
 	OrgManage         = "org:manage"
 	OrgVerify         = "org:verify"
+	OrgSearch         = "org:search" // find other verified organisations (handover receivers)
 	DocumentRead      = "document:read"
 	UserManage        = "user:manage"
 	PassportIssue     = "passport:issue"
 	PassportRead      = "passport:read"
+	PassportRetire    = "passport:retire"
 	HandoverCreate    = "handover:create"
 	HandoverAccept    = "handover:accept"
 	TransformCreate   = "transform:create"
@@ -35,24 +37,33 @@ const (
 	FacilitySuspend   = "facility:suspend"
 )
 
+// Audit log and reports.
+const (
+	AuditRead   = "audit:read"
+	AuditVerify = "audit:verify" // walk the whole chain: platform only
+	ReportRead  = "report:read"
+)
+
 var AllPermissions = []string{
-	OrgRead, OrgManage, OrgVerify, DocumentRead, UserManage,
-	PassportIssue, PassportRead, HandoverCreate, HandoverAccept, TransformCreate,
+	OrgRead, OrgManage, OrgVerify, OrgSearch, DocumentRead, UserManage,
+	PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate,
 	CertificateIssue, CertificateRevoke, FlagCreate, FlagResolve, TemplateRead, TemplateManage,
 	FacilityRead, FacilityManage, FacilitySuspend,
+	AuditRead, AuditVerify, ReportRead,
 }
 
 // DefaultRoles is what each built-in role may do.
 var DefaultRoles = map[string][]string{
 	RoleSuperadmin: AllPermissions,
 	RoleOrgAdmin: {
-		OrgRead, OrgManage, DocumentRead, UserManage,
-		PassportIssue, PassportRead, HandoverCreate, HandoverAccept, TransformCreate,
+		OrgRead, OrgManage, OrgSearch, DocumentRead, UserManage,
+		PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate,
 		CertificateIssue, CertificateRevoke, FlagCreate,
 		TemplateRead, FacilityRead, FacilityManage,
+		AuditRead, ReportRead,
 	},
 	RoleMember: {
-		PassportIssue, PassportRead, HandoverCreate, HandoverAccept, TransformCreate, FlagCreate,
+		OrgSearch, PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate, FlagCreate,
 		TemplateRead, FacilityRead,
 	},
 }

@@ -1,11 +1,12 @@
 import { Check } from "lucide-react";
 
+import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
 /** Where someone is in a focused flow. `current` counts from 0; `error` marks the current step red. */
 export function Stepper({ steps, current, error }: { steps: string[]; current: number; error?: boolean }) {
   return (
-    <ol className="flex gap-1" aria-label={`Step ${current + 1} of ${steps.length}`}>
+    <ol className="flex gap-1" aria-label={copy.stepOf(current + 1, steps.length)}>
       {steps.map((name, i) => {
         const done = i < current;
         const now = i === current;

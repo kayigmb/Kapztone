@@ -31,9 +31,11 @@ type Facility struct {
 	Capacity       int64           `json:"capacity"`
 	CapacityUnit   string          `json:"capacity_unit"`
 	CapacityPeriod string          `json:"capacity_period"`
-	Status         string          `json:"status"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	// CapacityUsed is what was originated here in the current period.
+	CapacityUsed int64     `json:"capacity_used"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // List is what the list endpoint lets callers search and sort by.
@@ -142,13 +144,23 @@ func (s Store) Find(ctx context.Context, q listq.Query, gate, status string, bbo
 		where = append(where, fmt.Sprintf(`f.geom && ST_MakeEnvelope($3, $4, $5, $6, %d)`, SRID))
 		args = append(args, bbox[0], bbox[1], bbox[2], bbox[3])
 	}
-	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM facilities f", where, args, scan)
+	page, err := listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM facilities f", where, args, scan)
+	if err != nil {
+		return page, err
+	}
+	return page, s.withUsed(ctx, page.Data)
 }
 
 func (s Store) Get(ctx context.Context, id, gate string) (Facility, error) {
-	return one(s.Pool.Query(ctx,
+	f, err := one(s.Pool.Query(ctx,
 		`SELECT `+columns+` FROM facilities f
 		 WHERE f.id = $1::uuid AND NOT f.is_deleted AND `+auth.GateSQL(gateColumn, 2), id, gate))
+	if err != nil {
+		return f, err
+	}
+	fs := []Facility{f}
+	err = s.withUsed(ctx, fs)
+	return fs[0], err
 }
 
 // SetStatus suspends or reactivates a facility and queues the change for the chain.

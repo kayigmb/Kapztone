@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
@@ -167,7 +169,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	}
 	handOver := func(id string) {
 		t.Helper()
-		rec := post(e, prodTok, as(prodSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: processor.ID})
+		rec := post(e, prodTok, as(prodSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: processor.ID, Stage: stageProcess})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
 		want(t, "accept handover", post(e, procTok, as(procSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
@@ -314,19 +316,46 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 
 	// ---- Certificates: only an accredited organisation issues them.
 	want(t, "issue before accreditation", e.certify(certTok, certSlug, certificateFields(attestation.SubjectPassport, g1.ID), pdfBytes), http.StatusForbidden)
-	accredit := func(token, id string, on bool) *httptest.ResponseRecorder {
-		return post(e, token, "/orgs/"+id+"/accredit", org.Accreditation{Accredited: on})
+	accPath := "/orgs/" + certifier.ID + "/accreditations"
+	window := func(certType, from, to string) org.AccreditationInput {
+		return org.AccreditationInput{Type: certType, ValidFrom: from, ValidTo: to}
 	}
-	want(t, "an organisation accredits itself", post(e, certTok, as(certSlug, "/orgs/"+certifier.ID+"/accredit"), org.Accreditation{Accredited: true}), http.StatusForbidden)
-	want(t, "accredit a producer", accredit(root, producer.ID, true), http.StatusConflict)
-	rec = accredit(root, certifier.ID, true)
+	want(t, "an organisation accredits itself", accredit(e, certTok, as(certSlug, accPath), grant("export_permit")), http.StatusForbidden)
+	want(t, "accredit a producer", accredit(e, root, "/orgs/"+producer.ID+"/accreditations", grant("export_permit")), http.StatusConflict)
+	for what, grants := range map[string][]org.AccreditationInput{
+		"type no template asks for": {grant("moon_rock_" + e.suffix)},
+		"type not a key":            {grant("Export Permit")},
+		"type twice":                {grant("export_permit"), grant("export_permit")},
+		"ends before starts":        {window("export_permit", "2030-01-01", "2029-01-01")},
+		"date in words":             {window("export_permit", "today", "2030-01-01")},
+	} {
+		want(t, what, accredit(e, root, accPath, grants...), http.StatusBadRequest)
+	}
+	rec = accredit(e, root, accPath, grant("export_permit"))
 	want(t, "accredit", rec, http.StatusOK)
-	if !decodeTo[org.Organisation](t, rec).Accredited {
-		t.Fatal("organisation not marked accredited")
+	accs := decodeTo[[]org.Accreditation](t, rec)
+	if len(accs) != 1 || accs[0].Type != "export_permit" || accs[0].OrganisationID != certifier.ID {
+		t.Fatalf("accreditations after granting: %s", rec.Body)
 	}
-	want(t, "accredit twice", accredit(root, certifier.ID, true), http.StatusOK)
-	if statuses, _ := e.outbox(certifier.ID); len(statuses) != 3 { // register, verified, accredited once
-		t.Fatalf("queued %d items for the certifier, want 3", len(statuses))
+	accID := accs[0].ID
+	want(t, "accredit twice", accredit(e, root, accPath, grant("export_permit")), http.StatusOK)
+	if statuses, _ := e.outbox(accID); len(statuses) != 1 { // an unchanged window is not queued again
+		t.Fatalf("queued %d items for the accreditation, want 1", len(statuses))
+	}
+	listed := get(certTok, certSlug, "/orgs/"+certifier.ID+"/accreditations")
+	want(t, "list own accreditations", listed, http.StatusOK)
+	if got := decodeTo[[]org.Accreditation](t, listed); len(got) != 1 || got[0].ID != accID {
+		t.Fatalf("listed accreditations: %s", listed.Body)
+	}
+	// A certificate needs accreditation for its own type, inside the window.
+	other := certificateFields(attestation.SubjectPassport, g1.ID)
+	other[attestation.FormType] = "phytosanitary_certificate"
+	want(t, "issue a type not accredited", e.certify(certTok, certSlug, other, pdfBytes), http.StatusForbidden)
+	want(t, "window in the past", accredit(e, root, accPath, window("export_permit", "2020-01-01", "2021-01-01")), http.StatusOK)
+	want(t, "issue after the window", e.certify(certTok, certSlug, certificateFields(attestation.SubjectPassport, g1.ID), pdfBytes), http.StatusForbidden)
+	want(t, "window back to today", accredit(e, root, accPath, grant("export_permit")), http.StatusOK)
+	if statuses, _ := e.outbox(accID); len(statuses) != 3 { // granted, moved, moved back: one row, three changes
+		t.Fatalf("queued %d items for the accreditation, want 3", len(statuses))
 	}
 
 	bad := func(change func(map[string]string)) map[string]string {
@@ -413,8 +442,15 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "revoke twice", revoke(certTok, certSlug, "again"), http.StatusConflict)
 
 	c.drain()
-	if ok, _ := c.contract.Orgs.IsAccredited(opts, chain.MustID(certifier.ID)); !ok {
-		t.Fatal("certifier is not accredited on-chain")
+	if ok, _ := c.contract.Orgs.IsAccredited(opts, chain.MustID(certifier.ID), chain.Key("export_permit")); !ok {
+		t.Fatal("certifier is not accredited for export permits on-chain")
+	}
+	if ok, _ := c.contract.Orgs.IsAccredited(opts, chain.MustID(certifier.ID), chain.Key("phytosanitary_certificate")); ok {
+		t.Fatal("certifier is accredited on-chain for a type it was never given")
+	}
+	if got := decodeTo[[]org.Accreditation](t, get(certTok, certSlug, "/orgs/"+certifier.ID+"/accreditations")); len(got) != 1 ||
+		got[0].TxHash == nil || got[0].AnchoredAt == nil {
+		t.Fatalf("accreditation not anchored: %+v", got)
 	}
 	chainCert, err := c.contract.Attestations.Attestation(opts, chain.MustID(cert.ID))
 	if err != nil || !chainCert.Revoked || chain.Hex(chainCert.DocHash) != cert.DocHash ||
@@ -487,7 +523,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "transform a revoked passport", transform(procTok, procSlug, passport.TransformInput{
 		Stage: stageSort, Inputs: []passport.TransformSource{src(g2.ID, 1)}, Outputs: outs(1)}), http.StatusConflict)
 	want(t, "hand over a revoked passport", post(e, procTok, as(procSlug, "/passports/"+g2.ID+"/handovers"),
-		passport.HandoverInput{ToOrganisationID: producer.ID}), http.StatusConflict)
+		passport.HandoverInput{ToOrganisationID: producer.ID, Stage: stageProcess}), http.StatusConflict)
 
 	c.drain()
 	for _, id := range family {
@@ -619,7 +655,7 @@ func TestTemplateInUse(t *testing.T) {
 	want(t, "create facility", rec, http.StatusCreated)
 	plot := decodeTo[facility.Facility](t, rec)
 
-	in := coffeeTemplate("coffee_" + e.suffix)
+	in := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	in.Name, in.Unit = "Coffee "+e.suffix, plot.CapacityUnit
 	rec = post(e, root, "/templates", in)
 	want(t, "create template", rec, http.StatusCreated)
@@ -740,17 +776,50 @@ func TestPinataPin(t *testing.T) {
 }
 
 func TestMailerAddress(t *testing.T) {
-	m, err := notify.NewMailer(nil, "smtp://user:secret@mail.test:587?from=no-reply@chaintrack.test")
-	if err != nil || m.Addr != "mail.test:587" || m.From != "no-reply@chaintrack.test" || m.Auth == nil {
-		t.Fatalf("mail address read wrongly: %+v (%v)", m, err)
+	m := notify.NewMailer(nil, notify.SMTP{Host: "mail.test", Port: "587", User: "no-reply@chaintrack.test", Password: "secret", TLS: true})
+	if m.Addr != "mail.test:587" || m.From != "no-reply@chaintrack.test" || m.Auth == nil || m.Send == nil {
+		t.Fatalf("mail settings read wrongly: %+v", m)
 	}
-	if m, err := notify.NewMailer(nil, "smtp://mail.test:25?from=a@b.test"); err != nil || m.Auth != nil {
-		t.Fatalf("a mail server without sign-in was rejected: %v", err)
+	if m := notify.NewMailer(nil, notify.SMTP{Host: "localhost", Port: "1025", User: "dev@chaintrack.test"}); m.Auth != nil {
+		t.Fatal("a mail server without sign-in got credentials")
 	}
-	for _, bad := range []string{"mail.test:587", "smtp://mail.test?from=a@b.test", "smtp://mail.test:587", "https://mail.test:587?from=a@b.test"} {
-		if _, err := notify.NewMailer(nil, bad); err == nil {
-			t.Errorf("%q accepted as a mail server address", bad)
+}
+
+// With TLS required, a mail server that offers no encryption gets nothing.
+func TestMailerRefusesPlainServerWhenTLSRequired(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	got := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
 		}
+		defer conn.Close()
+		r := bufio.NewReader(conn)
+		fmt.Fprint(conn, "220 plain.test\r\n")
+		var seen []string
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				break
+			}
+			seen = append(seen, strings.TrimSpace(line))
+			fmt.Fprint(conn, "250 plain.test\r\n") // EHLO and everything else: fine, no STARTTLS
+		}
+		got <- strings.Join(seen, "|")
+	}()
+
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+	m := notify.NewMailer(nil, notify.SMTP{Host: host, Port: port, User: "a@chaintrack.test", TLS: true})
+	if err := m.Send(m.Addr, m.Auth, m.From, []string{"b@chaintrack.test"}, []byte("hello")); err == nil {
+		t.Fatal("sent over a plain connection although TLS is required")
+	}
+	if seen := <-got; strings.Contains(seen, "MAIL FROM") {
+		t.Fatalf("server received a message: %s", seen)
 	}
 }
 

@@ -21,6 +21,7 @@ var (
 	ErrEmailTaken  = errors.New("email taken")
 	ErrNoDocuments = errors.New("no documents")
 	ErrNotIssuer   = errors.New("not an issuer")
+	ErrUnknownType = errors.New("unknown certificate type")
 )
 
 // Unique indexes from the migrations, used to tell which value collided.
@@ -39,11 +40,9 @@ type Organisation struct {
 	ReviewedAt   *time.Time `json:"reviewed_at"`
 	ReviewReason *string    `json:"review_reason"`
 	// SigningAddress identifies the organisation on-chain; set once it is verified.
-	SigningAddress *string `json:"signing_address"`
-	// Accredited organisations may issue certificates.
-	Accredited bool      `json:"accredited"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	SigningAddress *string   `json:"signing_address"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Document struct {
@@ -67,6 +66,13 @@ var (
 		Search: []string{"name", "slug"},
 		Sort:   []string{"name", "slug", "kind", "status", listq.ColCreatedAt},
 	}
+	// DirectoryList is what any verified organisation may search, to find
+	// someone to hand a lot to.
+	DirectoryList = listq.Config{
+		Alias:  "o",
+		Search: []string{"name", "slug"},
+		Sort:   []string{"name", "slug", "kind", listq.ColCreatedAt},
+	}
 	DocList = listq.Config{
 		Alias:  "d",
 		Search: []string{"file_name", "type"},
@@ -76,7 +82,7 @@ var (
 
 const (
 	orgColumns = `o.id::text, o.name, o.slug, o.kind, o.status, o.reviewed_by::text,
-	              o.reviewed_at, o.review_reason, o.signing_address, o.accredited, o.created_at, o.updated_at`
+	              o.reviewed_at, o.review_reason, o.signing_address, o.created_at, o.updated_at`
 	docColumns = `d.id::text, d.organisation_id::text, d.type, d.file_name, d.content_type,
 	              d.size_bytes, d.sha256, d.storage_key, d.uploaded_by::text, d.created_at, d.updated_at`
 )
@@ -84,7 +90,7 @@ const (
 func scanOrg(row pgx.CollectableRow) (Organisation, error) {
 	var o Organisation
 	err := row.Scan(&o.ID, &o.Name, &o.Slug, &o.Kind, &o.Status, &o.ReviewedBy,
-		&o.ReviewedAt, &o.ReviewReason, &o.SigningAddress, &o.Accredited, &o.CreatedAt, &o.UpdatedAt)
+		&o.ReviewedAt, &o.ReviewReason, &o.SigningAddress, &o.CreatedAt, &o.UpdatedAt)
 	return o, err
 }
 
@@ -164,6 +170,22 @@ func (s Store) List(ctx context.Context, q listq.Query, gate, status string) (li
 		where, []any{gate, status}, scanOrg)
 }
 
+// Listing is the public face of an organisation in the directory.
+type Listing struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Slug string `json:"slug"`
+}
+
+// Directory lists verified organisations other than the caller's own,
+// optionally of one kind.
+func (s Store) Directory(ctx context.Context, q listq.Query, ownID, kind string) (listq.Page[Listing], error) {
+	where := []string{`o.status = $1`, `o.id <> $2::uuid`, `($3 = '' OR o.kind = $3)`}
+	return listq.Fetch(ctx, s.Pool, q, DirectoryList, "SELECT o.id::text, o.name, o.kind, o.slug", "FROM organisations o",
+		where, []any{StatusVerified, ownID, kind}, pgx.RowToStructByPos[Listing])
+}
+
 func (s Store) Get(ctx context.Context, id, gate string) (Organisation, error) {
 	rows, err := s.Pool.Query(ctx,
 		`SELECT `+orgColumns+` FROM organisations o
@@ -191,8 +213,9 @@ func (s Store) GetDocument(ctx context.Context, id, gate string) (Document, erro
 	return d, notFound(err)
 }
 
-// AddDocument records an uploaded file. A rejected organisation that submits
-// a new document goes back to pending; statusChanged reports that.
+// AddDocument records an uploaded file. A rejected organisation, or one asked
+// for changes, that submits a new document goes back to pending;
+// statusChanged reports that.
 func (s Store) AddDocument(ctx context.Context, d Document) (doc Document, statusChanged bool, err error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -215,8 +238,8 @@ func (s Store) AddDocument(ctx context.Context, d Document) (doc Document, statu
 
 	tag, err := tx.Exec(ctx,
 		`UPDATE organisations SET status = $2, reviewed_by = NULL, reviewed_at = NULL, review_reason = NULL
-		 WHERE id = $1::uuid AND status = $3 AND NOT is_deleted`,
-		d.OrganisationID, StatusPending, StatusRejected)
+		 WHERE id = $1::uuid AND status = ANY($3) AND NOT is_deleted`,
+		d.OrganisationID, StatusPending, Reopened)
 	if err != nil {
 		return Document{}, false, err
 	}
@@ -299,42 +322,135 @@ func (s Store) Review(ctx context.Context, id string, rv Review, reviewerID stri
 	return o, tx.Commit(ctx)
 }
 
-// Accredit allows (or stops) an organisation issuing certificates, and queues
-// the change for the chain. Only a verified certifier or regulator qualifies.
-func (s Store) Accredit(ctx context.Context, id string, accredited bool) (Organisation, error) {
+// Accreditation lets an organisation issue one type of certificate for a time.
+type Accreditation struct {
+	ID             string     `json:"id"`
+	OrganisationID string     `json:"organisation_id"`
+	Type           string     `json:"type"`
+	ValidFrom      time.Time  `json:"valid_from"`
+	ValidTo        time.Time  `json:"valid_to"`
+	TxHash         *string    `json:"tx_hash"`
+	AnchoredAt     *time.Time `json:"anchored_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+const accColumns = `a.id::text, a.organisation_id::text, a.cert_type, a.valid_from, a.valid_to,
+	                    a.tx_hash, a.anchored_at, a.created_at, a.updated_at`
+
+func scanAcc(row pgx.CollectableRow) (Accreditation, error) {
+	var a Accreditation
+	err := row.Scan(&a.ID, &a.OrganisationID, &a.Type, &a.ValidFrom, &a.ValidTo,
+		&a.TxHash, &a.AnchoredAt, &a.CreatedAt, &a.UpdatedAt)
+	return a, err
+}
+
+// accreditationsOf lists an organisation's live accreditations by type.
+func accreditationsOf(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, orgID string) ([]Accreditation, error) {
+	rows, err := q.Query(ctx,
+		`SELECT `+accColumns+` FROM accreditations a
+		 WHERE a.organisation_id = $1::uuid AND NOT a.is_deleted ORDER BY a.cert_type`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanAcc)
+}
+
+func (s Store) Accreditations(ctx context.Context, orgID string) ([]Accreditation, error) {
+	return accreditationsOf(ctx, s.Pool, orgID)
+}
+
+// evidenceKeys are the certificate types a live template asks for.
+const evidenceKeys = `SELECT DISTINCT ev FROM commodity_templates t,
+	jsonb_array_elements(t.stages) st,
+	jsonb_array_elements_text(COALESCE(st->'requiredEvidence', '[]'::jsonb)) ev
+	WHERE NOT t.is_deleted`
+
+// SetAccreditations replaces an organisation's accreditations with grants.
+// Only what changed is written, and each change is queued for the chain in
+// the same transaction; a withdrawn type is queued with no window (valid_to 0).
+// Only a verified certifier or regulator may hold any.
+func (s Store) SetAccreditations(ctx context.Context, orgID string, grants []Grant) ([]Accreditation, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return Organisation{}, err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	var (
-		kind, status string
-		was          bool
-	)
+	var kind, status string
 	err = tx.QueryRow(ctx,
-		`SELECT kind, status, accredited FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
-	).Scan(&kind, &status, &was)
+		`SELECT kind, status FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, orgID,
+	).Scan(&kind, &status)
 	if err != nil {
-		return Organisation{}, notFound(err)
+		return nil, notFound(err)
 	}
-	if accredited && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
-		return Organisation{}, ErrNotIssuer
+	if len(grants) > 0 && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
+		return nil, ErrNotIssuer
 	}
-	// Tell the chain only when the flag actually flips.
-	if accredited != was {
-		if err := chain.Enqueue(ctx, tx, chain.KindOrgAccredited, id, chain.OrgAccredited{OrgID: id, Accredited: accredited}); err != nil {
-			return Organisation{}, err
+
+	rows, err := tx.Query(ctx, evidenceKeys)
+	if err != nil {
+		return nil, err
+	}
+	known, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range grants {
+		if !slices.Contains(known, g.Type) {
+			return nil, ErrUnknownType
 		}
 	}
-	rows, err := tx.Query(ctx,
-		`UPDATE organisations AS o SET accredited = $2 WHERE o.id = $1::uuid RETURNING `+orgColumns, id, accredited)
+
+	current, err := accreditationsOf(ctx, tx, orgID)
 	if err != nil {
-		return Organisation{}, err
+		return nil, err
 	}
-	o, err := pgx.CollectExactlyOneRow(rows, scanOrg)
+	queue := func(subjectID, certType string, from, to int64) error {
+		return chain.Enqueue(ctx, tx, chain.KindOrgAccredited, subjectID,
+			chain.OrgAccredited{OrgID: orgID, Type: certType, ValidFrom: from, ValidTo: to})
+	}
+
+	for _, g := range grants {
+		i := slices.IndexFunc(current, func(a Accreditation) bool { return a.Type == g.Type })
+		var id string
+		switch {
+		case i < 0:
+			err = tx.QueryRow(ctx,
+				`INSERT INTO accreditations (organisation_id, cert_type, valid_from, valid_to)
+				 VALUES ($1::uuid, $2, $3, $4) RETURNING id::text`, orgID, g.Type, g.ValidFrom, g.ValidTo).Scan(&id)
+		case !current[i].ValidFrom.Equal(g.ValidFrom) || !current[i].ValidTo.Equal(g.ValidTo):
+			id = current[i].ID
+			_, err = tx.Exec(ctx,
+				`UPDATE accreditations SET valid_from = $2, valid_to = $3, tx_hash = NULL, anchored_at = NULL
+				 WHERE id = $1::uuid`, id, g.ValidFrom, g.ValidTo)
+		default:
+			continue // unchanged
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := queue(id, g.Type, g.ValidFrom.Unix(), g.ValidTo.Unix()); err != nil {
+			return nil, err
+		}
+	}
+	for _, a := range current {
+		if slices.ContainsFunc(grants, func(g Grant) bool { return g.Type == a.Type }) {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE accreditations SET is_deleted = true WHERE id = $1::uuid`, a.ID); err != nil {
+			return nil, err
+		}
+		if err := queue(a.ID, a.Type, 0, 0); err != nil {
+			return nil, err
+		}
+	}
+
+	list, err := accreditationsOf(ctx, tx, orgID)
 	if err != nil {
-		return Organisation{}, err
+		return nil, err
 	}
-	return o, tx.Commit(ctx)
+	return list, tx.Commit(ctx)
 }

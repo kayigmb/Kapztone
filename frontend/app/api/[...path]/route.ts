@@ -3,11 +3,18 @@
 // this host alone, with no domain configured anywhere.
 import type { NextRequest } from "next/server";
 
-import { apiURL } from "@/lib/api";
+// The API's address as this server reaches it. Required: there is no default.
+function apiURL(): string {
+  const url = process.env.API_URL;
+  if (!url) {
+    throw new Error("API_URL is not set: add it to .env (see .env.example)");
+  }
+  return url.replace(/\/$/, "");
+}
 
 // Only what the API needs travels on; in particular the browser's Origin,
 // which the API checks before letting a cookie change anything.
-const forwarded = ["cookie", "content-type", "origin", "authorization", "accept"];
+const forwarded = ["cookie", "content-type", "origin", "authorization", "accept", "x-signing-pin"];
 const returned = ["content-type", "content-disposition", "x-content-type-options"];
 
 async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
@@ -22,16 +29,28 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
   // The site the browser is on: its first label names the organisation.
   headers.set("x-forwarded-host", req.headers.get("host") ?? "");
   headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
+  // The visitor's address, for the API's rate limits. Next fills this from the
+  // socket when no proxy set it; behind nginx the last entry is the one nginx
+  // appended. Only that one is passed on.
+  // ponytail: without a proxy in front, a visitor can send their own header.
+  const visitor = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
+  if (visitor) headers.set("x-forwarded-for", visitor);
 
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  const res = await fetch(url, {
-    method: req.method,
-    headers,
-    body: hasBody ? req.body : undefined,
-    duplex: "half", // stream the body through: uploads are not held in memory
-    redirect: "manual",
-    cache: "no-store",
-  } as RequestInit);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: req.method,
+      headers,
+      body: hasBody ? req.body : undefined,
+      duplex: "half", // stream the body through: uploads are not held in memory
+      redirect: "manual",
+      cache: "no-store",
+    } as RequestInit);
+  } catch {
+    // The API is down or unreachable: say so, so the page can tell "try again" from a refusal.
+    return Response.json({ error: "" }, { status: 502 });
+  }
 
   const out = new Headers();
   for (const name of returned) {

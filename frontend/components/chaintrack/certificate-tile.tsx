@@ -1,7 +1,8 @@
 import { CircleCheck, Clock, FileText, OctagonX, TriangleAlert, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { copy, type CertificateState, type View } from "@/lib/verification";
+import { copy } from "@/lib/consts";
+import { type CertificateState, type View } from "@/lib/verification";
 import { tone, type Tone } from "./tone";
 
 const states: Record<CertificateState, { tone: Tone; icon: LucideIcon; border: string }> = {
@@ -25,11 +26,11 @@ export function CertificateTile({ certificate: c }: { certificate: View["certifi
         <p className="font-mono text-xs break-all text-ink-subtle">{c.id}</p>
         <div className="mt-3 flex flex-wrap justify-between gap-2 border-t border-border pt-3">
           <p className="text-small text-ink-muted">
-            {c.validFrom} to <span className="font-semibold text-ink">{c.validTo}</span>
+            {c.validFrom} {copy.verification.validTo} <span className="font-semibold text-ink">{c.validTo}</span>
           </p>
           <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-small font-semibold", tone[s.tone].soft)}>
             <Badge className="size-4" aria-hidden />
-            {copy.certificate[c.state]}
+            {copy.verification.certificate[c.state]}
           </span>
         </div>
       </div>

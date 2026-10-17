@@ -15,6 +15,10 @@ const PPM = 1_000_000n;
 const WASHING_YIELD = 200_000n; // 0.2
 const PERIOD = 2026n;
 const CAPACITY = 1_000n;
+// Certificate types are template evidence keys, hashed.
+const LAB = id("lab_report");
+const ORIGIN_CERT = id("certificate_of_origin");
+const FOREVER = 2n ** 64n - 1n;
 
 // The handover message is declared once, in a file the Go tests read too.
 const vector = JSON.parse(readFileSync(new URL("./vectors/handover.json", import.meta.url), "utf8"));
@@ -37,13 +41,13 @@ async function deploy() {
   await asRelayer.orgs.register(FARM, farmKey.address);
   await asRelayer.orgs.register(EXPORTER, exporterKey.address);
   await asRelayer.orgs.register(CERTIFIER, certifierKey.address);
-  for (const org of [FARM, EXPORTER, CERTIFIER]) await orgs.setVerified(org, true);
-  await orgs.setAccredited(CERTIFIER, true);
+  for (const org of [FARM, EXPORTER, CERTIFIER]) await asRelayer.orgs.setVerified(org, true);
+  await asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 0n, FOREVER);
 
   const PLOT = id("facility:plot");
   await asRelayer.facilities.register(PLOT, FARM, id("plot record"), CAPACITY);
-  await passports.setMaxYield(COFFEE, WASHING, WASHING_YIELD);
-  await passports.setMaxYield(COFFEE, SPLIT, PPM); // splitting loses nothing
+  await asRelayer.passports.setMaxYield(COFFEE, WASHING, WASHING_YIELD);
+  await asRelayer.passports.setMaxYield(COFFEE, SPLIT, PPM); // splitting loses nothing
 
   const domain = {
     name: "ChainTrack",
@@ -90,19 +94,57 @@ describe("OrgRegistry", function () {
     expect(await orgs.signerOf(NEW)).to.equal(spareKey.address);
     expect(await orgs.orgOfSigner(spareKey.address)).to.equal(NEW);
 
-    await expect(orgs.setVerified(NEW, true)).to.emit(orgs, "OrgVerified").withArgs(NEW, true);
+    await expect(asRelayer.orgs.setVerified(NEW, true)).to.emit(orgs, "OrgVerified").withArgs(NEW, true);
     expect(await orgs.isVerified(NEW)).to.equal(true);
-    // Accreditation only counts for a verified organisation.
-    await orgs.setAccredited(NEW, true);
-    expect(await orgs.isAccredited(NEW)).to.equal(true);
-    await orgs.setVerified(NEW, false);
-    expect(await orgs.isAccredited(NEW)).to.equal(false);
+    // Accreditation is per certificate type, and only counts for a verified organisation.
+    await expect(asRelayer.orgs.setAccreditation(NEW, LAB, 0n, FOREVER)).to.emit(orgs, "IssuerAccredited").withArgs(NEW, LAB, 0n, FOREVER);
+    expect(await orgs.isAccredited(NEW, LAB)).to.equal(true);
+    expect(await orgs.isAccredited(NEW, ORIGIN_CERT)).to.equal(false);
+    await asRelayer.orgs.setVerified(NEW, false);
+    expect(await orgs.isAccredited(NEW, LAB)).to.equal(false);
   });
 
-  it("only admin can verify or accredit; only the relayer can register", async function () {
+  it("accreditation counts only inside its window, and validTo 0 removes it", async function () {
+    const { orgs, asRelayer, CERTIFIER } = await setup();
+    const now = BigInt(await networkHelpers.time.latest());
+
+    await asRelayer.orgs.setAccreditation(CERTIFIER, ORIGIN_CERT, now + 100n, now + 200n);
+    expect(await orgs.isAccredited(CERTIFIER, ORIGIN_CERT)).to.equal(false); // not started
+    await networkHelpers.time.increaseTo(now + 150n);
+    expect(await orgs.isAccredited(CERTIFIER, ORIGIN_CERT)).to.equal(true);
+    await networkHelpers.time.increaseTo(now + 201n);
+    expect(await orgs.isAccredited(CERTIFIER, ORIGIN_CERT)).to.equal(false); // ended
+
+    expect(await orgs.isAccredited(CERTIFIER, LAB)).to.equal(true);
+    await expect(asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 0n, 0n)).to.emit(orgs, "IssuerAccredited").withArgs(CERTIFIER, LAB, 0n, 0n);
+    expect(await orgs.isAccredited(CERTIFIER, LAB)).to.equal(false);
+  });
+
+  it("refuses a bad accreditation window or an empty type", async function () {
+    const { orgs, asRelayer, CERTIFIER } = await setup();
+    await expect(asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 10n, 10n)).to.be.revertedWithCustomError(orgs, "BadValidity").withArgs(10n, 10n);
+    await expect(asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 10n, 5n)).to.be.revertedWithCustomError(orgs, "BadValidity");
+    await expect(asRelayer.orgs.setAccreditation(CERTIFIER, ZERO, 0n, FOREVER)).to.be.revertedWithCustomError(orgs, "ZeroValue");
+  });
+
+  it("only the operator verifies or accredits; only the admin grants roles", async function () {
+    const { orgs, admin, relayer, stranger, FARM } = await setup();
+    const OPERATOR = await orgs.OPERATOR_ROLE();
+    expect(await orgs.hasRole(OPERATOR, relayer.address)).to.equal(true);
+    expect(await orgs.hasRole(OPERATOR, admin.address)).to.equal(false);
+    // The operator cannot hand out roles.
+    await expect(orgs.connect(relayer).grantRole(OPERATOR, stranger.address)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
+    // The admin can, and the new operator can then act.
+    await orgs.grantRole(OPERATOR, stranger.address);
+    await expect(orgs.connect(stranger).setVerified(FARM, false)).to.emit(orgs, "OrgVerified").withArgs(FARM, false);
+    await orgs.revokeRole(OPERATOR, stranger.address);
+    await expect(orgs.connect(stranger).setVerified(FARM, true)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
+  });
+
+  it("the admin cannot verify or accredit; only the relayer can register", async function () {
     const { orgs, asRelayer, stranger, spareKey, FARM } = await setup();
-    await expect(asRelayer.orgs.setVerified(FARM, false)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
-    await expect(asRelayer.orgs.setAccredited(FARM, true)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
+    await expect(orgs.setVerified(FARM, false)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
+    await expect(orgs.setAccreditation(FARM, LAB, 0n, FOREVER)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
     await expect(orgs.connect(stranger).register(id("x"), spareKey.address)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
     await expect(orgs.register(id("x"), spareKey.address)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
   });
@@ -113,20 +155,20 @@ describe("OrgRegistry", function () {
     await expect(asRelayer.orgs.register(id("x"), farmKey.address)).to.be.revertedWithCustomError(orgs, "SignerInUse");
     await expect(asRelayer.orgs.register(ZERO, spareKey.address)).to.be.revertedWithCustomError(orgs, "ZeroValue");
     await expect(asRelayer.orgs.register(id("x"), ethers.ZeroAddress)).to.be.revertedWithCustomError(orgs, "ZeroValue");
-    await expect(orgs.setVerified(id("ghost"), true)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
-    await expect(orgs.setAccredited(id("ghost"), true)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
+    await expect(asRelayer.orgs.setVerified(id("ghost"), true)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
+    await expect(asRelayer.orgs.setAccreditation(id("ghost"), LAB, 0n, FOREVER)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
     await expect(ethers.deployContract("OrgRegistry", [ethers.ZeroAddress, spareKey.address])).to.be.revertedWithCustomError(orgs, "ZeroValue");
   });
 
   it("admin can rotate a signing key; the old key stops counting", async function () {
     const { orgs, asRelayer, farmKey, spareKey, exporterKey, FARM } = await setup();
-    await expect(orgs.setSigner(FARM, spareKey.address)).to.emit(orgs, "OrgSignerChanged").withArgs(FARM, spareKey.address);
+    await expect(asRelayer.orgs.setSigner(FARM, spareKey.address)).to.emit(orgs, "OrgSignerChanged").withArgs(FARM, spareKey.address);
     expect(await orgs.signerOf(FARM)).to.equal(spareKey.address);
     expect(await orgs.orgOfSigner(farmKey.address)).to.equal(ZERO);
 
-    await expect(orgs.setSigner(FARM, exporterKey.address)).to.be.revertedWithCustomError(orgs, "SignerInUse");
-    await expect(orgs.setSigner(id("ghost"), farmKey.address)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
-    await expect(asRelayer.orgs.setSigner(FARM, farmKey.address)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
+    await expect(asRelayer.orgs.setSigner(FARM, exporterKey.address)).to.be.revertedWithCustomError(orgs, "SignerInUse");
+    await expect(asRelayer.orgs.setSigner(id("ghost"), farmKey.address)).to.be.revertedWithCustomError(orgs, "OrgUnknown");
+    await expect(orgs.setSigner(FARM, farmKey.address)).to.be.revertedWithCustomError(orgs, "AccessControlUnauthorizedAccount");
   });
 });
 
@@ -155,9 +197,9 @@ describe("FacilityRegistry", function () {
 
   it("only admin can suspend, and only once is the originator wired", async function () {
     const { facilities, asRelayer, stranger, PLOT } = await setup();
-    await expect(asRelayer.facilities.setSuspended(PLOT, true)).to.be.revertedWithCustomError(facilities, "NotAdmin");
-    await expect(facilities.setSuspended(id("ghost"), true)).to.be.revertedWithCustomError(facilities, "FacilityUnknown");
-    await expect(facilities.setSuspended(PLOT, true)).to.emit(facilities, "FacilitySuspended").withArgs(PLOT, true);
+    await expect(facilities.setSuspended(PLOT, true)).to.be.revertedWithCustomError(facilities, "NotOperator");
+    await expect(asRelayer.facilities.setSuspended(id("ghost"), true)).to.be.revertedWithCustomError(facilities, "FacilityUnknown");
+    await expect(asRelayer.facilities.setSuspended(PLOT, true)).to.emit(facilities, "FacilitySuspended").withArgs(PLOT, true);
 
     await expect(facilities.setOriginator(stranger.address)).to.be.revertedWithCustomError(facilities, "OriginatorAlreadySet");
     await expect(asRelayer.facilities.setOriginator(stranger.address)).to.be.revertedWithCustomError(facilities, "NotAdmin");
@@ -195,13 +237,13 @@ describe("PassportRegistry: issue", function () {
     const { facilities, orgs, asRelayer, PLOT, FARM } = await setup();
     const tryIssue = (name: string, facility = PLOT) => asRelayer.passports.issue(id(name), COFFEE, facility, PERIOD, 1n, id("r"));
 
-    await facilities.setSuspended(PLOT, true);
+    await asRelayer.facilities.setSuspended(PLOT, true);
     await expect(tryIssue("a")).to.be.revertedWithCustomError(facilities, "FacilityIsSuspended");
-    await facilities.setSuspended(PLOT, false);
+    await asRelayer.facilities.setSuspended(PLOT, false);
 
-    await orgs.setVerified(FARM, false);
+    await asRelayer.orgs.setVerified(FARM, false);
     await expect(tryIssue("b")).to.be.revertedWithCustomError(facilities, "OrgNotVerified");
-    await orgs.setVerified(FARM, true);
+    await asRelayer.orgs.setVerified(FARM, true);
 
     await expect(tryIssue("c", id("ghost"))).to.be.revertedWithCustomError(facilities, "FacilityUnknown");
   });
@@ -290,11 +332,11 @@ describe("PassportRegistry: transform and mass balance", function () {
 
   it("only admin sets yields", async function () {
     const { passports, asRelayer } = await setup();
-    await expect(passports.setMaxYield(COFFEE, id("roasting"), 850_000n)).to.emit(passports, "MaxYieldSet").withArgs(COFFEE, id("roasting"), 850_000n);
-    await expect(asRelayer.passports.setMaxYield(COFFEE, WASHING, PPM)).to.be.revertedWithCustomError(passports, "NotAdmin");
-    await expect(passports.setMaxYield(COFFEE, WASHING, 0n)).to.be.revertedWithCustomError(passports, "ZeroValue");
-    await expect(passports.setMaxYield(ZERO, WASHING, 1n)).to.be.revertedWithCustomError(passports, "ZeroValue");
-    await expect(passports.setMaxYield(COFFEE, ZERO, 1n)).to.be.revertedWithCustomError(passports, "ZeroValue");
+    await expect(asRelayer.passports.setMaxYield(COFFEE, id("roasting"), 850_000n)).to.emit(passports, "MaxYieldSet").withArgs(COFFEE, id("roasting"), 850_000n);
+    await expect(passports.setMaxYield(COFFEE, WASHING, PPM)).to.be.revertedWithCustomError(passports, "NotOperator");
+    await expect(asRelayer.passports.setMaxYield(COFFEE, WASHING, 0n)).to.be.revertedWithCustomError(passports, "ZeroValue");
+    await expect(asRelayer.passports.setMaxYield(ZERO, WASHING, 1n)).to.be.revertedWithCustomError(passports, "ZeroValue");
+    await expect(asRelayer.passports.setMaxYield(COFFEE, ZERO, 1n)).to.be.revertedWithCustomError(passports, "ZeroValue");
   });
 });
 
@@ -310,12 +352,12 @@ describe("PassportRegistry: retire, revoke, flag", function () {
   it("revocation is permanent and stops every further use", async function () {
     const { passports, issue, asRelayer, farmKey, exporterKey, handover, sign } = await setup();
     const P = await issue("lot", 10n);
-    await expect(asRelayer.passports.revoke(P, id("fraud"))).to.be.revertedWithCustomError(passports, "NotAdmin");
-    await expect(passports.revoke(P, id("fraud"))).to.emit(passports, "Revoked").withArgs(P, id("fraud"));
+    await expect(passports.revoke(P, id("fraud"))).to.be.revertedWithCustomError(passports, "NotOperator");
+    await expect(asRelayer.passports.revoke(P, id("fraud"))).to.emit(passports, "Revoked").withArgs(P, id("fraud"));
     expect((await passports.passport(P)).status).to.equal(4n);
 
-    await expect(passports.revoke(P, id("fraud"))).to.be.revertedWithCustomError(passports, "AlreadyRevoked");
-    await expect(passports.revoke(id("ghost"), id("fraud"))).to.be.revertedWithCustomError(passports, "PassportUnknown");
+    await expect(asRelayer.passports.revoke(P, id("fraud"))).to.be.revertedWithCustomError(passports, "AlreadyRevoked");
+    await expect(asRelayer.passports.revoke(id("ghost"), id("fraud"))).to.be.revertedWithCustomError(passports, "PassportUnknown");
     await expect(asRelayer.passports.retire(P)).to.be.revertedWithCustomError(passports, "PassportNotActive");
     await expect(asRelayer.passports.transform([P], [1n], SPLIT, [{ id: id("x"), quantity: 1n, dataHash: id("r") }], id("r")))
       .to.be.revertedWithCustomError(passports, "PassportNotActive");
@@ -425,12 +467,12 @@ describe("CustodyManager: dual-signed handover", function () {
     await expect(record(...(await both(noRecord)))).to.be.revertedWithCustomError(custody, "ZeroValue");
 
     const ok = await handover(P, 500n);
-    await orgs.setVerified(EXPORTER, false);
+    await asRelayer.orgs.setVerified(EXPORTER, false);
     await expect(record(...(await both(ok)))).to.be.revertedWithCustomError(custody, "OrgNotVerified").withArgs(EXPORTER);
-    await orgs.setVerified(EXPORTER, true);
-    await orgs.setVerified(FARM, false);
+    await asRelayer.orgs.setVerified(EXPORTER, true);
+    await asRelayer.orgs.setVerified(FARM, false);
     await expect(record(...(await both(ok)))).to.be.revertedWithCustomError(custody, "OrgNotVerified").withArgs(FARM);
-    await orgs.setVerified(FARM, true);
+    await asRelayer.orgs.setVerified(FARM, true);
 
     // Valid signatures still need the relayer to submit them.
     await expect(custody.connect(stranger).recordHandover(...(await both(ok)))).to.be.revertedWithCustomError(custody, "NotRelayer");
@@ -440,7 +482,7 @@ describe("CustodyManager: dual-signed handover", function () {
   it("a rotated key signs from then on; the old key no longer does", async function () {
     const { custody, orgs, issue, asRelayer, farmKey, exporterKey, spareKey, handover, sign, FARM } = await setup();
     const P = await issue("lot", 500n);
-    await orgs.setSigner(FARM, spareKey.address);
+    await asRelayer.orgs.setSigner(FARM, spareKey.address);
     const h = await handover(P, 500n);
     await expect(asRelayer.custody.recordHandover(h, await sign(farmKey, h), await sign(exporterKey, h)))
       .to.be.revertedWithCustomError(custody, "BadSignature").withArgs(FARM);
@@ -496,11 +538,11 @@ describe("AttestationRegistry", function () {
     const P = await issue("lot", 5n);
     const { from, to } = await window();
 
-    await expect(asRelayer.attestations.issue(A, CERTIFIER, P, id("cert pdf"), from, to))
-      .to.emit(attestations, "AttestationIssued").withArgs(A, CERTIFIER, P, id("cert pdf"), from, to);
+    await expect(asRelayer.attestations.issue(A, CERTIFIER, P, LAB, id("cert pdf"), from, to))
+      .to.emit(attestations, "AttestationIssued").withArgs(A, CERTIFIER, P, LAB, id("cert pdf"), from, to);
     expect(await attestations.isValid(A)).to.equal(true);
     const a = await attestations.attestation(A);
-    expect([a.issuerOrg, a.subject, a.docHash, a.revoked]).to.deep.equal([CERTIFIER, P, id("cert pdf"), false]);
+    expect([a.issuerOrg, a.subject, a.certType, a.docHash, a.revoked]).to.deep.equal([CERTIFIER, P, LAB, id("cert pdf"), false]);
 
     await networkHelpers.time.increaseTo(to + 1n);
     expect(await attestations.isValid(A)).to.equal(false); // expired
@@ -509,42 +551,52 @@ describe("AttestationRegistry", function () {
   it("is not yet valid before its window opens", async function () {
     const { attestations, asRelayer, CERTIFIER } = await setup();
     const { to } = await window();
-    await asRelayer.attestations.issue(A, CERTIFIER, id("subject"), id("doc"), to - 100n, to);
+    await asRelayer.attestations.issue(A, CERTIFIER, id("subject"), LAB, id("doc"), to - 100n, to);
     expect(await attestations.isValid(A)).to.equal(false);
     expect(await attestations.isValid(id("ghost"))).to.equal(false);
   });
 
-  it("only accredited issuers can issue", async function () {
+  it("only issuers accredited for that certificate type can issue", async function () {
     const { attestations, orgs, asRelayer, stranger, FARM, CERTIFIER } = await setup();
     const { from, to } = await window();
-    const issueAs = (org: string) => asRelayer.attestations.issue(A, org, id("subject"), id("doc"), from, to);
+    const issueAs = (org: string, type = LAB) => asRelayer.attestations.issue(A, org, id("subject"), type, id("doc"), from, to);
 
-    await expect(issueAs(FARM)).to.be.revertedWithCustomError(attestations, "NotAccredited").withArgs(FARM);
-    await orgs.setAccredited(CERTIFIER, false);
+    await expect(issueAs(FARM)).to.be.revertedWithCustomError(attestations, "NotAccredited").withArgs(FARM, LAB);
+    // Accredited for lab reports, not for certificates of origin.
+    await expect(issueAs(CERTIFIER, ORIGIN_CERT)).to.be.revertedWithCustomError(attestations, "NotAccredited").withArgs(CERTIFIER, ORIGIN_CERT);
+    // Outside the accreditation window: before it opens, then after it ends.
+    const now = BigInt(await networkHelpers.time.latest());
+    await asRelayer.orgs.setAccreditation(CERTIFIER, ORIGIN_CERT, now + 100n, now + 200n);
+    await expect(issueAs(CERTIFIER, ORIGIN_CERT)).to.be.revertedWithCustomError(attestations, "NotAccredited");
+    await networkHelpers.time.increaseTo(now + 201n);
+    await expect(issueAs(CERTIFIER, ORIGIN_CERT)).to.be.revertedWithCustomError(attestations, "NotAccredited");
+    // Removed.
+    await asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 0n, 0n);
     await expect(issueAs(CERTIFIER)).to.be.revertedWithCustomError(attestations, "NotAccredited");
-    await orgs.setAccredited(CERTIFIER, true);
-    await orgs.setVerified(CERTIFIER, false); // accredited but no longer verified
+    await asRelayer.orgs.setAccreditation(CERTIFIER, LAB, 0n, FOREVER);
+    await asRelayer.orgs.setVerified(CERTIFIER, false); // accredited but no longer verified
     await expect(issueAs(CERTIFIER)).to.be.revertedWithCustomError(attestations, "NotAccredited");
-    await expect(attestations.connect(stranger).issue(A, CERTIFIER, id("subject"), id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "NotRelayer");
+    await expect(attestations.connect(stranger).issue(A, CERTIFIER, id("subject"), LAB, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "NotRelayer");
   });
 
   it("rejects duplicates, empty values and a window that ends before it starts", async function () {
     const { attestations, asRelayer, CERTIFIER } = await setup();
     const { from, to } = await window();
     const issue = asRelayer.attestations.issue;
-    await issue(A, CERTIFIER, id("subject"), id("doc"), from, to);
-    await expect(issue(A, CERTIFIER, id("subject"), id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "AttestationExists");
-    await expect(issue(id("b"), CERTIFIER, id("subject"), id("doc"), to, from)).to.be.revertedWithCustomError(attestations, "BadValidity");
-    await expect(issue(id("b"), CERTIFIER, id("subject"), id("doc"), to, to)).to.be.revertedWithCustomError(attestations, "BadValidity");
-    await expect(issue(ZERO, CERTIFIER, id("subject"), id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
-    await expect(issue(id("b"), CERTIFIER, ZERO, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
-    await expect(issue(id("b"), CERTIFIER, id("subject"), ZERO, from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
+    await issue(A, CERTIFIER, id("subject"), LAB, id("doc"), from, to);
+    await expect(issue(A, CERTIFIER, id("subject"), LAB, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "AttestationExists");
+    await expect(issue(id("b"), CERTIFIER, id("subject"), LAB, id("doc"), to, from)).to.be.revertedWithCustomError(attestations, "BadValidity");
+    await expect(issue(id("b"), CERTIFIER, id("subject"), LAB, id("doc"), to, to)).to.be.revertedWithCustomError(attestations, "BadValidity");
+    await expect(issue(ZERO, CERTIFIER, id("subject"), LAB, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
+    await expect(issue(id("b"), CERTIFIER, ZERO, LAB, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
+    await expect(issue(id("b"), CERTIFIER, id("subject"), LAB, ZERO, from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
+    await expect(issue(id("b"), CERTIFIER, id("subject"), ZERO, id("doc"), from, to)).to.be.revertedWithCustomError(attestations, "ZeroValue");
   });
 
   it("revocation is permanent", async function () {
     const { attestations, asRelayer, CERTIFIER } = await setup();
     const { from, to } = await window();
-    await asRelayer.attestations.issue(A, CERTIFIER, id("subject"), id("doc"), from, to);
+    await asRelayer.attestations.issue(A, CERTIFIER, id("subject"), LAB, id("doc"), from, to);
 
     await expect(attestations.revoke(A)).to.be.revertedWithCustomError(attestations, "NotRelayer");
     await expect(asRelayer.attestations.revoke(A)).to.emit(attestations, "Revoked").withArgs(A);

@@ -35,8 +35,8 @@ var (
 
 // OrgRegistryMetaData contains all meta data concerning the OrgRegistry contract.
 var OrgRegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"admin\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"relayer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"AccessControlBadConfirmation\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"neededRole\",\"type\":\"bytes32\"}],\"name\":\"AccessControlUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"OrgExists\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"OrgUnknown\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"SignerInUse\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ZeroValue\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"accredited\",\"type\":\"bool\"}],\"name\":\"IssuerAccredited\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"OrgRegistered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"OrgSignerChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"verified\",\"type\":\"bool\"}],\"name\":\"OrgVerified\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"previousAdminRole\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"newAdminRole\",\"type\":\"bytes32\"}],\"name\":\"RoleAdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleGranted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleRevoked\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"DEFAULT_ADMIN_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"RELAYER_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"}],\"name\":\"getRoleAdmin\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRole\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"isAccredited\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"isVerified\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"orgOfSigner\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"register\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"callerConfirmation\",\"type\":\"address\"}],\"name\":\"renounceRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"bool\",\"name\":\"accredited\",\"type\":\"bool\"}],\"name\":\"setAccredited\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"setSigner\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"bool\",\"name\":\"verified\",\"type\":\"bool\"}],\"name\":\"setVerified\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"signerOf\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
-	Bin: "0x608060405234801561000f575f5ffd5b50604051610aa1380380610aa183398101604081905261002e9161016a565b6001600160a01b038216158061004b57506001600160a01b038116155b1561006957604051637c946ed760e01b815260040160405180910390fd5b6100735f836100a6565b5061009e7fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc4826100a6565b50505061019b565b5f828152602081815260408083206001600160a01b038516845290915281205460ff16610146575f838152602081815260408083206001600160a01b03861684529091529020805460ff191660011790556100fe3390565b6001600160a01b0316826001600160a01b0316847f2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d60405160405180910390a4506001610149565b505f5b92915050565b80516001600160a01b0381168114610165575f5ffd5b919050565b5f5f6040838503121561017b575f5ffd5b6101848361014f565b91506101926020840161014f565b90509250929050565b6108f9806101a85f395ff3fe608060405234801561000f575f5ffd5b50600436106100fb575f3560e01c806391d1485411610093578063c181b27311610063578063c181b27314610258578063ca839c5b14610281578063d22057a914610294578063d547741f146102a7575f5ffd5b806391d14854146101d7578063926d7d7f146101ea5780639823e68614610211578063a217fddf14610251575f5ffd5b806336568abe116100ce57806336568abe1461017f5780633977efdd146101925780633a17eb59146101a557806383c0ce7b146101c4575f5ffd5b806301ffc9a7146100ff5780631122e86a14610127578063248a9ca31461013c5780632f2ff15d1461016c575b5f5ffd5b61011261010d3660046107fa565b6102ba565b60405190151581526020015b60405180910390f35b61013a610135366004610821565b6102f0565b005b61015e61014a366004610853565b5f9081526020819052604090206001015490565b60405190815260200161011e565b61013a61017a366004610880565b61035b565b61013a61018d366004610880565b610385565b61013a6101a0366004610821565b6103bd565b61015e6101b33660046108aa565b60026020525f908152604090205481565b6101126101d2366004610853565b61041f565b6101126101e5366004610880565b610453565b61015e7fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc481565b61023961021f366004610853565b5f908152600160205260409020546001600160a01b031690565b6040516001600160a01b03909116815260200161011e565b61015e5f81565b610112610266366004610853565b5f90815260016020526040902054600160a01b900460ff1690565b61013a61028f366004610880565b61047b565b61013a6102a2366004610880565b6104ee565b61013a6102b5366004610880565b6105b7565b5f6001600160e01b03198216637965db0b60e01b14806102ea57506301ffc9a760e01b6001600160e01b03198316145b92915050565b5f6102fa816105db565b81610304846105e8565b8054911515600160a01b0260ff60a01b19909216919091179055604051821515815283907f2d7172d230d58c7ea2dc75b0d91921bba67143a4dd2db824c9db79cc5dedf947906020015b60405180910390a2505050565b5f82815260208190526040902060010154610375816105db565b61037f8383610625565b50505050565b6001600160a01b03811633146103ae5760405163334bd91960e11b815260040160405180910390fd5b6103b882826106b4565b505050565b5f6103c7816105db565b816103d1846105e8565b8054911515600160a81b0260ff60a81b19909216919091179055604051821515815283907f76e907e4ffaf24eed7933e899d3ff6edb93ae4e6e77f97ab500dc89192fbf79b9060200161034e565b5f8181526001602052604081208054600160a01b900460ff16801561044c57508054600160a81b900460ff165b9392505050565b5f918252602082815260408084206001600160a01b0393909316845291905290205460ff1690565b5f610485816105db565b5f61048f846105e8565b546001600160a01b03165f8181526002602052604081205590506104b3848461071d565b6040516001600160a01b0384169085907f26b16e183a2e89c88cddba8dcbbb48e189211b539ca87798573a4c02c7a3452a905f90a350505050565b7fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc4610518816105db565b8261053657604051637c946ed760e01b815260040160405180910390fd5b5f838152600160205260409020546001600160a01b03161561057357604051638201971760e01b8152600481018490526024015b60405180910390fd5b61057d838361071d565b6040516001600160a01b0383169084907f7d53b93d471795182329253ee77657987f08c389449dab4ff1cf4b22b16c087a905f90a3505050565b5f828152602081905260409020600101546105d1816105db565b61037f83836106b4565b6105e581336107bd565b50565b5f81815260016020526040902080546001600160a01b031661062057604051635d2ea2a960e11b81526004810183905260240161056a565b919050565b5f6106308383610453565b6106ad575f838152602081815260408083206001600160a01b03861684529091529020805460ff191660011790556106653390565b6001600160a01b0316826001600160a01b0316847f2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d60405160405180910390a45060016102ea565b505f6102ea565b5f6106bf8383610453565b156106ad575f838152602081815260408083206001600160a01b0386168085529252808320805460ff1916905551339286917ff6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b9190a45060016102ea565b6001600160a01b03811661074457604051637c946ed760e01b815260040160405180910390fd5b6001600160a01b0381165f908152600260205260409020541561078557604051633dd2866360e21b81526001600160a01b038216600482015260240161056a565b5f82815260016020908152604080832080546001600160a01b039095166001600160a01b031990951685179055928252600290522055565b6107c78282610453565b6107f65760405163e2517d3f60e01b81526001600160a01b03821660048201526024810183905260440161056a565b5050565b5f6020828403121561080a575f5ffd5b81356001600160e01b03198116811461044c575f5ffd5b5f5f60408385031215610832575f5ffd5b8235915060208301358015158114610848575f5ffd5b809150509250929050565b5f60208284031215610863575f5ffd5b5035919050565b80356001600160a01b0381168114610620575f5ffd5b5f5f60408385031215610891575f5ffd5b823591506108a16020840161086a565b90509250929050565b5f602082840312156108ba575f5ffd5b61044c8261086a56fea26469706673582212205d20bb03af515449a33f6a4927fb1f512ff006295b1ba774c4a47aa702a7eadb64736f6c63430008220033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"admin\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"relayer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"AccessControlBadConfirmation\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"neededRole\",\"type\":\"bytes32\"}],\"name\":\"AccessControlUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint64\",\"name\":\"validFrom\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"validTo\",\"type\":\"uint64\"}],\"name\":\"BadValidity\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"OrgExists\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"OrgUnknown\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"SignerInUse\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ZeroValue\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"certType\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"validFrom\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"validTo\",\"type\":\"uint64\"}],\"name\":\"IssuerAccredited\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"OrgRegistered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"OrgSignerChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"verified\",\"type\":\"bool\"}],\"name\":\"OrgVerified\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"previousAdminRole\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"newAdminRole\",\"type\":\"bytes32\"}],\"name\":\"RoleAdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleGranted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleRevoked\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"DEFAULT_ADMIN_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"OPERATOR_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"RELAYER_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"}],\"name\":\"getRoleAdmin\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRole\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"certType\",\"type\":\"bytes32\"}],\"name\":\"isAccredited\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"isVerified\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"orgOfSigner\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"register\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"callerConfirmation\",\"type\":\"address\"}],\"name\":\"renounceRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"certType\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"validFrom\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"validTo\",\"type\":\"uint64\"}],\"name\":\"setAccreditation\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"name\":\"setSigner\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"},{\"internalType\":\"bool\",\"name\":\"verified\",\"type\":\"bool\"}],\"name\":\"setVerified\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"orgId\",\"type\":\"bytes32\"}],\"name\":\"signerOf\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x608060405234801561000f575f5ffd5b50604051610ce6380380610ce683398101604081905261002e91610195565b6001600160a01b038216158061004b57506001600160a01b038116155b1561006957604051637c946ed760e01b815260040160405180910390fd5b6100735f836100d1565b5061009e7fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc4826100d1565b506100c97f97667070c54ef182b0f5858b034beac1b6f3089aa2d3188bb1e8929f4fa9b929826100d1565b5050506101c6565b5f828152602081815260408083206001600160a01b038516845290915281205460ff16610171575f838152602081815260408083206001600160a01b03861684529091529020805460ff191660011790556101293390565b6001600160a01b0316826001600160a01b0316847f2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d60405160405180910390a4506001610174565b505f5b92915050565b80516001600160a01b0381168114610190575f5ffd5b919050565b5f5f604083850312156101a6575f5ffd5b6101af8361017a565b91506101bd6020840161017a565b90509250929050565b610b13806101d35f395ff3fe608060405234801561000f575f5ffd5b5060043610610106575f3560e01c8063926d7d7f1161009e578063c181b2731161006e578063c181b27314610263578063ca839c5b1461028c578063d22057a91461029f578063d547741f146102b2578063f5b541a6146102c5575f5ffd5b8063926d7d7f146101e25780639823e68614610209578063a217fddf14610249578063ad00dde014610250575f5ffd5b806336568abe116100d957806336568abe1461018a5780633a17eb591461019d5780634354647e146101bc57806391d14854146101cf575f5ffd5b806301ffc9a71461010a5780631122e86a14610132578063248a9ca3146101475780632f2ff15d14610177575b5f5ffd5b61011d610118366004610973565b6102d9565b60405190151581526020015b60405180910390f35b6101456101403660046109a1565b61030f565b005b6101696101553660046109d3565b5f9081526020819052604090206001015490565b604051908152602001610129565b610145610185366004610a00565b610386565b610145610198366004610a00565b6103b0565b6101696101ab366004610a2a565b60036020525f908152604090205481565b6101456101ca366004610a5a565b6103e8565b61011d6101dd366004610a00565b61055a565b6101697fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc481565b6102316102173660046109d3565b5f908152600160205260409020546001600160a01b031690565b6040516001600160a01b039091168152602001610129565b6101695f81565b61011d61025e366004610a9d565b610582565b61011d6102713660046109d3565b5f90815260016020526040902054600160a01b900460ff1690565b61014561029a366004610a00565b6105ec565b6101456102ad366004610a00565b61066c565b6101456102c0366004610a00565b610730565b6101695f516020610abe5f395f51905f5281565b5f6001600160e01b03198216637965db0b60e01b148061030957506301ffc9a760e01b6001600160e01b03198316145b92915050565b5f516020610abe5f395f51905f5261032681610754565b8161033084610761565b8054911515600160a01b0260ff60a01b19909216919091179055604051821515815283907f2d7172d230d58c7ea2dc75b0d91921bba67143a4dd2db824c9db79cc5dedf9479060200160405180910390a2505050565b5f828152602081905260409020600101546103a081610754565b6103aa838361079e565b50505050565b6001600160a01b03811633146103d95760405163334bd91960e11b815260040160405180910390fd5b6103e3828261082d565b505050565b5f516020610abe5f395f51905f526103ff81610754565b61040885610761565b508361042757604051637c946ed760e01b815260040160405180910390fd5b8167ffffffffffffffff165f03610463575f858152600260209081526040808320878452909152902080546001600160801b031916905561050b565b8267ffffffffffffffff168267ffffffffffffffff16116104b0576040516355da959560e11b815267ffffffffffffffff8085166004830152831660248201526044015b60405180910390fd5b60408051808201825267ffffffffffffffff808616825284811660208084019182525f8a8152600282528581208a8252909152939093209151825493518216600160401b026001600160801b03199094169116179190911790555b6040805167ffffffffffffffff808616825284166020820152859187917fc134584a084803f245fd1d6e6f39dd2294a150d4c42922cd77c9e6b4141d98ce910160405180910390a35050505050565b5f918252602082815260408084206001600160a01b0393909316845291905290205460ff1690565b5f82815260026020908152604080832084845282528083208584526001909252822054600160a01b900460ff1680156105c65750805467ffffffffffffffff164210155b80156105e457508054600160401b900467ffffffffffffffff164211155b949350505050565b5f516020610abe5f395f51905f5261060381610754565b5f61060d84610761565b546001600160a01b03165f8181526003602052604081205590506106318484610896565b6040516001600160a01b0384169085907f26b16e183a2e89c88cddba8dcbbb48e189211b539ca87798573a4c02c7a3452a905f90a350505050565b7fe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc461069681610754565b826106b457604051637c946ed760e01b815260040160405180910390fd5b5f838152600160205260409020546001600160a01b0316156106ec57604051638201971760e01b8152600481018490526024016104a7565b6106f68383610896565b6040516001600160a01b0383169084907f7d53b93d471795182329253ee77657987f08c389449dab4ff1cf4b22b16c087a905f90a3505050565b5f8281526020819052604090206001015461074a81610754565b6103aa838361082d565b61075e8133610936565b50565b5f81815260016020526040902080546001600160a01b031661079957604051635d2ea2a960e11b8152600481018390526024016104a7565b919050565b5f6107a9838361055a565b610826575f838152602081815260408083206001600160a01b03861684529091529020805460ff191660011790556107de3390565b6001600160a01b0316826001600160a01b0316847f2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d60405160405180910390a4506001610309565b505f610309565b5f610838838361055a565b15610826575f838152602081815260408083206001600160a01b0386168085529252808320805460ff1916905551339286917ff6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b9190a4506001610309565b6001600160a01b0381166108bd57604051637c946ed760e01b815260040160405180910390fd5b6001600160a01b0381165f90815260036020526040902054156108fe57604051633dd2866360e21b81526001600160a01b03821660048201526024016104a7565b5f82815260016020908152604080832080546001600160a01b039095166001600160a01b031990951685179055928252600390522055565b610940828261055a565b61096f5760405163e2517d3f60e01b81526001600160a01b0382166004820152602481018390526044016104a7565b5050565b5f60208284031215610983575f5ffd5b81356001600160e01b03198116811461099a575f5ffd5b9392505050565b5f5f604083850312156109b2575f5ffd5b82359150602083013580151581146109c8575f5ffd5b809150509250929050565b5f602082840312156109e3575f5ffd5b5035919050565b80356001600160a01b0381168114610799575f5ffd5b5f5f60408385031215610a11575f5ffd5b82359150610a21602084016109ea565b90509250929050565b5f60208284031215610a3a575f5ffd5b61099a826109ea565b803567ffffffffffffffff81168114610799575f5ffd5b5f5f5f5f60808587031215610a6d575f5ffd5b8435935060208501359250610a8460408601610a43565b9150610a9260608601610a43565b905092959194509250565b5f5f60408385031215610aae575f5ffd5b5050803592602090910135915056fe97667070c54ef182b0f5858b034beac1b6f3089aa2d3188bb1e8929f4fa9b929a2646970667358221220f531f571a84f67fb029cd17c5d9beaee3fc6adc8afaad8a27bfaf83c50f9f94c64736f6c63430008220033",
 }
 
 // OrgRegistryABI is the input ABI used to generate the binding from.
@@ -237,6 +237,37 @@ func (_OrgRegistry *OrgRegistryCallerSession) DEFAULTADMINROLE() ([32]byte, erro
 	return _OrgRegistry.Contract.DEFAULTADMINROLE(&_OrgRegistry.CallOpts)
 }
 
+// OPERATORROLE is a free data retrieval call binding the contract method 0xf5b541a6.
+//
+// Solidity: function OPERATOR_ROLE() view returns(bytes32)
+func (_OrgRegistry *OrgRegistryCaller) OPERATORROLE(opts *bind.CallOpts) ([32]byte, error) {
+	var out []interface{}
+	err := _OrgRegistry.contract.Call(opts, &out, "OPERATOR_ROLE")
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// OPERATORROLE is a free data retrieval call binding the contract method 0xf5b541a6.
+//
+// Solidity: function OPERATOR_ROLE() view returns(bytes32)
+func (_OrgRegistry *OrgRegistrySession) OPERATORROLE() ([32]byte, error) {
+	return _OrgRegistry.Contract.OPERATORROLE(&_OrgRegistry.CallOpts)
+}
+
+// OPERATORROLE is a free data retrieval call binding the contract method 0xf5b541a6.
+//
+// Solidity: function OPERATOR_ROLE() view returns(bytes32)
+func (_OrgRegistry *OrgRegistryCallerSession) OPERATORROLE() ([32]byte, error) {
+	return _OrgRegistry.Contract.OPERATORROLE(&_OrgRegistry.CallOpts)
+}
+
 // RELAYERROLE is a free data retrieval call binding the contract method 0x926d7d7f.
 //
 // Solidity: function RELAYER_ROLE() view returns(bytes32)
@@ -330,12 +361,12 @@ func (_OrgRegistry *OrgRegistryCallerSession) HasRole(role [32]byte, account com
 	return _OrgRegistry.Contract.HasRole(&_OrgRegistry.CallOpts, role, account)
 }
 
-// IsAccredited is a free data retrieval call binding the contract method 0x83c0ce7b.
+// IsAccredited is a free data retrieval call binding the contract method 0xad00dde0.
 //
-// Solidity: function isAccredited(bytes32 orgId) view returns(bool)
-func (_OrgRegistry *OrgRegistryCaller) IsAccredited(opts *bind.CallOpts, orgId [32]byte) (bool, error) {
+// Solidity: function isAccredited(bytes32 orgId, bytes32 certType) view returns(bool)
+func (_OrgRegistry *OrgRegistryCaller) IsAccredited(opts *bind.CallOpts, orgId [32]byte, certType [32]byte) (bool, error) {
 	var out []interface{}
-	err := _OrgRegistry.contract.Call(opts, &out, "isAccredited", orgId)
+	err := _OrgRegistry.contract.Call(opts, &out, "isAccredited", orgId, certType)
 
 	if err != nil {
 		return *new(bool), err
@@ -347,18 +378,18 @@ func (_OrgRegistry *OrgRegistryCaller) IsAccredited(opts *bind.CallOpts, orgId [
 
 }
 
-// IsAccredited is a free data retrieval call binding the contract method 0x83c0ce7b.
+// IsAccredited is a free data retrieval call binding the contract method 0xad00dde0.
 //
-// Solidity: function isAccredited(bytes32 orgId) view returns(bool)
-func (_OrgRegistry *OrgRegistrySession) IsAccredited(orgId [32]byte) (bool, error) {
-	return _OrgRegistry.Contract.IsAccredited(&_OrgRegistry.CallOpts, orgId)
+// Solidity: function isAccredited(bytes32 orgId, bytes32 certType) view returns(bool)
+func (_OrgRegistry *OrgRegistrySession) IsAccredited(orgId [32]byte, certType [32]byte) (bool, error) {
+	return _OrgRegistry.Contract.IsAccredited(&_OrgRegistry.CallOpts, orgId, certType)
 }
 
-// IsAccredited is a free data retrieval call binding the contract method 0x83c0ce7b.
+// IsAccredited is a free data retrieval call binding the contract method 0xad00dde0.
 //
-// Solidity: function isAccredited(bytes32 orgId) view returns(bool)
-func (_OrgRegistry *OrgRegistryCallerSession) IsAccredited(orgId [32]byte) (bool, error) {
-	return _OrgRegistry.Contract.IsAccredited(&_OrgRegistry.CallOpts, orgId)
+// Solidity: function isAccredited(bytes32 orgId, bytes32 certType) view returns(bool)
+func (_OrgRegistry *OrgRegistryCallerSession) IsAccredited(orgId [32]byte, certType [32]byte) (bool, error) {
+	return _OrgRegistry.Contract.IsAccredited(&_OrgRegistry.CallOpts, orgId, certType)
 }
 
 // IsVerified is a free data retrieval call binding the contract method 0xc181b273.
@@ -569,25 +600,25 @@ func (_OrgRegistry *OrgRegistryTransactorSession) RevokeRole(role [32]byte, acco
 	return _OrgRegistry.Contract.RevokeRole(&_OrgRegistry.TransactOpts, role, account)
 }
 
-// SetAccredited is a paid mutator transaction binding the contract method 0x3977efdd.
+// SetAccreditation is a paid mutator transaction binding the contract method 0x4354647e.
 //
-// Solidity: function setAccredited(bytes32 orgId, bool accredited) returns()
-func (_OrgRegistry *OrgRegistryTransactor) SetAccredited(opts *bind.TransactOpts, orgId [32]byte, accredited bool) (*types.Transaction, error) {
-	return _OrgRegistry.contract.Transact(opts, "setAccredited", orgId, accredited)
+// Solidity: function setAccreditation(bytes32 orgId, bytes32 certType, uint64 validFrom, uint64 validTo) returns()
+func (_OrgRegistry *OrgRegistryTransactor) SetAccreditation(opts *bind.TransactOpts, orgId [32]byte, certType [32]byte, validFrom uint64, validTo uint64) (*types.Transaction, error) {
+	return _OrgRegistry.contract.Transact(opts, "setAccreditation", orgId, certType, validFrom, validTo)
 }
 
-// SetAccredited is a paid mutator transaction binding the contract method 0x3977efdd.
+// SetAccreditation is a paid mutator transaction binding the contract method 0x4354647e.
 //
-// Solidity: function setAccredited(bytes32 orgId, bool accredited) returns()
-func (_OrgRegistry *OrgRegistrySession) SetAccredited(orgId [32]byte, accredited bool) (*types.Transaction, error) {
-	return _OrgRegistry.Contract.SetAccredited(&_OrgRegistry.TransactOpts, orgId, accredited)
+// Solidity: function setAccreditation(bytes32 orgId, bytes32 certType, uint64 validFrom, uint64 validTo) returns()
+func (_OrgRegistry *OrgRegistrySession) SetAccreditation(orgId [32]byte, certType [32]byte, validFrom uint64, validTo uint64) (*types.Transaction, error) {
+	return _OrgRegistry.Contract.SetAccreditation(&_OrgRegistry.TransactOpts, orgId, certType, validFrom, validTo)
 }
 
-// SetAccredited is a paid mutator transaction binding the contract method 0x3977efdd.
+// SetAccreditation is a paid mutator transaction binding the contract method 0x4354647e.
 //
-// Solidity: function setAccredited(bytes32 orgId, bool accredited) returns()
-func (_OrgRegistry *OrgRegistryTransactorSession) SetAccredited(orgId [32]byte, accredited bool) (*types.Transaction, error) {
-	return _OrgRegistry.Contract.SetAccredited(&_OrgRegistry.TransactOpts, orgId, accredited)
+// Solidity: function setAccreditation(bytes32 orgId, bytes32 certType, uint64 validFrom, uint64 validTo) returns()
+func (_OrgRegistry *OrgRegistryTransactorSession) SetAccreditation(orgId [32]byte, certType [32]byte, validFrom uint64, validTo uint64) (*types.Transaction, error) {
+	return _OrgRegistry.Contract.SetAccreditation(&_OrgRegistry.TransactOpts, orgId, certType, validFrom, validTo)
 }
 
 // SetSigner is a paid mutator transaction binding the contract method 0xca839c5b.
@@ -701,39 +732,49 @@ func (it *OrgRegistryIssuerAccreditedIterator) Close() error {
 
 // OrgRegistryIssuerAccredited represents a IssuerAccredited event raised by the OrgRegistry contract.
 type OrgRegistryIssuerAccredited struct {
-	OrgId      [32]byte
-	Accredited bool
-	Raw        types.Log // Blockchain specific contextual infos
+	OrgId     [32]byte
+	CertType  [32]byte
+	ValidFrom uint64
+	ValidTo   uint64
+	Raw       types.Log // Blockchain specific contextual infos
 }
 
-// FilterIssuerAccredited is a free log retrieval operation binding the contract event 0x76e907e4ffaf24eed7933e899d3ff6edb93ae4e6e77f97ab500dc89192fbf79b.
+// FilterIssuerAccredited is a free log retrieval operation binding the contract event 0xc134584a084803f245fd1d6e6f39dd2294a150d4c42922cd77c9e6b4141d98ce.
 //
-// Solidity: event IssuerAccredited(bytes32 indexed orgId, bool accredited)
-func (_OrgRegistry *OrgRegistryFilterer) FilterIssuerAccredited(opts *bind.FilterOpts, orgId [][32]byte) (*OrgRegistryIssuerAccreditedIterator, error) {
+// Solidity: event IssuerAccredited(bytes32 indexed orgId, bytes32 indexed certType, uint64 validFrom, uint64 validTo)
+func (_OrgRegistry *OrgRegistryFilterer) FilterIssuerAccredited(opts *bind.FilterOpts, orgId [][32]byte, certType [][32]byte) (*OrgRegistryIssuerAccreditedIterator, error) {
 
 	var orgIdRule []interface{}
 	for _, orgIdItem := range orgId {
 		orgIdRule = append(orgIdRule, orgIdItem)
 	}
+	var certTypeRule []interface{}
+	for _, certTypeItem := range certType {
+		certTypeRule = append(certTypeRule, certTypeItem)
+	}
 
-	logs, sub, err := _OrgRegistry.contract.FilterLogs(opts, "IssuerAccredited", orgIdRule)
+	logs, sub, err := _OrgRegistry.contract.FilterLogs(opts, "IssuerAccredited", orgIdRule, certTypeRule)
 	if err != nil {
 		return nil, err
 	}
 	return &OrgRegistryIssuerAccreditedIterator{contract: _OrgRegistry.contract, event: "IssuerAccredited", logs: logs, sub: sub}, nil
 }
 
-// WatchIssuerAccredited is a free log subscription operation binding the contract event 0x76e907e4ffaf24eed7933e899d3ff6edb93ae4e6e77f97ab500dc89192fbf79b.
+// WatchIssuerAccredited is a free log subscription operation binding the contract event 0xc134584a084803f245fd1d6e6f39dd2294a150d4c42922cd77c9e6b4141d98ce.
 //
-// Solidity: event IssuerAccredited(bytes32 indexed orgId, bool accredited)
-func (_OrgRegistry *OrgRegistryFilterer) WatchIssuerAccredited(opts *bind.WatchOpts, sink chan<- *OrgRegistryIssuerAccredited, orgId [][32]byte) (event.Subscription, error) {
+// Solidity: event IssuerAccredited(bytes32 indexed orgId, bytes32 indexed certType, uint64 validFrom, uint64 validTo)
+func (_OrgRegistry *OrgRegistryFilterer) WatchIssuerAccredited(opts *bind.WatchOpts, sink chan<- *OrgRegistryIssuerAccredited, orgId [][32]byte, certType [][32]byte) (event.Subscription, error) {
 
 	var orgIdRule []interface{}
 	for _, orgIdItem := range orgId {
 		orgIdRule = append(orgIdRule, orgIdItem)
 	}
+	var certTypeRule []interface{}
+	for _, certTypeItem := range certType {
+		certTypeRule = append(certTypeRule, certTypeItem)
+	}
 
-	logs, sub, err := _OrgRegistry.contract.WatchLogs(opts, "IssuerAccredited", orgIdRule)
+	logs, sub, err := _OrgRegistry.contract.WatchLogs(opts, "IssuerAccredited", orgIdRule, certTypeRule)
 	if err != nil {
 		return nil, err
 	}
@@ -769,9 +810,9 @@ func (_OrgRegistry *OrgRegistryFilterer) WatchIssuerAccredited(opts *bind.WatchO
 	}), nil
 }
 
-// ParseIssuerAccredited is a log parse operation binding the contract event 0x76e907e4ffaf24eed7933e899d3ff6edb93ae4e6e77f97ab500dc89192fbf79b.
+// ParseIssuerAccredited is a log parse operation binding the contract event 0xc134584a084803f245fd1d6e6f39dd2294a150d4c42922cd77c9e6b4141d98ce.
 //
-// Solidity: event IssuerAccredited(bytes32 indexed orgId, bool accredited)
+// Solidity: event IssuerAccredited(bytes32 indexed orgId, bytes32 indexed certType, uint64 validFrom, uint64 validTo)
 func (_OrgRegistry *OrgRegistryFilterer) ParseIssuerAccredited(log types.Log) (*OrgRegistryIssuerAccredited, error) {
 	event := new(OrgRegistryIssuerAccredited)
 	if err := _OrgRegistry.contract.UnpackLog(event, "IssuerAccredited", log); err != nil {

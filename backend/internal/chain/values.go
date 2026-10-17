@@ -29,6 +29,7 @@ const (
 	KindAttestationRevoke = "attestation_revoke"
 	KindFlag              = "flag"
 	KindPassportRevoke    = "passport_revoke"
+	KindPassportRetire    = "passport_retire"
 )
 
 // YieldScale writes a yield fraction as a whole number: 0.2 is 200_000.

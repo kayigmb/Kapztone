@@ -12,6 +12,7 @@ contract AttestationRegistry is Managed {
     struct Attestation {
         bytes32 issuerOrg;
         bytes32 subject; // passport or facility id
+        bytes32 certType; // keccak256 of the template evidence key
         bytes32 docHash;
         uint64 validFrom;
         uint64 validTo;
@@ -21,12 +22,18 @@ contract AttestationRegistry is Managed {
     mapping(bytes32 attestationId => Attestation) private _attestations;
 
     event AttestationIssued(
-        bytes32 indexed attestationId, bytes32 indexed issuerOrg, bytes32 indexed subject, bytes32 docHash, uint64 validFrom, uint64 validTo
+        bytes32 indexed attestationId,
+        bytes32 indexed issuerOrg,
+        bytes32 indexed subject,
+        bytes32 certType,
+        bytes32 docHash,
+        uint64 validFrom,
+        uint64 validTo
     );
     event Revoked(bytes32 indexed attestationId);
 
     error ZeroValue();
-    error NotAccredited(bytes32 orgId);
+    error NotAccredited(bytes32 orgId, bytes32 certType);
     error AttestationExists(bytes32 attestationId);
     error AttestationUnknown(bytes32 attestationId);
     error BadValidity(uint64 validFrom, uint64 validTo);
@@ -34,17 +41,24 @@ contract AttestationRegistry is Managed {
 
     constructor(OrgRegistry orgs_) Managed(orgs_) {}
 
-    function issue(bytes32 attestationId, bytes32 issuerOrg, bytes32 subject, bytes32 docHash, uint64 validFrom, uint64 validTo)
-        external
-        onlyRelayer
-    {
-        if (attestationId == bytes32(0) || subject == bytes32(0) || docHash == bytes32(0)) revert ZeroValue();
+    function issue(
+        bytes32 attestationId,
+        bytes32 issuerOrg,
+        bytes32 subject,
+        bytes32 certType,
+        bytes32 docHash,
+        uint64 validFrom,
+        uint64 validTo
+    ) external onlyRelayer {
+        if (attestationId == bytes32(0) || subject == bytes32(0) || certType == bytes32(0) || docHash == bytes32(0)) {
+            revert ZeroValue();
+        }
         if (_attestations[attestationId].issuerOrg != bytes32(0)) revert AttestationExists(attestationId);
-        if (!orgs.isAccredited(issuerOrg)) revert NotAccredited(issuerOrg);
+        if (!orgs.isAccredited(issuerOrg, certType)) revert NotAccredited(issuerOrg, certType);
         if (validTo <= validFrom) revert BadValidity(validFrom, validTo);
 
-        _attestations[attestationId] = Attestation(issuerOrg, subject, docHash, validFrom, validTo, false);
-        emit AttestationIssued(attestationId, issuerOrg, subject, docHash, validFrom, validTo);
+        _attestations[attestationId] = Attestation(issuerOrg, subject, certType, docHash, validFrom, validTo, false);
+        emit AttestationIssued(attestationId, issuerOrg, subject, certType, docHash, validFrom, validTo);
     }
 
     /// @notice Revocation is permanent.

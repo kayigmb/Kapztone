@@ -1,8 +1,9 @@
 // Turns the API's answer to GET /verify/{id} into what the public
-// verification page shows. All of that page's copy lives in this file, so a
-// second language is a translation of this file and not a rewrite of the page.
+// verification page shows. The page's copy lives in lib/consts.ts.
 //
 // Pure: no imports with side effects, so `node --test lib/verification.test.ts` can run it.
+
+import { copy } from "./consts.ts";
 
 export type Verdict = "verified" | "warning" | "failed";
 export type CertificateState = "valid" | "expiring" | "expired" | "revoked";
@@ -101,86 +102,9 @@ export type View = {
   technical: { label: string; value: string | null }[];
 };
 
-// ---- Copy ----
-
-export const copy = {
-  kicker: "Product passport check",
-  verdict: { verified: "Verified", warning: "Warning", failed: "Failed" } as Record<Verdict, string>,
-  alert: {
-    lead: "Do not accept, pay for or ship this lot.",
-    rest: "One or more of its records failed verification. The reasons are listed below.",
-  },
-  sections: {
-    origin: "Origin",
-    journey: "Journey",
-    madeFrom: "Made from",
-    certificates: "Certificates",
-    checks: "What we checked",
-    technical: "Technical details",
-  },
-  technicalIntro:
-    "When a record is signed, its fingerprint is sealed on a public ledger (a blockchain), where it cannot be changed. We compare each record with its sealed fingerprint every time this page is opened.",
-  noCertificates: "No certificates are attached to this lot or its origin.",
-  notSealed: "Not sealed yet",
-  signedByBoth: "Signed by both parties",
-  originMark: "Origin",
-  revoked: "Revoked",
-  footer: "ChainTrack product passport · The page reflects records sealed up to the time of your scan.",
-  certificate: {
-    valid: "Valid",
-    expiring: "Expiring soon",
-    expired: "Expired",
-    revoked: "Revoked",
-  } as Record<CertificateState, string>,
-  result: { verified: "Passed", warning: "Warning", failed: "Failed" } as Record<Verdict, string>,
-};
-
-// The seven checks, as the API names them: the rule shown, and what a pass means.
-const checks: Record<string, { label: string; pass: string; reason: string }> = {
-  record_intact: {
-    label: "Records unchanged since signing",
-    pass: "Every passport in this lot's history reads exactly as it did when it was signed.",
-    reason: "Records unchanged since signing",
-  },
-  anchored: {
-    label: "Records match their sealed copies",
-    pass: "Each record, its holder and its quantity match the copy sealed when it was signed.",
-    reason: "Records match their sealed copies",
-  },
-  origin: {
-    label: "Origin is registered and licensed",
-    pass: "Every branch of this lot's history ends at a registered facility owned by a verified organisation.",
-    reason: "Origin facility verified",
-  },
-  capacity: {
-    label: "Within declared capacity",
-    pass: "No more was issued from the origin than its declared capacity for the period.",
-    reason: "Origin within declared capacity",
-  },
-  mass_balance: {
-    label: "Quantities balance",
-    pass: "At every processing step, what came out is no more than the inputs could yield.",
-    reason: "Quantities balance at every step",
-  },
-  certificates: {
-    label: "Certificates valid",
-    pass: "Every certificate is in date, unrevoked, from an accredited issuer, and unchanged since it was issued.",
-    reason: "Certificates valid",
-  },
-  status: {
-    label: "No open concerns or revocations",
-    pass: "Nothing in this lot's history has been revoked or is being looked into.",
-    reason: "No open concerns",
-  },
-};
-
-const eventTitles: Record<string, string> = {
-  ISSUE: "Issued at origin",
-  HANDOVER: "Handed over",
-  TRANSFORM: "Processed",
-  FLAG: "Concern raised",
-  REVOKE: "Revoked",
-};
+const t = copy.verification;
+const checks = t.checks;
+const eventTitles = t.eventTitles;
 
 // ---- Formatting (content.md → Formatting) ----
 
@@ -210,8 +134,6 @@ export function humanize(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 const expiringWithinDays = 30;
 
 function certificateState(c: ApiCertificate, now: Date): CertificateState {
@@ -238,20 +160,20 @@ function topReasons(api: ApiVerification): View["reasons"] {
 
 function summary(api: ApiVerification, product: string): string {
   const places = api.origins.map((o) => o.facility.name).join(" and ");
-  const from = places ? `This ${product.toLowerCase()} comes from ${places}.` : "";
+  const from = places ? t.summary.from(product.toLowerCase(), places) : "";
   switch (api.verdict) {
     case "verified":
-      return `${from} Every record in its history matches the copy sealed when it was signed, and nothing has changed since.`.trim();
+      return `${from} ${t.summary.verified}`.trim();
     case "warning":
-      return `${from} Its records are intact, but ${plural(api.reasons.length, "point needs", "points need")} attention. Read them before you rely on this passport.`.trim();
+      return `${from} ${t.summary.warning(t.summary.pointsNeed(api.reasons.length))}`.trim();
     case "failed":
-      return "This passport failed verification. Do not rely on it until the points below are resolved.";
+      return t.summary.failed;
   }
 }
 
 export function toView(api: ApiVerification, now: Date = new Date()): View {
   const names = new Map(api.organisations.map((o) => [o.id, o.name]));
-  const name = (id: string | null | undefined) => (id ? (names.get(id) ?? "Unknown organisation") : undefined);
+  const name = (id: string | null | undefined) => (id ? (names.get(id) ?? t.unknownOrg) : undefined);
   const p = api.passport;
   const product = humanize(p.commodity);
   const events = p.events ?? [];
@@ -277,22 +199,22 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     summary: summary(api, product),
     reasons: topReasons(api),
     meta: [
-      `Checked ${formatDateTime(now)}`,
-      plural(api.genealogy.nodes.length + api.certificates.length, "record", "records"),
-      plural(api.organisations.length, "organisation", "organisations"),
+      t.meta.checked(formatDateTime(now)),
+      t.meta.records(api.genealogy.nodes.length + api.certificates.length),
+      t.meta.organisations(api.organisations.length),
     ].join(" · "),
     product: {
       name: product,
       lotCode: p.id,
       origin: p.facility_id !== null,
       facts: [
-        { label: "Commodity", value: product },
-        { label: "Quantity", value: formatQuantity(p.quantity, p.unit), mono: true },
-        { label: "Current holder", value: name(p.organisation_id) ?? "", wide: true },
-        { label: "Status", value: humanize(p.status) },
-        { label: "Last updated", value: formatDate(events.at(-1)?.created_at ?? p.created_at) },
+        { label: t.facts.commodity, value: product },
+        { label: t.facts.quantity, value: formatQuantity(p.quantity, p.unit), mono: true },
+        { label: t.facts.holder, value: name(p.organisation_id) ?? "", wide: true },
+        { label: t.facts.status, value: humanize(p.status) },
+        { label: t.facts.updated, value: formatDate(events.at(-1)?.created_at ?? p.created_at) },
       ],
-      issued: `Passport issued ${formatDate(p.created_at)}`,
+      issued: t.issued(formatDate(p.created_at)),
     },
     origins: api.origins.map((o) => ({
       id: o.facility.id,
@@ -321,9 +243,9 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
         validTo: formatDate(c.valid_to),
         note:
           state === "revoked"
-            ? `Revoked by its issuer${c.revoke_reason ? `: ${c.revoke_reason}` : "."} Ask the holder for a replacement.`
+            ? t.certificateNote.revoked(c.revoke_reason)
             : state === "expired"
-              ? `Expired ${formatDate(c.valid_to)}. Ask the holder for a current one before you rely on it.`
+              ? t.certificateNote.expired(formatDate(c.valid_to))
               : undefined,
       };
     }),
@@ -334,13 +256,13 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
       explanation: explain(c.name),
     })),
     technical: [
-      { label: "Passport record · fingerprint", value: p.data_hash },
-      { label: "Passport record · sealed in transaction", value: p.tx_hash },
+      { label: t.technical.fingerprint, value: p.data_hash },
+      { label: t.technical.sealedIn, value: p.tx_hash },
       ...events.map((e) => ({
-        label: `${eventTitles[e.kind] ?? e.kind} · ${formatDate(e.created_at)} · sealed in transaction`,
+        label: t.technical.eventSealed(eventTitles[e.kind] ?? e.kind, formatDate(e.created_at)),
         value: e.tx_hash,
       })),
-      ...api.certificates.map((c) => ({ label: `${humanize(c.type)} · fingerprint`, value: c.doc_hash })),
+      ...api.certificates.map((c) => ({ label: t.technical.certificateFingerprint(humanize(c.type)), value: c.doc_hash })),
     ],
   };
 }

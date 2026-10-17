@@ -1,5 +1,7 @@
 # Content and copy
 
+All copy lives in `frontend/lib/consts.ts` (`copy`). Write it there, following this file.
+
 ## Voice
 
 Calm, precise, plain. Like a good customs officer or bank: says exactly what happened and what to do next, without drama.

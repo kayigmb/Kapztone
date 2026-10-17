@@ -26,6 +26,8 @@ var (
 	RegisterRate = Rate{Name: "register", Max: 10, Window: time.Hour}
 	// VerifyRate counts public verifications per address: each one reads the chain.
 	VerifyRate = Rate{Name: "verify", Max: 60, Window: time.Minute}
+	// PINRate counts wrong signing PINs per user; a 6-digit PIN must not be guessable.
+	PINRate = Rate{Name: "pin", Max: 5, Window: 15 * time.Minute}
 )
 
 // Limiter counts events in the cache. If the cache is unreachable it allows
@@ -38,11 +40,20 @@ func (rt Rate) key(parts ...string) string {
 	return cacheRatePrefix + rt.Name + ":" + strings.Join(parts, ":")
 }
 
-// clientIP is the address the request came from.
-// ponytail: uses the direct peer address. Behind a reverse proxy every user
-// shares the proxy's address; when nginx is added, take the address from its
-// forwarded header (and only from that proxy).
+// clientIP is the address the request came from. Through the web app it is
+// the last X-Forwarded-For entry, which the web app sets to its visitor's
+// address. The header is trusted because the API is never public: only the
+// web app can reach it (see docs/operations.md). Called directly, it is the
+// peer address.
+// ponytail: last entry only; with nginx in front of the web app, the web app
+// must pass on nginx's visitor address instead of its own peer.
 func clientIP(r *http.Request) string {
+	if xff := r.Header.Get(HeaderForwardedFor); xff != "" {
+		parts := strings.Split(xff, ",")
+		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+			return ip
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

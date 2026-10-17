@@ -73,7 +73,7 @@ func Bind(a Addresses, backend bind.ContractBackend) (Contracts, error) {
 type Relayer struct {
 	Pool      *pgxpool.Pool
 	Backend   Backend
-	Signer    *bind.TransactOpts // the platform key: pays for and sends every transaction
+	Signer    *bind.TransactOpts // the relayer key (relayer + operator): pays for and sends every transaction
 	Contracts Contracts
 	// NotBefore, when set, makes the relayer ignore items queued earlier.
 	// Tests use it so a test chain never processes someone else's items.
@@ -268,7 +268,7 @@ func (r *Relayer) send(opts *bind.TransactOpts, it item) (*types.Transaction, er
 		if err := decode(&p); err != nil {
 			return nil, errRefused{err.Error()}
 		}
-		return c.Orgs.SetAccredited(opts, MustID(p.OrgID), p.Accredited)
+		return c.Orgs.SetAccreditation(opts, MustID(p.OrgID), Key(p.Type), uint64(p.ValidFrom), uint64(p.ValidTo))
 
 	case KindTransform:
 		var p Transform
@@ -303,7 +303,7 @@ func (r *Relayer) send(opts *bind.TransactOpts, it item) (*types.Transaction, er
 			return nil, errRefused{err.Error()}
 		}
 		return c.Attestations.Issue(opts, MustID(p.AttestationID), MustID(p.IssuerOrg), MustID(p.SubjectID),
-			hash, uint64(p.ValidFrom), uint64(p.ValidTo))
+			Key(p.Type), hash, uint64(p.ValidFrom), uint64(p.ValidTo))
 
 	case KindAttestationRevoke:
 		var p AttestationRevoke
@@ -325,6 +325,13 @@ func (r *Relayer) send(opts *bind.TransactOpts, it item) (*types.Transaction, er
 			return c.Passports.Flag(opts, MustID(p.PassportID), hash)
 		}
 		return c.Passports.Revoke(opts, MustID(p.PassportID), hash)
+
+	case KindPassportRetire:
+		var p PassportRetire
+		if err := decode(&p); err != nil {
+			return nil, errRefused{err.Error()}
+		}
+		return c.Passports.Retire(opts, MustID(p.PassportID))
 	}
 	return nil, errRefused{"unknown kind " + it.Kind}
 }
@@ -346,12 +353,15 @@ var anchored = map[string][]string{
 	// A transform also anchors the passports it created.
 	KindTransform: {anchorRow("transforms"), anchorEvents,
 		`UPDATE passports SET tx_hash = $2, anchored_at = now() WHERE transform_id = $1::uuid`},
+	KindOrgAccredited:     {anchorRow("accreditations")},
 	KindAttestationIssue:  {anchorRow("attestations")},
 	KindAttestationRevoke: {`UPDATE attestations SET revoke_tx_hash = $2 WHERE id = $1::uuid`},
 	KindFlag:              {anchorRow("flags"), anchorEvents},
 	// The subject of a revocation is its REVOKE journey event, so the
 	// passport keeps the hash of the transaction that created it.
 	KindPassportRevoke: {`UPDATE trace_events SET tx_hash = $2 WHERE id = $1::uuid`},
+	// Likewise the subject of a retirement is its RETIRE journey event.
+	KindPassportRetire: {`UPDATE trace_events SET tx_hash = $2 WHERE id = $1::uuid`},
 }
 
 // confirm records that the item is on-chain and writes the transaction hash

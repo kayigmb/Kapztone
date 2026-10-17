@@ -17,6 +17,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
+	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 )
 
@@ -219,6 +220,28 @@ type Handlers struct {
 	Store Store
 	// Passports answers whether the caller may see the passport they flag.
 	Passports passport.Store
+	// Auth checks the signing PIN on resolution.
+	Auth *auth.Auth
+}
+
+// investigator reports whether the caller looks into flags for the whole
+// platform: the superadmin (flag:resolve), or anyone acting for a verified
+// regulator. For flags only, they are not limited to their own organisation.
+func investigator(r *http.Request) bool {
+	s := auth.CurrentScope(r.Context())
+	if slices.Contains(s.Permissions, auth.FlagResolve) {
+		return true
+	}
+	o := s.Organisation
+	return o != nil && o.Kind == org.KindRegulator && o.Status == auth.OrgVerified
+}
+
+// gate is auth.Gate, widened to every organisation for an investigator.
+func gate(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if investigator(r) {
+		return "", true
+	}
+	return auth.Gate(w, r)
 }
 
 func respond(w http.ResponseWriter, status int, what string, v any, err error) {
@@ -264,7 +287,7 @@ func (h *Handlers) Raise(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
-	gate, ok := auth.Gate(w, r)
+	gate, ok := gate(w, r)
 	if !ok {
 		return
 	}
@@ -282,7 +305,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	gate, ok := auth.Gate(w, r)
+	gate, ok := gate(w, r)
 	if !ok {
 		return
 	}
@@ -294,8 +317,12 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, "get flag", f, err)
 }
 
-// Resolve clears or confirms a flag. The route's permission decides who may.
+// Resolve clears or confirms a flag: an investigator only, with their signing PIN.
 func (h *Handlers) Resolve(w http.ResponseWriter, r *http.Request) {
+	if !investigator(r) {
+		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
+		return
+	}
 	id, ok := httpx.URLID(w, r)
 	if !ok {
 		return
@@ -306,6 +333,9 @@ func (h *Handlers) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := in.Validate(); msg != "" {
 		httpx.Error(w, http.StatusBadRequest, msg)
+		return
+	}
+	if !h.Auth.CheckPIN(w, r) {
 		return
 	}
 	f, err := h.Store.Resolve(r.Context(), id, auth.CurrentUser(r.Context()).ID, in)

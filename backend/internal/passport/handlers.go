@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -13,6 +15,9 @@ import (
 
 type Handlers struct {
 	Store Store
+	// PIN checks the signing PIN of every signing action (auth.Auth.CheckPIN),
+	// writing the refusal itself.
+	PIN func(http.ResponseWriter, *http.Request) bool
 	// Now is the clock; nil means time.Now (tests set it).
 	Now func() time.Time
 }
@@ -44,6 +49,7 @@ var errorStatus = map[error]struct {
 	ErrInputNotHeld:      {http.StatusBadRequest, MsgInputNotHeld},
 	ErrMixedInputs:       {http.StatusBadRequest, MsgMixedInputs},
 	ErrStageInvalid:      {http.StatusBadRequest, MsgStageInvalid},
+	ErrHandoverStage:     {http.StatusBadRequest, MsgHandoverStage},
 	// Not holding a passport looks the same as the passport not existing.
 	ErrNotHolder: {http.StatusNotFound, httpx.MsgNotFound},
 }
@@ -59,8 +65,9 @@ func respond(w http.ResponseWriter, status int, what string, v any, err error) {
 		capacity     CapacityError
 		insufficient InsufficientError
 		yield        YieldError
+		evidence     EvidenceError
 	)
-	if errors.As(err, &capacity) || errors.As(err, &insufficient) || errors.As(err, &yield) {
+	if errors.As(err, &capacity) || errors.As(err, &insufficient) || errors.As(err, &yield) || errors.As(err, &evidence) {
 		httpx.Error(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -84,9 +91,17 @@ func acting(w http.ResponseWriter, r *http.Request) (orgID, userID string, ok bo
 	return o.ID, auth.CurrentUser(r.Context()).ID, true
 }
 
+// signer is acting for a signing action: it also checks the signing PIN.
+func (h *Handlers) signer(w http.ResponseWriter, r *http.Request) (orgID, userID string, ok bool) {
+	if orgID, userID, ok = acting(w, r); ok {
+		ok = h.PIN(w, r)
+	}
+	return orgID, userID, ok
+}
+
 // Issue creates an origin passport for the acting organisation.
 func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
-	orgID, userID, ok := acting(w, r)
+	orgID, userID, ok := h.signer(w, r)
 	if !ok {
 		return
 	}
@@ -138,18 +153,39 @@ func target(w http.ResponseWriter, r *http.Request) (id, gate string, ok bool) {
 	return id, gate, ok
 }
 
+// Get takes the passport's id or its lot code.
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	id, gate, ok := target(w, r)
+	gate, ok := auth.Gate(w, r)
 	if !ok {
+		return
+	}
+	id, err := h.Store.Resolve(r.Context(), chi.URLParam(r, httpx.ParamID))
+	if err != nil {
+		respond(w, http.StatusOK, "find passport", nil, err)
 		return
 	}
 	p, err := h.Store.Get(r.Context(), id, gate)
 	respond(w, http.StatusOK, "get passport", p, err)
 }
 
+// Retire closes a passport the acting organisation holds: the lot reached
+// its final buyer.
+func (h *Handlers) Retire(w http.ResponseWriter, r *http.Request) {
+	orgID, _, ok := h.signer(w, r)
+	if !ok {
+		return
+	}
+	id, ok := httpx.URLID(w, r)
+	if !ok {
+		return
+	}
+	p, err := h.Store.Retire(r.Context(), id, orgID)
+	respond(w, http.StatusOK, "retire passport", p, err)
+}
+
 // StartHandover is the sender's half of a handover.
 func (h *Handlers) StartHandover(w http.ResponseWriter, r *http.Request) {
-	orgID, userID, ok := acting(w, r)
+	orgID, userID, ok := h.signer(w, r)
 	if !ok {
 		return
 	}
@@ -195,11 +231,15 @@ func (h *Handlers) GetHandover(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, "get handover", out, err)
 }
 
-// answer runs one of the three ways an awaiting handover ends.
-func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, what string,
+// answer runs one of the three ways an awaiting handover ends. Accepting and
+// rejecting are signed by the receiver; cancelling is not a signature.
+func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, what string, signed bool,
 	do func(id, orgID, userID string) (Handover, error)) {
 
 	orgID, userID, ok := acting(w, r)
+	if ok && signed {
+		ok = h.PIN(w, r)
+	}
 	if !ok {
 		return
 	}
@@ -213,7 +253,7 @@ func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, what string,
 
 // Accept is the receiver's half: it signs, and the passport changes holder.
 func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
-	h.answer(w, r, "accept handover", func(id, orgID, userID string) (Handover, error) {
+	h.answer(w, r, "accept handover", true, func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Accept(r.Context(), id, orgID, userID)
 	})
 }
@@ -228,21 +268,21 @@ func (h *Handlers) Reject(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	h.answer(w, r, "reject handover", func(id, orgID, userID string) (Handover, error) {
+	h.answer(w, r, "reject handover", true, func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Reject(r.Context(), id, orgID, userID, in.Reason)
 	})
 }
 
 // Cancel is the sender withdrawing a handover nobody has answered yet.
 func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
-	h.answer(w, r, "cancel handover", func(id, orgID, userID string) (Handover, error) {
+	h.answer(w, r, "cancel handover", false, func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Cancel(r.Context(), id, orgID, userID)
 	})
 }
 
 // Transform processes, splits or merges passports the acting organisation holds.
 func (h *Handlers) Transform(w http.ResponseWriter, r *http.Request) {
-	orgID, userID, ok := acting(w, r)
+	orgID, userID, ok := h.signer(w, r)
 	if !ok {
 		return
 	}
@@ -254,7 +294,7 @@ func (h *Handlers) Transform(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	t, err := h.Store.Transform(r.Context(), orgID, userID, in)
+	t, err := h.Store.Transform(r.Context(), orgID, userID, in, h.now())
 	respond(w, http.StatusCreated, "transform", t, err)
 }
 

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +52,6 @@ func TestPublicVerification(t *testing.T) {
 	certifier := e.verifiedOrg(tStaff, org.KindCertifier, root)
 	prodTok, procTok, certTok := e.login(tAcme), e.login(tRival), e.login(tStaff)
 	prodSlug, procSlug, certSlug := e.slug(tAcme), e.slug(tRival), e.slug(tStaff)
-	want(t, "accredit", post(e, root, "/orgs/"+certifier.ID+"/accredit", org.Accreditation{Accredited: true}), http.StatusOK)
 
 	var lotID string // the passport the tampering checks verify
 	// check verifies a passport with no sign-in and holds the answer to a verdict.
@@ -91,11 +89,13 @@ func TestPublicVerification(t *testing.T) {
 	rec := post(e, prodTok, as(prodSlug, "/facilities"), facilityInput(plotGeo))
 	want(t, "create facility", rec, http.StatusCreated)
 	plot := decodeTo[facility.Facility](t, rec)
-	tplIn := coffeeTemplate("coffee_" + e.suffix)
+	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
 	rec = post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
+	// Certificates below are export permits, evidence the template asks for.
+	want(t, "accredit", accredit(e, root, "/orgs/"+certifier.ID+"/accreditations", grant("export_permit")), http.StatusOK)
 
 	const qty = 500_000
 	rec = post(e, prodTok, as(prodSlug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: qty})
@@ -107,7 +107,7 @@ func TestPublicVerification(t *testing.T) {
 
 	handOver := func(id, fromTok, fromSlug, to, toTok, toSlug string) {
 		t.Helper()
-		rec := post(e, fromTok, as(fromSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: to})
+		rec := post(e, fromTok, as(fromSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Stage: stageWashing})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
 		want(t, "accept handover", post(e, toTok, as(toSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
@@ -178,24 +178,27 @@ func TestPublicVerification(t *testing.T) {
 	// ---- Certificates: the file is re-hashed, so an altered file is caught.
 	var storageKey string
 	e.pool.QueryRow(ctx, `SELECT storage_key FROM attestations WHERE id = $1::uuid`, cert.ID).Scan(&storageKey)
-	certFile := filepath.Join(e.certificates.UploadDir, storageKey)
-	if err := os.WriteFile(certFile, append([]byte("%PDF-1.4 forged "), pdfBytes...), 0o600); err != nil {
+	files := e.certificates.Files
+	if err := files.Put(ctx, storageKey, append([]byte("%PDF-1.4 forged "), pdfBytes...)); err != nil {
 		t.Fatal(err)
 	}
 	check("certificate file altered", lot.ID, verify.Failed, verify.CertificateAltered)
-	os.Remove(certFile)
+	files.Remove(ctx, storageKey)
 	check("certificate file missing", lot.ID, verify.Warning, verify.CertificateFileGone)
-	if err := os.WriteFile(certFile, pdfBytes, 0o600); err != nil {
+	if err := files.Put(ctx, storageKey, pdfBytes); err != nil {
 		t.Fatal(err)
 	}
 	tamper("certificate fingerprint changed", verify.Failed, verify.CertificateAltered,
 		q(`UPDATE attestations SET doc_hash = '0x' || repeat('ab', 32) WHERE id = $1::uuid`, cert.ID),
 		q(`UPDATE attestations SET doc_hash = $2 WHERE id = $1::uuid`, cert.ID, cert.DocHash))
+	tamper("certificate type changed", verify.Failed, verify.CertificateAltered,
+		q(`UPDATE attestations SET type = 'organic_certificate' WHERE id = $1::uuid`, cert.ID),
+		q(`UPDATE attestations SET type = $2 WHERE id = $1::uuid`, cert.ID, cert.Type))
 	tamper("certificate expired", verify.Warning, verify.CertificateExpired,
 		q(`UPDATE attestations SET valid_to = now() - interval '1 day' WHERE id = $1::uuid`, cert.ID),
 		q(`UPDATE attestations SET valid_to = $2 WHERE id = $1::uuid`, cert.ID, cert.ValidTo))
 
-	want(t, "withdraw accreditation", post(e, root, "/orgs/"+certifier.ID+"/accredit", org.Accreditation{}), http.StatusOK)
+	want(t, "withdraw accreditation", accredit(e, root, "/orgs/"+certifier.ID+"/accreditations"), http.StatusOK)
 	c.drain()
 	check("issuer no longer accredited", lot.ID, verify.Warning, verify.IssuerNotAccredited)
 	want(t, "revoke certificate", post(e, certTok, as(certSlug, "/attestations/"+cert.ID+"/revoke"), attestation.RevokeInput{Reason: "Issued in error"}), http.StatusOK)

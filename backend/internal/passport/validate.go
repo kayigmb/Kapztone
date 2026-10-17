@@ -30,14 +30,18 @@ func (in IssueInput) Validate() string {
 // HandoverInput is what the holder submits to hand a passport over.
 type HandoverInput struct {
 	ToOrganisationID string `json:"to_organisation_id"`
-	Note             string `json:"note"` // where and how the goods were handed over
+	// Stage is the template stage the lot enters with the receiver.
+	Stage string `json:"stage"`
+	Note  string `json:"note"` // where and how the goods were handed over
 }
 
 func (in *HandoverInput) Validate() string {
-	in.Note = strings.TrimSpace(in.Note)
+	in.Note, in.Stage = strings.TrimSpace(in.Note), strings.TrimSpace(in.Stage)
 	switch {
 	case !httpx.IsUUID(in.ToOrganisationID):
 		return "to_organisation_id is required"
+	case in.Stage == "":
+		return "stage is required"
 	case len(in.Note) > MaxNoteLen:
 		return fmt.Sprintf("note may be up to %d characters", MaxNoteLen)
 	}

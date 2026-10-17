@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
+	"github.com/kayigmb/chaintrack/backend/internal/audit"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/cache"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
@@ -25,6 +26,8 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
+	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
@@ -36,12 +39,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := os.MkdirAll(cfg.UploadDir, 0o700); err != nil {
-		log.Fatalf("upload directory: %v", err)
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Uploaded files live in a bucket. In development a missing one is created.
+	files, err := upload.New(ctx, cfg.Storage, cfg.Dev)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// The pool connects lazily, so the API starts even if the database is briefly down.
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -86,21 +92,20 @@ func main() {
 	}
 	o := &org.Handlers{
 		Store:         org.Store{Pool: pool},
-		UploadDir:     cfg.UploadDir,
+		Files:         files,
 		InvalidateOrg: store.InvalidateOrg,
 		Secrets:       cfg.Secrets,
 	}
 
 	passports := passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}
-	certificates := &attestation.Handlers{Store: attestation.Store{Pool: pool}, UploadDir: cfg.UploadDir}
+	certificates := &attestation.Handlers{Store: attestation.Store{Pool: pool}, Files: files, PIN: a.CheckPIN}
 	if cfg.PinataJWT != "" {
 		certificates.Pin = attestation.Pinata{JWT: cfg.PinataJWT, URL: attestation.PinataURL}.Pin
 	}
-	if cfg.SMTPURL != "" {
-		mailer, err := notify.NewMailer(pool, cfg.SMTPURL)
-		if err != nil {
-			log.Fatalf("mail config: %v", err)
-		}
+	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, Dev: cfg.Dev}
+	if cfg.SMTP != nil {
+		mailer := notify.NewMailer(pool, *cfg.SMTP)
+		users.Mail = mailer.SendOne
 		go mailer.Run(ctx)
 	}
 
@@ -124,12 +129,14 @@ func main() {
 			Org:         o,
 			Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
 			Template:    &template.Handlers{Store: template.Store{Pool: pool}},
-			Passport:    &passport.Handlers{Store: passports},
+			Passport:    &passport.Handlers{Store: passports, PIN: a.CheckPIN},
 			Attestation: certificates,
-			Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passports},
+			Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passports, Auth: a},
+			User:        users,
 			Notify:      &notify.Handlers{Pool: pool},
 			Verify: &verify.Handlers{Pool: pool, Passports: passports, Certificates: certificates.Store,
-				Contracts: contracts, UploadDir: cfg.UploadDir, Cache: c},
+				Contracts: contracts, Files: files, Cache: c},
+			Audit: &audit.Handlers{Store: audit.Store{Pool: pool}},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

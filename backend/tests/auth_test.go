@@ -276,9 +276,10 @@ func TestEveryRouteIsGated(t *testing.T) {
 	token, _ := a.IssueToken(fakeUserID, time.Now())
 	h := fakeRouter(a)
 
-	public := []string{"GET /healthz", "POST /auth/login", "POST /orgs", "GET /verify/{id}", "POST /auth/logout"}
+	public := []string{"GET /healthz", "POST /auth/login", "POST /orgs", "GET /verify/{id}", "POST /auth/logout",
+		"POST /invites/{token}/accept"}
 	signedIn := []string{"GET /me", "POST /auth/2fa/setup", "POST /auth/2fa/enable", "POST /auth/2fa/disable",
-		"GET /notifications", "POST /notifications/{id}/read"}
+		"POST /auth/2fa/recovery", "POST /auth/pin", "GET /notifications", "POST /notifications/{id}/read"}
 	idInPath := regexp.MustCompile(`\{[^}]+\}`)
 
 	for _, rt := range server.Routes(deps(noPing, a)) {

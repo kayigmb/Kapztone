@@ -30,7 +30,7 @@ A commodity-agnostic **digital product passport** for business shipments:
 | Cache        | Redis 7 (access lookups now; public verification results later)                          |
 | Blockchain   | Solidity, OpenZeppelin, Hardhat, Polygon Amoy testnet                                    |
 | Chain client | go-ethereum (abigen bindings, EIP-712 signing, relayer)                                  |
-| Files        | IPFS via Pinata                                                                          |
+| Files        | Private S3-compatible bucket (AWS S3 or GCS; RustFS in dev) + optional IPFS via Pinata   |
 | Infra        | Docker Compose, Nginx, Linux VPS, GitHub Actions                                         |
 | Testing      | Go test + testify, Hardhat (Mocha/Chai), Slither, Playwright, k6                         |
 
@@ -157,11 +157,11 @@ Every provenance row stores `data_hash` (SHA-256 of a canonical JSON form) and `
 
 | Contract              | Responsibilities                           | Key rules                                                                                                       |
 | --------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `OrgRegistry`         | Verified orgs, roles, accredited issuers   | Only admin can verify/accredit                                                                                  |
+| `OrgRegistry`         | Verified orgs, roles, accreditation per certificate type with validity window | Only admin can verify/accredit                                                                                  |
 | `FacilityRegistry`    | Facility hash, capacity per period, status | Track `originatedInPeriod`; suspended facilities cannot originate                                               |
 | `PassportRegistry`    | `issue`, `transform`, `retire`, `revoke`   | Capacity cap at issue; `sum(outputs) ≤ sum(inputsUsed) × maxYield`; consumed/revoked passports cannot be reused |
 | `CustodyManager`      | `recordHandover`, `recordEvent`            | Sender must be current holder; **both EIP-712 signatures** must verify; nonces prevent replay                   |
-| `AttestationRegistry` | `issue`, `revoke`                          | Only accredited issuers; revocation is permanent                                                                |
+| `AttestationRegistry` | `issue`, `revoke`                          | Only issuers accredited for that certificate type, inside the window; revocation is permanent                                                                |
 
 Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIssued`, `Flagged`, `Revoked`. Only IDs, hashes, addresses, quantities and status go on-chain, never personal or price data. Quantities are stored as integers in the template's smallest unit (e.g., grams) to avoid decimals.
 
@@ -174,9 +174,9 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 
 **Handover flow as built.** The sender (current holder) creates the handover; the API signs the typed message with the sender organisation's key and the handover is `awaiting_receiver`, holder unchanged. The receiver accepts: the API signs the same message with the receiver's key, the passport changes holder at once and the chain transaction is queued in the same database transaction. The receiver may instead reject (with a reason), the sender may cancel, and an unanswered handover expires after 7 days; in all three the holder does not change. The relayer later writes `tx_hash` and `anchored_at`.
 
-**Provenance as built (Sprint 3).** No template versions: a template's commodity and unit freeze once passports use it, yields may change, and every transform stores the yield it was judged by. A transform at a stage with `maxYield` 1 is a split or merge. Confirming a flag revokes the passport and all its descendants, including a descendant only partly made from it. Certificates keep their file on the server and their SHA-256 on-chain; pinning to IPFS (public) and e-mail are switched on in `.env`. Not built yet: required evidence per stage (handovers carry no stage), `retire`, audit log, a regulator role for resolving flags.
+**Provenance as built (Sprint 3).** No template versions: a template's commodity and unit freeze once passports use it, yields may change, and every transform stores the yield it was judged by. A transform at a stage with `maxYield` 1 is a split or merge. Confirming a flag revokes the passport and all its descendants, including a descendant only partly made from it. Certificates keep their file on the server and their SHA-256 on-chain; pinning to IPFS (public) and e-mail are switched on in `.env`. Since built: required evidence per stage (handovers name their stage), `retire`, audit log, regulator organisations resolving flags, readable lot codes, a signing PIN per action.
 
-**One platform key.** `CHAIN_PLATFORM_KEY` currently holds both the admin and the relayer role on-chain. Split them (admin key offline) before any deployment that matters.
+**Keys.** `CHAIN_ADMIN_KEY` deploys and holds `DEFAULT_ADMIN_ROLE`, which only grants roles; keep it offline after deploying. `CHAIN_RELAYER_KEY` holds the relayer and operator roles: it sends every transaction, including the six routine admin calls (verify, signer, accreditation, yield, suspend, revoke).
 
 ### 4.5 Rules engine (Go, before anything is written)
 
@@ -216,14 +216,18 @@ GET    /passports/{id}/genealogy?direction=ancestors|descendants
 POST   /passports/{id}/handovers       GET  /handovers       GET /handovers/{id}
 POST   /handovers/{id}/accept | /reject | /cancel
 POST   /transforms                     (process, split or merge: inputs, outputs, stage)
-POST   /orgs/{id}/accredit
+GET/PUT /orgs/{id}/accreditations     (per certificate type: [{type, valid_from, valid_to}], full set)
 POST   /attestations (multipart)       GET  /attestations?subject_id=&status=    GET /attestations/{id}
 GET    /attestations/{id}/file         POST /attestations/{id}/revoke
 POST   /flags                          GET  /flags           GET /flags/{id}
 POST   /flags/{id}/resolve             (confirmed = revoke the passport and its descendants)
 GET    /notifications?unread=true      POST /notifications/{id}/read
 GET    /verify/{passportId}            (public, no auth, cached)
-GET    /reports/...                    GET  /audit
+POST   /passports/{id}/retire          GET  /orgs/directory
+GET    /users                          POST /invites    POST /invites/{token}/accept
+PUT    /users/{id}/role                POST /users/{id}/suspend | /reinstate
+POST   /auth/pin                       POST /auth/2fa/recovery
+GET    /reports/volume                 GET  /audit   GET /audit/verify   (?format=csv)
 ```
 
 ---

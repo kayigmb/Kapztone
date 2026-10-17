@@ -39,9 +39,9 @@ func main() {
 	}
 	defer client.Close()
 
-	signer, err := bind.NewKeyedTransactorWithChainID(cfg.PlatformKey, cfg.ChainID)
+	signer, err := bind.NewKeyedTransactorWithChainID(cfg.RelayerKey, cfg.ChainID)
 	if err != nil {
-		log.Fatalf("platform key: %v", err)
+		log.Fatalf("relayer key: %v", err)
 	}
 	contracts, err := chain.Bind(cfg.Contracts, client)
 	if err != nil {

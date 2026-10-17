@@ -16,8 +16,9 @@ import (
 )
 
 type Handlers struct {
-	Store     Store
-	UploadDir string
+	Store Store
+	// Files holds KYB documents.
+	Files *upload.Bucket
 	// InvalidateOrg clears cached access data after an organisation changes.
 	InvalidateOrg func(ctx context.Context, slug string)
 	// Secrets seals each organisation's signing key before it is stored.
@@ -107,6 +108,28 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, page)
 }
 
+// Directory lets a verified organisation find others to hand lots to. It
+// shows only what a receiver needs to be recognised: name, kind, address.
+func (h *Handlers) Directory(w http.ResponseWriter, r *http.Request) {
+	q, ok := listq.FromRequest(w, r, DirectoryList)
+	if !ok {
+		return
+	}
+	kind := r.URL.Query().Get(ParamKind)
+	if kind != "" && !slices.Contains(Kinds, kind) {
+		listq.BadParam(w, ParamKind, Kinds)
+		return
+	}
+	// The route requires a verified acting organisation, so it is set.
+	own := auth.CurrentScope(r.Context()).Organisation.ID
+	page, err := h.Store.Directory(r.Context(), q, own, kind)
+	if err != nil {
+		httpx.ServerError(w, "list directory", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, page)
+}
+
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	if o, ok := h.visibleOrg(w, r); ok {
 		httpx.WriteJSON(w, http.StatusOK, o)
@@ -147,26 +170,48 @@ func (h *Handlers) Review(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Accredit allows or stops an organisation issuing certificates.
-func (h *Handlers) Accredit(w http.ResponseWriter, r *http.Request) {
+// Accreditations lists which certificate types an organisation may issue.
+func (h *Handlers) Accreditations(w http.ResponseWriter, r *http.Request) {
 	o, ok := h.visibleOrg(w, r)
 	if !ok {
 		return
 	}
-	var in Accreditation
+	list, err := h.Store.Accreditations(r.Context(), o.ID)
+	if err != nil {
+		httpx.ServerError(w, "list accreditations", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+// SetAccreditations replaces the certificate types an organisation may issue.
+// An empty list withdraws every accreditation.
+func (h *Handlers) SetAccreditations(w http.ResponseWriter, r *http.Request) {
+	o, ok := h.visibleOrg(w, r)
+	if !ok {
+		return
+	}
+	var in []AccreditationInput
 	if !httpx.DecodeJSON(w, r, &in) {
 		return
 	}
-	o, err := h.Store.Accredit(r.Context(), o.ID, in.Accredited)
+	grants, msg := ParseGrants(in)
+	if msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
+		return
+	}
+	list, err := h.Store.SetAccreditations(r.Context(), o.ID, grants)
 	switch {
 	case errors.Is(err, ErrNotIssuer):
 		httpx.Error(w, http.StatusConflict, MsgNotIssuer)
+	case errors.Is(err, ErrUnknownType):
+		httpx.Error(w, http.StatusBadRequest, MsgUnknownCertType)
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case err != nil:
-		httpx.ServerError(w, "accredit organisation", err)
+		httpx.ServerError(w, "set accreditations", err)
 	default:
-		httpx.WriteJSON(w, http.StatusOK, o)
+		httpx.WriteJSON(w, http.StatusOK, list)
 	}
 }
 
@@ -205,7 +250,7 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, FormType+" must be one of: "+strings.Join(DocTypes, ", "))
 		return
 	}
-	f, ok := upload.Store(w, h.UploadDir, file, header)
+	f, ok := upload.Store(w, r, h.Files, file, header)
 	if !ok {
 		return
 	}
@@ -220,7 +265,7 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 		UploadedBy:     auth.CurrentUser(r.Context()).ID,
 	})
 	if err != nil {
-		upload.Remove(h.UploadDir, f.Key) // do not keep a file with no record
+		h.Files.Remove(r.Context(), f.Key) // do not keep a file with no record
 		httpx.ServerError(w, "record document", err)
 		return
 	}
@@ -249,5 +294,5 @@ func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "get document", err)
 		return
 	}
-	upload.Serve(w, r, h.UploadDir, d.StorageKey, d.FileName, d.ContentType, d.UpdatedAt)
+	upload.Serve(w, r, h.Files, d.StorageKey, d.FileName, d.ContentType, d.UpdatedAt)
 }

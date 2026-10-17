@@ -210,6 +210,10 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 
 	if user.TOTPEnabled {
 		valid, err := a.checkCode(ctx, user, in.Code, a.now())
+		if err == nil && !valid && strings.TrimSpace(in.Code) != "" {
+			// A lost phone: a recovery code works once in place of the app code.
+			valid, err = a.Store.UseRecoveryCode(ctx, user.ID, recoveryHash(in.Code))
+		}
 		if err != nil {
 			httpx.ServerError(w, "check 2fa code", err)
 			return
@@ -249,10 +253,16 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 // Me reports who is signed in and what they may do in the acting organisation.
 func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 	scope := CurrentScope(r.Context())
+	pin, err := a.Store.PINHash(r.Context(), CurrentUser(r.Context()).ID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		httpx.ServerError(w, "load signing pin", err)
+		return
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"user":         CurrentUser(r.Context()),
 		"organisation": scope.Organisation,
 		"role":         scope.Role,
 		"permissions":  scope.Permissions,
+		"pin_set":      pin != "",
 	})
 }

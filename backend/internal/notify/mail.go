@@ -2,10 +2,11 @@ package notify
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/smtp"
-	"net/url"
 	"strings"
 	"time"
 
@@ -25,24 +26,73 @@ type Mailer struct {
 	Addr string // host:port
 	Auth smtp.Auth
 	From string
-	// Send is smtp.SendMail unless a test replaces it.
+	// Send delivers one message; NewMailer sets it, tests replace it.
 	Send func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
-// NewMailer reads a mail server address written as
-// smtp://user:password@host:port?from=no-reply@example.com
-// (user and password are optional).
-func NewMailer(pool *pgxpool.Pool, smtpURL string) (*Mailer, error) {
-	u, err := url.Parse(smtpURL)
-	if err != nil || u.Scheme != "smtp" || u.Hostname() == "" || u.Port() == "" || u.Query().Get("from") == "" {
-		return nil, fmt.Errorf("must look like smtp://user:password@host:port?from=address")
+// SMTP is a mail server and the account notifications are sent from.
+type SMTP struct {
+	Host     string
+	Port     string
+	User     string // also the sender address
+	Password string // empty: the server needs no sign-in
+	// TLS requires the connection to be encrypted (STARTTLS). Without it a
+	// server that offers no encryption is written to in plain text.
+	TLS bool
+}
+
+func NewMailer(pool *pgxpool.Pool, s SMTP) *Mailer {
+	m := &Mailer{Pool: pool, Addr: net.JoinHostPort(s.Host, s.Port), From: s.User}
+	if s.Password != "" {
+		m.Auth = smtp.PlainAuth("", s.User, s.Password, s.Host)
 	}
-	m := &Mailer{Pool: pool, Addr: u.Host, From: u.Query().Get("from"), Send: smtp.SendMail}
-	if user := u.User.Username(); user != "" {
-		password, _ := u.User.Password()
-		m.Auth = smtp.PlainAuth("", user, password, u.Hostname())
+	m.Send = func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+		return send(addr, a, from, to, msg, s.TLS)
 	}
-	return m, nil
+	return m
+}
+
+// send is smtp.SendMail, except that with requireTLS a server that does not
+// offer STARTTLS is refused instead of being written to in plain text.
+// ponytail: STARTTLS only (port 587); add tls.Dial if a provider needs port 465.
+func send(addr string, a smtp.Auth, from string, to []string, msg []byte, requireTLS bool) error {
+	host, _, _ := net.SplitHostPort(addr)
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	} else if requireTLS {
+		return fmt.Errorf("mail server %s offers no encryption (STARTTLS); nothing was sent", addr)
+	}
+	if a != nil {
+		if err := c.Auth(a); err != nil {
+			return err
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range to {
+		if err := c.Rcpt(rcpt); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 // Run sends until ctx ends. A mail server that cannot be reached is not an
@@ -113,9 +163,20 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 // body's first line so nothing in a notification can add a header.
 func (m *Mailer) message(to []string, body string) []byte {
 	clean := strings.NewReplacer("\r", " ", "\n", " ").Replace
+	return m.compose(to, mailSubject, clean(body))
+}
+
+// compose builds a plain-text e-mail; the subject cannot carry a line break.
+func (m *Mailer) compose(to []string, subject, body string) []byte {
+	subject = strings.NewReplacer("\r", " ", "\n", " ").Replace(subject)
 	return []byte("From: " + m.From + "\r\n" +
 		"To: " + strings.Join(to, ", ") + "\r\n" +
-		"Subject: " + mailSubject + "\r\n" +
+		"Subject: " + subject + "\r\n" +
 		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" +
-		clean(body) + "\r\n")
+		body + "\r\n")
+}
+
+// SendOne e-mails one person now, outside the notification queue (an invitation).
+func (m *Mailer) SendOne(to, subject, body string) error {
+	return m.Send(m.Addr, m.Auth, m.From, []string{to}, m.compose([]string{to}, subject, body))
 }

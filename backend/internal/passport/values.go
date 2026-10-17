@@ -5,7 +5,6 @@ package passport
 import (
 	"time"
 
-	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
@@ -44,7 +43,13 @@ const (
 	EventTransform = template.EventTransform
 	EventFlag      = "FLAG"
 	EventRevoke    = "REVOKE"
+	// EventRetire closes the journey: the lot reached its final buyer.
+	EventRetire = "RETIRE"
 )
+
+// CodeFormat writes a lot code: organisation address in capitals, year, and
+// the organisation's count for that year, at least four digits (ACME-2026-0412).
+const CodeFormat = "%s-%d-%04d"
 
 // Genealogy directions.
 const (
@@ -63,9 +68,6 @@ const (
 	// MaxTransformItems caps the inputs, and the outputs, of one transform:
 	// the whole transform must fit in one chain transaction.
 	MaxTransformItems = 50
-
-	// A season is half a year: season 1 is January to June, season 2 July to December.
-	firstSeasonLastMonth = time.June
 )
 
 // URL parameter names.
@@ -91,26 +93,10 @@ const (
 	MsgInputNotHeld      = "your organisation does not hold every input passport"
 	MsgMixedInputs       = "all input passports must be of the same commodity and unit"
 	MsgStageInvalid      = "this commodity has no such stage that allows " + EventTransform + " with a maximum yield"
+	MsgHandoverStage     = "stage must be a stage of this commodity that allows " + EventHandover
 
 	MsgNotifyHandoverStarted  = "A passport is being handed over to your organisation and awaits your answer."
 	MsgNotifyHandoverAccepted = "The receiving organisation accepted your handover."
 	MsgNotifyHandoverRejected = "The receiving organisation rejected your handover."
 	MsgNotifyPassportRevoked  = "A passport your organisation holds was revoked."
 )
-
-// PeriodFor returns the capacity period a date falls in, as one number:
-// 2026 for a year, 202610 for a month, 20261 or 20262 for a season.
-func PeriodFor(capacityPeriod string, t time.Time) int64 {
-	t = t.UTC()
-	year := int64(t.Year())
-	switch capacityPeriod {
-	case facility.PeriodMonth:
-		return year*100 + int64(t.Month())
-	case facility.PeriodSeason:
-		if t.Month() <= firstSeasonLastMonth {
-			return year*10 + 1
-		}
-		return year*10 + 2
-	}
-	return year
-}

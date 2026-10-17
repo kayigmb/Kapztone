@@ -17,7 +17,11 @@ services:
       # Addresses of the other containers; the values in .env are for running the API on your machine.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
-      UPLOAD_DIR: /data/uploads
+      STORAGE_ENDPOINT: http://rustfs:9000
+      STORAGE_REGION: ${STORAGE_REGION:?set STORAGE_REGION in .env}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET in .env}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?set STORAGE_ACCESS_KEY in .env}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       JWT_TTL: ${JWT_TTL:?set JWT_TTL in .env}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
@@ -26,25 +30,31 @@ services:
       # From a container, a chain on your machine is at host.docker.internal, not 127.0.0.1.
       CHAIN_RPC_URL: ${CHAIN_RPC_URL:?set CHAIN_RPC_URL in .env}
       CHAIN_ID: ${CHAIN_ID:?set CHAIN_ID in .env}
-      CHAIN_PLATFORM_KEY: ${CHAIN_PLATFORM_KEY:?set CHAIN_PLATFORM_KEY in .env}
+      CHAIN_RELAYER_KEY: ${CHAIN_RELAYER_KEY:?set CHAIN_RELAYER_KEY in .env}
       ORG_REGISTRY_ADDRESS: ${ORG_REGISTRY_ADDRESS:?set ORG_REGISTRY_ADDRESS in .env}
       FACILITY_REGISTRY_ADDRESS: ${FACILITY_REGISTRY_ADDRESS:?set FACILITY_REGISTRY_ADDRESS in .env}
       PASSPORT_REGISTRY_ADDRESS: ${PASSPORT_REGISTRY_ADDRESS:?set PASSPORT_REGISTRY_ADDRESS in .env}
       CUSTODY_MANAGER_ADDRESS: ${CUSTODY_MANAGER_ADDRESS:?set CUSTODY_MANAGER_ADDRESS in .env}
       ATTESTATION_REGISTRY_ADDRESS: ${ATTESTATION_REGISTRY_ADDRESS:?set ATTESTATION_REGISTRY_ADDRESS in .env}
       PINATA_JWT: ${PINATA_JWT:?set PINATA_JWT in .env}
-      SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+      # Not needed when SMTP_HOST is none.
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_USE_TLS: ${SMTP_USE_TLS}
     ports:
       - "${PORT}:${PORT}"
     volumes:
       - ../backend:/src
       - go-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build
-      - uploads:/data/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      rustfs:
         condition: service_healthy
 
   # Carries queued changes to the chain. Restart it after changing relayer code.
@@ -82,7 +92,6 @@ services:
 
 volumes:
   go-cache:
-  uploads:
   go-build-cache:
   web-node-modules:
   web-next:

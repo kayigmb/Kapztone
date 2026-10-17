@@ -22,4 +22,3 @@ backend/tmp/
 
 # backend local runs
 backend/coverage.out
-backend/uploads/

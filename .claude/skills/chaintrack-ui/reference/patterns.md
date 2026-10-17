@@ -6,7 +6,7 @@ How screens are put together and how the core flows behave.
 
 ```
 app/
-  (public)/p/[lotCode]/page.tsx          Public verification page (no login, opened from QR). Server component.
+  (public)/p/[lotCode]/page.tsx          Public verification page (no login, opened from QR). Client component reading `useQuery(["verify", id])`.
   (auth)/signup/…  (auth)/signin/…         Onboarding (phone-first, no shell)
   (app)/layout.tsx                         App shell: sidebar / tab bar
   (app)/page.tsx                           Dashboard (role-based)

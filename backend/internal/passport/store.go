@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,12 +14,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
+	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 var (
@@ -34,7 +37,20 @@ var (
 	ErrReceiverInvalid   = errors.New("receiver invalid")
 	ErrHandoverClosed    = errors.New("handover closed")
 	ErrHandoverStale     = errors.New("handover stale")
+	ErrHandoverStage     = errors.New("handover stage invalid")
 )
+
+// EvidenceError lists the evidence a stage asks for that has no valid
+// certificate yet.
+type EvidenceError struct {
+	Stage   string
+	Missing []string
+}
+
+func (e EvidenceError) Error() string {
+	return fmt.Sprintf("stage %s needs evidence that is missing: %s. Attach a valid certificate of each first",
+		e.Stage, strings.Join(e.Missing, ", "))
+}
 
 // CapacityError says by how much an issue would exceed the facility's
 // capacity for the period, and the most that can still be issued.
@@ -49,7 +65,9 @@ func (e CapacityError) Error() string {
 }
 
 type Passport struct {
-	ID             string `json:"id"`
+	ID string `json:"id"`
+	// Code is the readable lot code (ACME-2026-0412); it works wherever the id does.
+	Code           string `json:"code"`
 	OrganisationID string `json:"organisation_id"` // current holder
 	// FacilityID and Period are set on a passport issued at an origin
 	// facility; TransformID on one made by a transform. Never both.
@@ -88,6 +106,7 @@ type Handover struct {
 	PassportID   string     `json:"passport_id"`
 	FromOrg      string     `json:"from_org"`
 	ToOrg        string     `json:"to_org"`
+	Stage        string     `json:"stage"` // the template stage the lot enters
 	Quantity     int64      `json:"quantity"`
 	Note         string     `json:"note"`
 	DataHash     string     `json:"data_hash"`
@@ -118,12 +137,12 @@ var (
 )
 
 const (
-	columns = `p.id::text, p.organisation_id::text, p.facility_id::text, p.transform_id::text, p.template_id::text, p.commodity,
+	columns = `p.id::text, p.code, p.organisation_id::text, p.facility_id::text, p.transform_id::text, p.template_id::text, p.commodity,
 	           p.unit, p.quantity, p.remaining, p.period, p.status, p.data_hash, p.handover_count,
 	           p.tx_hash, p.anchored_at, p.created_at, p.updated_at`
 
 	// An awaiting handover past its deadline reads as expired ($%[1]d = awaiting, $%[2]d = expired).
-	handoverColumnsFmt = `h.id::text, h.passport_id::text, h.from_org::text, h.to_org::text, h.quantity, h.note,
+	handoverColumnsFmt = `h.id::text, h.passport_id::text, h.from_org::text, h.to_org::text, h.stage, h.quantity, h.note,
 	           h.data_hash, h.deadline,
 	           CASE WHEN h.status = $%[1]d AND h.deadline < now() THEN $%[2]d ELSE h.status END,
 	           true, h.sig_to IS NOT NULL, h.reject_reason, h.responded_at, h.tx_hash, h.anchored_at,
@@ -144,7 +163,7 @@ const (
 
 func scan(row pgx.CollectableRow) (Passport, error) {
 	var p Passport
-	err := row.Scan(&p.ID, &p.OrganisationID, &p.FacilityID, &p.TransformID, &p.TemplateID, &p.Commodity, &p.Unit,
+	err := row.Scan(&p.ID, &p.Code, &p.OrganisationID, &p.FacilityID, &p.TransformID, &p.TemplateID, &p.Commodity, &p.Unit,
 		&p.Quantity, &p.Remaining, &p.Period, &p.Status, &p.DataHash, &p.HandoverCount,
 		&p.TxHash, &p.AnchoredAt, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
@@ -152,7 +171,7 @@ func scan(row pgx.CollectableRow) (Passport, error) {
 
 func scanHandover(row pgx.CollectableRow) (Handover, error) {
 	var h Handover
-	err := row.Scan(&h.ID, &h.PassportID, &h.FromOrg, &h.ToOrg, &h.Quantity, &h.Note, &h.DataHash,
+	err := row.Scan(&h.ID, &h.PassportID, &h.FromOrg, &h.ToOrg, &h.Stage, &h.Quantity, &h.Note, &h.DataHash,
 		&h.Deadline, &h.Status, &h.SignedByFrom, &h.SignedByTo, &h.RejectReason, &h.RespondedAt,
 		&h.TxHash, &h.AnchoredAt, &h.CreatedAt, &h.UpdatedAt)
 	return h, err
@@ -232,10 +251,10 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 		return Passport{}, ErrFacilitySuspended
 	}
 
-	var commodity, unit, originKind string
+	var commodity, unit, originKind, stagesJSON string
 	err = tx.QueryRow(ctx,
-		`SELECT commodity, unit, origin_facility_kind FROM commodity_templates
-		 WHERE id = $1::uuid AND NOT is_deleted`, in.TemplateID).Scan(&commodity, &unit, &originKind)
+		`SELECT commodity, unit, origin_facility_kind, stages::text FROM commodity_templates
+		 WHERE id = $1::uuid AND NOT is_deleted`, in.TemplateID).Scan(&commodity, &unit, &originKind, &stagesJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Passport{}, ErrTemplateNotFound
 	}
@@ -248,16 +267,25 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 	if unit != fUnit {
 		return Passport{}, ErrUnitMismatch
 	}
-
-	period := PeriodFor(fPeriod, now)
-	var used int64
-	err = tx.QueryRow(ctx,
-		`SELECT COALESCE(sum(quantity), 0) FROM passports
-		 WHERE facility_id = $1::uuid AND period = $2 AND NOT is_deleted`, in.FacilityID, period).Scan(&used)
+	stages, err := parseStages(stagesJSON)
 	if err != nil {
 		return Passport{}, err
 	}
-	if available := capacity - used; in.Quantity > available {
+	// The origin stage's evidence is about the facility the goods come from.
+	for _, st := range stages {
+		if slices.Contains(st.Events, EventIssue) {
+			if err := requireEvidence(ctx, tx, st, attestation.SubjectFacility, in.FacilityID); err != nil {
+				return Passport{}, err
+			}
+		}
+	}
+
+	period := facility.PeriodFor(fPeriod, now)
+	used, err := facility.CapacityUsed(ctx, tx, []string{in.FacilityID}, []int64{period})
+	if err != nil {
+		return Passport{}, err
+	}
+	if available := capacity - used[in.FacilityID]; in.Quantity > available {
 		return Passport{}, CapacityError{Requested: in.Quantity, Available: available, Unit: unit}
 	}
 
@@ -270,13 +298,17 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 		return Passport{}, err
 	}
 	dataHash := chain.Hex(hash)
+	code, err := nextCode(ctx, tx, orgID, now)
+	if err != nil {
+		return Passport{}, err
+	}
 
 	p, err := onePassport(tx.Query(ctx,
 		`INSERT INTO passports AS p (id, organisation_id, facility_id, template_id, commodity, unit,
-		                             quantity, remaining, period, status, data_hash, issued_by)
-		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10, $11::uuid)
+		                             quantity, remaining, period, status, data_hash, issued_by, code)
+		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10, $11::uuid, $12)
 		 RETURNING `+columns,
-		id, orgID, in.FacilityID, in.TemplateID, commodity, unit, in.Quantity, period, StatusActive, dataHash, userID))
+		id, orgID, in.FacilityID, in.TemplateID, commodity, unit, in.Quantity, period, StatusActive, dataHash, userID, code))
 	if err != nil {
 		return Passport{}, err
 	}
@@ -332,6 +364,8 @@ type handoverRecord struct {
 	ToOrg      string `json:"to_org"`
 	Quantity   int64  `json:"quantity"`
 	Note       string `json:"note"`
+	// Stage is left out when empty, so handovers made before stages keep their hash.
+	Stage string `json:"stage,omitempty"`
 }
 
 // message builds the typed message both organisations sign for a handover.
@@ -393,11 +427,11 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	defer tx.Rollback(ctx)
 
 	// Lock the passport: only one handover can be started at a time.
-	var holder, status string
+	var holder, status, commodity string
 	var remaining, count int64
 	err = tx.QueryRow(ctx,
-		`SELECT organisation_id::text, status, remaining, handover_count FROM passports
-		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, passportID).Scan(&holder, &status, &remaining, &count)
+		`SELECT organisation_id::text, status, commodity, remaining, handover_count FROM passports
+		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, passportID).Scan(&holder, &status, &commodity, &remaining, &count)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && holder != fromOrg) {
 		return Handover{}, ErrNotHolder
 	}
@@ -407,16 +441,23 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	if status != StatusActive || remaining <= 0 {
 		return Handover{}, ErrNotActive
 	}
+	if err := noOpenHandover(ctx, tx, passportID); err != nil {
+		return Handover{}, err
+	}
 
-	var open bool
-	err = tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM handovers WHERE passport_id = $1::uuid AND status = $2
-		                AND deadline >= now() AND NOT is_deleted)`, passportID, HandoverAwaiting).Scan(&open)
+	// The stage the lot enters must take handovers, and its evidence must be on the passport.
+	_, stages, err := liveStages(ctx, tx, commodity)
 	if err != nil {
 		return Handover{}, err
 	}
-	if open {
-		return Handover{}, ErrOpenHandover
+	i := slices.IndexFunc(stages, func(st template.Stage) bool {
+		return st.Key == in.Stage && slices.Contains(st.Events, EventHandover)
+	})
+	if i < 0 {
+		return Handover{}, ErrHandoverStage
+	}
+	if err := requireEvidence(ctx, tx, stages[i], attestation.SubjectPassport, passportID); err != nil {
+		return Handover{}, err
 	}
 
 	var receiverOK bool
@@ -435,7 +476,7 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	if err != nil {
 		return Handover{}, err
 	}
-	hash, err := chain.DataHash(handoverRecord{id, passportID, fromOrg, in.ToOrganisationID, remaining, in.Note})
+	hash, err := chain.DataHash(handoverRecord{id, passportID, fromOrg, in.ToOrganisationID, remaining, in.Note, in.Stage})
 	if err != nil {
 		return Handover{}, err
 	}
@@ -452,11 +493,11 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 
 	h, err := oneHandover(tx.Query(ctx,
 		`INSERT INTO handovers AS h (id, passport_id, from_org, to_org, quantity, note, data_hash, nonce,
-		                             deadline, sig_from, status, created_by)
-		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid)
+		                             deadline, sig_from, status, created_by, stage)
+		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14)
 		 RETURNING `+handoverColumns(1, 2),
 		HandoverAwaiting, HandoverExpired, id, passportID, fromOrg, in.ToOrganisationID, remaining, in.Note,
-		dataHash, count, deadline, sigFrom, userID))
+		dataHash, count, deadline, sigFrom, userID, in.Stage))
 	if err != nil {
 		return Handover{}, err
 	}

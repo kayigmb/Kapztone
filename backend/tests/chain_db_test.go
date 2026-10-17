@@ -182,6 +182,17 @@ func post(e *env, token, path string, body any) *httptest.ResponseRecorder {
 	return do(e.h, http.MethodPost, path, token, string(b))
 }
 
+// accredit replaces an organisation's accreditations with grants.
+func accredit(e *env, token, path string, grants ...org.AccreditationInput) *httptest.ResponseRecorder {
+	b, _ := json.Marshal(append([]org.AccreditationInput{}, grants...))
+	return do(e.h, http.MethodPut, path, token, string(b))
+}
+
+// grant accredits one certificate type for a window that covers today.
+func grant(certType string) org.AccreditationInput {
+	return org.AccreditationInput{Type: certType, ValidFrom: "2026-01-01", ValidTo: "2036-01-01T00:00:00Z"}
+}
+
 func TestSigningKeyIsCreatedAtVerification(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
@@ -260,7 +271,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	want(t, "create facility", rec, http.StatusCreated)
 	plot := decodeTo[facility.Facility](t, rec)
 
-	tplIn := coffeeTemplate("coffee_" + e.suffix)
+	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
 	rec = post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
@@ -302,7 +313,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	rec = issue(admin, acmeSlug, good)
 	want(t, "issue", rec, http.StatusCreated)
 	p := decodeTo[passport.Passport](t, rec)
-	wantPeriod := passport.PeriodFor(plot.CapacityPeriod, now)
+	wantPeriod := facility.PeriodFor(plot.CapacityPeriod, now)
 	if p.OrganisationID != acme.ID || p.Remaining != good.Quantity || p.Status != passport.StatusActive ||
 		p.Period == nil || *p.Period != wantPeriod || p.TxHash != nil {
 		t.Fatalf("passport recorded wrongly: %+v", p)
@@ -348,7 +359,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 
 	// ---- Handover: sender's half.
 	start := func(token, slug, to string) *httptest.ResponseRecorder {
-		return post(e, token, as(slug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Note: "Loaded at the washing station gate"})
+		return post(e, token, as(slug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Stage: stageWashing, Note: "Loaded at the washing station gate"})
 	}
 	want(t, "non-holder starts a handover", start(rivalAdmin, rivalSlug, acme.ID), http.StatusNotFound)
 	want(t, "handover to itself", start(admin, acmeSlug, acme.ID), http.StatusBadRequest)
@@ -421,7 +432,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	// ---- Reject, cancel and expiry leave the holder unchanged.
 	back := func() passport.Handover {
 		t.Helper()
-		rec := post(e, rivalAdmin, as(rivalSlug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: acme.ID})
+		rec := post(e, rivalAdmin, as(rivalSlug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: acme.ID, Stage: stageWashing})
 		want(t, "start return handover", rec, http.StatusCreated)
 		return decodeTo[passport.Handover](t, rec)
 	}
@@ -551,7 +562,7 @@ func TestPeriodFor(t *testing.T) {
 		{facility.PeriodSeason, at(time.July), 20262},
 	}
 	for _, tc := range cases {
-		if got := passport.PeriodFor(tc.period, tc.when); got != tc.want {
+		if got := facility.PeriodFor(tc.period, tc.when); got != tc.want {
 			t.Errorf("%s in %s = %d, want %d", tc.period, tc.when.Month(), got, tc.want)
 		}
 	}
@@ -573,11 +584,12 @@ func TestPassportInputValidation(t *testing.T) {
 		t.Errorf("valid input rejected: %s", msg)
 	}
 
-	h := passport.HandoverInput{ToOrganisationID: fakeOrgID, Note: "  at the gate  "}
-	if msg := h.Validate(); msg != "" || h.Note != "at the gate" {
-		t.Errorf("handover input: %q %q", msg, h.Note)
+	h := passport.HandoverInput{ToOrganisationID: fakeOrgID, Stage: " " + stageWashing + " ", Note: "  at the gate  "}
+	if msg := h.Validate(); msg != "" || h.Note != "at the gate" || h.Stage != stageWashing {
+		t.Errorf("handover input: %q %q %q", msg, h.Note, h.Stage)
 	}
-	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID, Note: strings.Repeat("x", passport.MaxNoteLen+1)}} {
+	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID},
+		{ToOrganisationID: fakeOrgID, Stage: stageWashing, Note: strings.Repeat("x", passport.MaxNoteLen+1)}} {
 		if in.Validate() == "" {
 			t.Errorf("%+v accepted", in)
 		}

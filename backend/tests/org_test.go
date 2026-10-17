@@ -58,6 +58,8 @@ func TestReviewValidate(t *testing.T) {
 		{"verify", org.Review{Decision: org.StatusVerified}, true},
 		{"reject with reason", org.Review{Decision: org.StatusRejected, Reason: "licence expired"}, true},
 		{"reject without reason", org.Review{Decision: org.StatusRejected, Reason: "  "}, false},
+		{"ask for changes with reason", org.Review{Decision: org.StatusChangesRequested, Reason: "photo is blurred"}, true},
+		{"ask for changes without reason", org.Review{Decision: org.StatusChangesRequested}, false},
 		{"back to pending is not a decision", org.Review{Decision: org.StatusPending}, false},
 		{"unknown decision", org.Review{Decision: "maybe"}, false},
 	}
@@ -65,6 +67,31 @@ func TestReviewValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.review.Validate() == ""; got != tc.ok {
 				t.Fatalf("valid = %v, want %v", got, tc.ok)
+			}
+		})
+	}
+}
+
+func TestParseGrants(t *testing.T) {
+	ok := org.AccreditationInput{Type: " export_permit ", ValidFrom: "2026-01-01", ValidTo: "2027-01-01T12:00:00.5Z"}
+	grants, msg := org.ParseGrants([]org.AccreditationInput{ok})
+	if msg != "" || len(grants) != 1 || grants[0].Type != "export_permit" || grants[0].ValidTo.Nanosecond() != 0 {
+		t.Fatalf("valid grant: %+v %q", grants, msg)
+	}
+	if grants, msg := org.ParseGrants(nil); msg != "" || len(grants) != 0 {
+		t.Fatalf("an empty set withdraws everything: %+v %q", grants, msg)
+	}
+	cases := map[string][]org.AccreditationInput{
+		"type twice":     {ok, ok},
+		"type not a key": {{Type: "Export Permit", ValidFrom: ok.ValidFrom, ValidTo: ok.ValidTo}},
+		"no window":      {{Type: "export_permit"}},
+		"backwards":      {{Type: "export_permit", ValidFrom: "2027-01-01", ValidTo: "2026-01-01"}},
+		"before 1970":    {{Type: "export_permit", ValidFrom: "1960-01-01", ValidTo: "2026-01-01"}},
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, msg := org.ParseGrants(in); msg == "" {
+				t.Fatal("accepted")
 			}
 		})
 	}

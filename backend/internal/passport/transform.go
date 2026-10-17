@@ -2,7 +2,6 @@ package passport
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
@@ -146,36 +146,26 @@ type outputRecord struct {
 	Quantity       int64  `json:"quantity"`
 }
 
-// transformStage finds the commodity's live template and the yield of one
-// of its stages.
-func transformStage(ctx context.Context, tx pgx.Tx, commodity, stage string) (templateID string, ppm int64, err error) {
-	var stagesJSON string
-	err = tx.QueryRow(ctx,
-		`SELECT id::text, stages::text FROM commodity_templates WHERE commodity = $1 AND NOT is_deleted`, commodity,
-	).Scan(&templateID, &stagesJSON)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", 0, ErrTemplateNotFound
-	}
+// transformStage finds the commodity's live template and one of its stages
+// that transforms with a maximum yield.
+func transformStage(ctx context.Context, tx pgx.Tx, commodity, stage string) (templateID string, st template.Stage, err error) {
+	templateID, stages, err := liveStages(ctx, tx, commodity)
 	if err != nil {
-		return "", 0, err
-	}
-	var stages []template.Stage
-	if err := json.Unmarshal([]byte(stagesJSON), &stages); err != nil {
-		return "", 0, err
+		return "", st, err
 	}
 	for _, st := range stages {
 		if st.Key == stage && st.MaxYield != nil && slices.Contains(st.Events, EventTransform) {
-			return templateID, template.YieldPPM(*st.MaxYield), nil
+			return templateID, st, nil
 		}
 	}
-	return "", 0, ErrStageInvalid
+	return "", st, ErrStageInvalid
 }
 
 // Transform uses (parts of) input passports to create output passports,
 // after checking every rule the contract will check again: the inputs are
 // active, held by the acting organisation and of one commodity, none is
 // overdrawn, and the outputs do not exceed inputs × the stage's maximum yield.
-func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput) (Transform, error) {
+func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput, now time.Time) (Transform, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Transform{}, err
@@ -234,9 +224,16 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 		used[i] = Used{PassportID: id, QuantityUsed: src.Quantity}
 	}
 
-	templateID, ppm, err := transformStage(ctx, tx, commodity, in.Stage)
+	templateID, stage, err := transformStage(ctx, tx, commodity, in.Stage)
 	if err != nil {
 		return Transform{}, err
+	}
+	ppm := template.YieldPPM(*stage.MaxYield)
+	// The stage's evidence must be on every input.
+	for _, u := range used {
+		if err := requireEvidence(ctx, tx, stage, attestation.SubjectPassport, u.PassportID); err != nil {
+			return Transform{}, err
+		}
 	}
 
 	// Mass balance, compared without dividing exactly as the contract does,
@@ -304,12 +301,16 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 		}
 	}
 	for _, q := range queued {
+		code, err := nextCode(ctx, tx, orgID, now)
+		if err != nil {
+			return Transform{}, err
+		}
 		p, err := onePassport(tx.Query(ctx,
 			`INSERT INTO passports AS p (id, organisation_id, transform_id, template_id, commodity, unit,
-			                             quantity, remaining, status, data_hash, issued_by)
-			 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10::uuid)
+			                             quantity, remaining, status, data_hash, issued_by, code)
+			 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10::uuid, $11)
 			 RETURNING `+columns,
-			q.PassportID, orgID, id, templateID, commodity, unit, q.Quantity, StatusActive, q.DataHash, userID))
+			q.PassportID, orgID, id, templateID, commodity, unit, q.Quantity, StatusActive, q.DataHash, userID, code))
 		if err != nil {
 			return Transform{}, err
 		}

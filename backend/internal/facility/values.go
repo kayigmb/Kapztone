@@ -2,6 +2,8 @@
 // farm plots, mine sites, washing stations, plants and warehouses.
 package facility
 
+import "time"
+
 // Every value in this file is declared here once and referenced everywhere
 // else, including SQL arguments and tests.
 
@@ -45,6 +47,9 @@ const (
 
 	// SRID is WGS 84, the longitude/latitude system GeoJSON uses.
 	SRID = 4326
+
+	// A season is half a year: season 1 is January to June, season 2 July to December.
+	firstSeasonLastMonth = time.June
 
 	minLon, maxLon = -180.0, 180.0
 	minLat, maxLat = -90.0, 90.0

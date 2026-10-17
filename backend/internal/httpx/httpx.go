@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -42,6 +43,16 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 
 // IsUUID guards ids taken from URLs before they reach a uuid cast in SQL.
 func IsUUID(s string) bool { return uuidPattern.MatchString(s) }
+
+// ParseTime accepts a date (2026-01-31) or an RFC 3339 timestamp.
+func ParseTime(s string) (time.Time, bool) {
+	for _, layout := range []string{time.DateOnly, time.RFC3339} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
 
 // DecodeJSON reads a size-limited JSON body into dst, or writes 400.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {

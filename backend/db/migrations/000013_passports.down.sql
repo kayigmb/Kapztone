@@ -1,0 +1,4 @@
+ALTER TABLE handovers DROP COLUMN IF EXISTS stage;
+DROP INDEX IF EXISTS passports_code_key;
+ALTER TABLE passports DROP COLUMN IF EXISTS code;
+DROP TABLE IF EXISTS lot_counters;

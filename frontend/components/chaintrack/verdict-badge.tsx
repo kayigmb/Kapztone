@@ -1,7 +1,8 @@
 import { ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { copy, type Result, type Verdict } from "@/lib/verification";
+import { copy } from "@/lib/consts";
+import { type Result, type Verdict } from "@/lib/verification";
 import { verdictIcon } from "./status";
 import { tone, verdictTone } from "./tone";
 
@@ -26,8 +27,8 @@ export function VerdictBadge({ verdict, summary, reasons, meta }: {
           <Mark className="size-8" aria-hidden />
         </span>
         <div>
-          <p className={cn("label", t.ink)}>{copy.kicker}</p>
-          <p className={cn("text-verdict md:text-verdict-lg", t.ink)}>{copy.verdict[verdict]}</p>
+          <p className={cn("label", t.ink)}>{copy.verification.kicker}</p>
+          <p className={cn("text-verdict md:text-verdict-lg", t.ink)}>{copy.verification.verdict[verdict]}</p>
         </div>
       </div>
       <p className="mt-4 max-w-[60ch] text-[16px] leading-6 text-ink">{summary}</p>

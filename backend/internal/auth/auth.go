@@ -86,6 +86,13 @@ type Store interface {
 	SetTOTP(ctx context.Context, userID, sealedSecret string, enabled bool) error
 	// UseTOTPStep burns a 2FA time-step; false means it was already used.
 	UseTOTPStep(ctx context.Context, userID string, step int64) (bool, error)
+	// PINHash returns the user's signing PIN hash, "" when none is set.
+	PINHash(ctx context.Context, userID string) (string, error)
+	SetPIN(ctx context.Context, userID, hash string) error
+	// SetRecoveryCodes replaces the user's recovery codes (SHA-256 hex each); nil removes them.
+	SetRecoveryCodes(ctx context.Context, userID string, hashes []string) error
+	// UseRecoveryCode burns an unused code; false means no such unused code.
+	UseRecoveryCode(ctx context.Context, userID, hash string) (bool, error)
 }
 
 type Auth struct {

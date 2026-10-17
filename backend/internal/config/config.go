@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 // Names of the environment variables. `.env.example` documents each one.
@@ -28,17 +30,23 @@ const (
 	EnvAppEnv             = "APP_ENV"
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
-	EnvUploadDir          = "UPLOAD_DIR"
 	EnvJWTSecret          = "JWT_SECRET"
 	EnvJWTTTL             = "JWT_TTL" // sign-in lifetime, whole minutes
 	EnvEncryptionKey      = "ENCRYPTION_KEY"
 	EnvSuperadminEmail    = "SUPERADMIN_EMAIL"
 	EnvSuperadminPassword = "SUPERADMIN_PASSWORD"
 
+	// The bucket that holds uploaded files: AWS S3, Google Cloud Storage or RustFS.
+	EnvStorageEndpoint  = "STORAGE_ENDPOINT" // http(s) URL; the scheme decides TLS
+	EnvStorageRegion    = "STORAGE_REGION"
+	EnvStorageBucket    = "STORAGE_BUCKET"
+	EnvStorageAccessKey = "STORAGE_ACCESS_KEY"
+	EnvStorageSecretKey = "STORAGE_SECRET_KEY"
+
 	// The chain the platform writes to, and the contracts deployed on it.
 	EnvChainRPCURL         = "CHAIN_RPC_URL"
 	EnvChainID             = "CHAIN_ID"
-	EnvChainPlatformKey    = "CHAIN_PLATFORM_KEY" // sends every transaction; holds the admin and relayer roles
+	EnvChainRelayerKey     = "CHAIN_RELAYER_KEY" // sends every transaction; relayer + operator on-chain, never admin
 	EnvOrgRegistry         = "ORG_REGISTRY_ADDRESS"
 	EnvFacilityRegistry    = "FACILITY_REGISTRY_ADDRESS"
 	EnvPassportRegistry    = "PASSPORT_REGISTRY_ADDRESS"
@@ -48,7 +56,14 @@ const (
 	// Outside services. Each is required like every setting; the value Off
 	// says, in writing, that the service is not used.
 	EnvPinataJWT = "PINATA_JWT" // pins certificate files to public IPFS
-	EnvSMTPURL   = "SMTP_URL"   // sends notification e-mail
+
+	// The mail server for notification e-mail. SMTP_HOST=none turns e-mail
+	// off, and the other four are then not needed.
+	EnvSMTPHost     = "SMTP_HOST"
+	EnvSMTPPort     = "SMTP_PORT"
+	EnvSMTPUser     = "SMTP_USER" // also the sender address
+	EnvSMTPPassword = "SMTP_PASSWORD"
+	EnvSMTPUseTLS   = "SMTP_USE_TLS" // true or false
 )
 
 // Off is the value that turns an outside service off.
@@ -69,7 +84,7 @@ type Config struct {
 	Dev                bool
 	DatabaseURL        string
 	RedisURL           string
-	UploadDir          string
+	Storage            upload.Config
 	JWTSecret          []byte
 	TokenTTL           time.Duration
 	Secrets            *secret.Box
@@ -78,12 +93,12 @@ type Config struct {
 
 	ChainRPCURL string
 	ChainID     *big.Int
-	PlatformKey *ecdsa.PrivateKey
+	RelayerKey  *ecdsa.PrivateKey
 	Contracts   chain.Addresses
 
-	// PinataJWT and SMTPURL are empty when the service is off.
+	// PinataJWT is empty and SMTP nil when the service is off.
 	PinataJWT string
-	SMTPURL   string
+	SMTP      *notify.SMTP
 }
 
 // Domain is the signing domain for handovers on the configured chain.
@@ -112,9 +127,18 @@ func Load() (Config, error) {
 		Port:               get(EnvPort),
 		DatabaseURL:        get(EnvDatabaseURL),
 		RedisURL:           get(EnvRedisURL),
-		UploadDir:          get(EnvUploadDir),
 		SuperadminEmail:    get(EnvSuperadminEmail),
 		SuperadminPassword: get(EnvSuperadminPassword),
+		Storage: upload.Config{
+			Endpoint:  get(EnvStorageEndpoint),
+			Region:    get(EnvStorageRegion),
+			Bucket:    get(EnvStorageBucket),
+			AccessKey: get(EnvStorageAccessKey),
+			SecretKey: get(EnvStorageSecretKey),
+		},
+	}
+	if u, err := url.Parse(c.Storage.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		invalid(c.Storage.Endpoint, EnvStorageEndpoint, "must be an http or https URL, e.g. http://localhost:9000")
 	}
 
 	appEnv := get(EnvAppEnv)
@@ -124,8 +148,9 @@ func Load() (Config, error) {
 	c.Dev = appEnv == AppDev
 
 	jwtSecret := get(EnvJWTSecret)
-	if len(jwtSecret) < MinJWTSecretLen {
-		invalid(jwtSecret, EnvJWTSecret, fmt.Sprintf("must be at least %d characters", MinJWTSecretLen))
+	// Any length in dev; a short secret would let anyone forge sign-ins in prod.
+	if !c.Dev && len(jwtSecret) < MinJWTSecretLen {
+		invalid(jwtSecret, EnvJWTSecret, fmt.Sprintf("must be at least %d characters in prod", MinJWTSecretLen))
 	}
 	c.JWTSecret = []byte(jwtSecret)
 
@@ -141,9 +166,10 @@ func Load() (Config, error) {
 		invalid(key, EnvEncryptionKey, fmt.Sprintf("must be %d hex characters", secret.KeyBytes*2))
 	}
 
-	if n := len(c.SuperadminPassword); n < auth.MinPasswordLen || n > auth.MaxPasswordLen {
+	// Any length in dev; bcrypt reads at most MaxPasswordLen bytes everywhere.
+	if n := len(c.SuperadminPassword); n > auth.MaxPasswordLen || (!c.Dev && n < auth.MinPasswordLen) {
 		invalid(c.SuperadminPassword, EnvSuperadminPassword,
-			fmt.Sprintf("must be %d to %d characters", auth.MinPasswordLen, auth.MaxPasswordLen))
+			fmt.Sprintf("must be %d to %d characters (in dev: up to %d)", auth.MinPasswordLen, auth.MaxPasswordLen, auth.MaxPasswordLen))
 	}
 
 	c.ChainRPCURL = get(EnvChainRPCURL)
@@ -156,9 +182,9 @@ func Load() (Config, error) {
 	}
 	c.ChainID = id
 
-	platformKey := get(EnvChainPlatformKey)
-	if c.PlatformKey, err = chain.ParseKey(platformKey); err != nil {
-		invalid(platformKey, EnvChainPlatformKey, "must be a private key: 64 hex characters")
+	relayerKey := get(EnvChainRelayerKey)
+	if c.RelayerKey, err = chain.ParseKey(relayerKey); err != nil {
+		invalid(relayerKey, EnvChainRelayerKey, "must be a private key: 64 hex characters")
 	}
 
 	address := func(name string) common.Address {
@@ -184,11 +210,22 @@ func Load() (Config, error) {
 		return ""
 	}
 	c.PinataJWT = service(EnvPinataJWT)
-	c.SMTPURL = service(EnvSMTPURL)
-	if c.SMTPURL != "" {
-		if _, err := notify.NewMailer(nil, c.SMTPURL); err != nil {
-			invalid(c.SMTPURL, EnvSMTPURL, err.Error()+", or "+Off)
+	if host := get(EnvSMTPHost); host != "" && host != Off {
+		s := notify.SMTP{Host: host, Port: get(EnvSMTPPort), User: get(EnvSMTPUser), Password: os.Getenv(EnvSMTPPassword)}
+		if p, err := strconv.Atoi(s.Port); err != nil || p < 1 || p > 65535 {
+			invalid(s.Port, EnvSMTPPort, "must be a port number, e.g. 587")
 		}
+		// Optional in dev (empty is false); prod mail is always encrypted.
+		useTLS := strings.TrimSpace(os.Getenv(EnvSMTPUseTLS))
+		switch {
+		case !c.Dev && useTLS != "true":
+			problems = append(problems, EnvSMTPUseTLS+" must be true in prod (mail is always encrypted)")
+		case useTLS == "" || useTLS == "true" || useTLS == "false":
+			s.TLS = useTLS == "true"
+		default:
+			invalid(useTLS, EnvSMTPUseTLS, "must be true or false")
+		}
+		c.SMTP = &s
 	}
 
 	if len(problems) > 0 {

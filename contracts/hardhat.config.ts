@@ -17,7 +17,7 @@ export default defineConfig({
       type: "http",
       chainType: "generic",
       url: configVariable("CHAIN_RPC_URL"),
-      accounts: [configVariable("CHAIN_PLATFORM_KEY")],
+      accounts: [configVariable("CHAIN_ADMIN_KEY")],
     },
   },
 });

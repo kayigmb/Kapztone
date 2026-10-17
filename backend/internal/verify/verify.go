@@ -9,11 +9,9 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -25,6 +23,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 // Reason is one thing a check found.
@@ -77,25 +76,31 @@ type Handlers struct {
 	Certificates attestation.Store
 	// Contracts are read, never written, here.
 	Contracts chain.Contracts
-	UploadDir string
+	// Files holds certificate files, re-hashed on every check.
+	Files *upload.Bucket
 	// Cache holds each answer briefly; nil means every request is worked out afresh.
 	Cache *cache.Cache
 }
 
-// Verify is public: no sign-in. Each answer is cached, so a revocation can
-// take up to the cache's lifetime to show.
+// Verify is public: no sign-in. It takes the passport's id or its lot code.
+// Each answer is cached, so a revocation can take up to the cache's lifetime to show.
 func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.URLID(w, r)
-	if !ok {
+	id, err := h.Passports.Resolve(r.Context(), chi.URLParam(r, httpx.ParamID))
+	if errors.Is(err, passport.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 		return
 	}
-	key := CacheKeyPrefix + strings.ToLower(id)
+	if err != nil {
+		httpx.ServerError(w, "find passport", err)
+		return
+	}
+	key := CacheKeyPrefix + id
 	var res Result
 	if h.Cache != nil && h.Cache.Get(r.Context(), key, &res) {
 		httpx.WriteJSON(w, http.StatusOK, res)
 		return
 	}
-	res, err := h.Run(r.Context(), id)
+	res, err = h.Run(r.Context(), id)
 	switch {
 	case errors.Is(err, passport.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
@@ -428,7 +433,7 @@ func (v *run) massBalance(nodes []passport.Passport) error {
 
 // fileHash is the SHA-256 of a stored certificate file, as doc_hash writes it.
 func (v *run) fileHash(storageKey string) (string, error) {
-	f, err := os.Open(filepath.Join(v.h.UploadDir, storageKey))
+	f, err := v.h.Files.Open(v.ctx, storageKey)
 	if err != nil {
 		return "", err
 	}
@@ -473,10 +478,10 @@ func (v *run) certificates(subjectIDs []string) error {
 			v.absent(CheckCertificates, a.ID, a.TxHash != nil)
 			continue
 		}
-		if chain.Hex(c.DocHash) != a.DocHash || c.Subject != chain.MustID(a.SubjectID) {
+		if chain.Hex(c.DocHash) != a.DocHash || c.Subject != chain.MustID(a.SubjectID) || c.CertType != chain.Key(a.Type) {
 			v.add(Failed, CheckCertificates, CertificateAltered, a.ID)
 		}
-		accredited, err := v.h.Contracts.Orgs.IsAccredited(v.opts, chain.MustID(a.IssuerOrgID))
+		accredited, err := v.h.Contracts.Orgs.IsAccredited(v.opts, chain.MustID(a.IssuerOrgID), chain.Key(a.Type))
 		if v.onChain(err) && !accredited {
 			v.add(Warning, CheckCertificates, IssuerNotAccredited, a.ID)
 		}

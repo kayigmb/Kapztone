@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -21,10 +19,13 @@ import (
 )
 
 type Handlers struct {
-	Store     Store
-	UploadDir string
+	Store Store
+	// Files holds certificate files.
+	Files *upload.Bucket
+	// PIN checks the signing PIN: issuing and revoking are signed (auth.Auth.CheckPIN).
+	PIN func(http.ResponseWriter, *http.Request) bool
 	// Pin copies an issued certificate's file to IPFS and returns its
-	// content id. nil means files are kept on this server only.
+	// content id. nil means files are kept in the bucket only.
 	Pin func(ctx context.Context, name string, content io.Reader) (cid string, err error)
 }
 
@@ -37,22 +38,12 @@ type Input struct {
 	ValidTo     time.Time
 }
 
-// parseTime accepts a date or an RFC 3339 timestamp.
-func parseTime(s string) (time.Time, bool) {
-	for _, layout := range []string{time.DateOnly, time.RFC3339} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t.UTC(), true
-		}
-	}
-	return time.Time{}, false
-}
-
 // ParseInput reads and checks the form fields. get returns one field's
 // value. It returns the first problem as a message that is safe to show, or "".
 func ParseInput(get func(string) string) (Input, string) {
 	in := Input{SubjectType: get(FormSubjectType), SubjectID: get(FormSubjectID), Type: strings.TrimSpace(get(FormType))}
-	from, okFrom := parseTime(get(FormValidFrom))
-	to, okTo := parseTime(get(FormValidTo))
+	from, okFrom := httpx.ParseTime(get(FormValidFrom))
+	to, okTo := httpx.ParseTime(get(FormValidTo))
 	in.ValidFrom, in.ValidTo = from, to
 	switch {
 	case !slices.Contains(SubjectTypes, in.SubjectType):
@@ -91,6 +82,9 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNoOrgSelected)
 		return
 	}
+	if !h.PIN(w, r) {
+		return
+	}
 	file, header, ok := upload.Parse(w, r)
 	if !ok {
 		return
@@ -103,13 +97,13 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	f, ok := upload.Store(w, h.UploadDir, file, header)
+	f, ok := upload.Store(w, r, h.Files, file, header)
 	if !ok {
 		return
 	}
 	a, err := h.Store.Issue(r.Context(), o.ID, auth.CurrentUser(r.Context()).ID, in, f)
 	if err != nil {
-		upload.Remove(h.UploadDir, f.Key) // do not keep a file with no record
+		h.Files.Remove(r.Context(), f.Key) // do not keep a file with no record
 		respond(w, 0, "issue certificate", nil, err)
 		return
 	}
@@ -127,7 +121,7 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) pin(ctx context.Context, a Attestation) (Attestation, error) {
-	f, err := os.Open(filepath.Join(h.UploadDir, a.StorageKey))
+	f, err := h.Files.Open(ctx, a.StorageKey)
 	if err != nil {
 		return a, err
 	}
@@ -180,7 +174,7 @@ func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
 		respond(w, 0, "get certificate", nil, err)
 		return
 	}
-	upload.Serve(w, r, h.UploadDir, a.StorageKey, a.FileName, a.ContentType, a.CreatedAt)
+	upload.Serve(w, r, h.Files, a.StorageKey, a.FileName, a.ContentType, a.CreatedAt)
 }
 
 // RevokeInput is the issuer's reason for withdrawing a certificate.
@@ -201,7 +195,7 @@ func (in *RevokeInput) Validate() string {
 
 func (h *Handlers) Revoke(w http.ResponseWriter, r *http.Request) {
 	gate, ok := auth.Gate(w, r)
-	if !ok {
+	if !ok || !h.PIN(w, r) {
 		return
 	}
 	id, ok := httpx.URLID(w, r)

@@ -5,8 +5,11 @@ import (
 	"net/mail"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Registration is what a new business submits: itself and its first user.
@@ -61,13 +64,44 @@ func (r *Review) Validate() string {
 	switch {
 	case !slices.Contains(Decisions, r.Decision):
 		return "decision must be one of: " + strings.Join(Decisions, ", ")
-	case r.Decision == StatusRejected && r.Reason == "":
+	case slices.Contains(Reopened, r.Decision) && r.Reason == "":
 		return MsgReasonNeeded
 	}
 	return ""
 }
 
-// Accreditation says whether an organisation may issue certificates.
-type Accreditation struct {
-	Accredited bool `json:"accredited"`
+// AccreditationInput is one certificate type an organisation may issue, as sent.
+type AccreditationInput struct {
+	Type      string `json:"type"`
+	ValidFrom string `json:"valid_from"`
+	ValidTo   string `json:"valid_to"`
+}
+
+// Grant is a checked AccreditationInput, with times in whole seconds as the chain holds them.
+type Grant struct {
+	Type      string
+	ValidFrom time.Time
+	ValidTo   time.Time
+}
+
+// ParseGrants checks the full set of accreditations sent for an organisation.
+// It returns the first problem as a message that is safe to show, or "".
+// Whether each type is one a template asks for is checked by the store.
+func ParseGrants(in []AccreditationInput) ([]Grant, string) {
+	grants := make([]Grant, 0, len(in))
+	for _, a := range in {
+		a.Type = strings.TrimSpace(a.Type)
+		from, okFrom := httpx.ParseTime(a.ValidFrom)
+		to, okTo := httpx.ParseTime(a.ValidTo)
+		switch {
+		case !template.ValidKey(a.Type):
+			return nil, "type must be " + template.KeyRule
+		case slices.ContainsFunc(grants, func(g Grant) bool { return g.Type == a.Type }):
+			return nil, MsgDuplicateType + ": " + a.Type
+		case !okFrom || !okTo || !to.After(from) || from.Unix() < 0: // the chain holds times as unsigned seconds
+			return nil, MsgAccreditationDates
+		}
+		grants = append(grants, Grant{Type: a.Type, ValidFrom: from.Truncate(time.Second), ValidTo: to.Truncate(time.Second)})
+	}
+	return grants, ""
 }

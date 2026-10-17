@@ -22,8 +22,10 @@ import (
 )
 
 const (
-	testSecret     = "test-secret-test-secret-test-secret"
-	testPassword   = "correct-password"
+	testSecret   = "test-secret-test-secret-test-secret"
+	testPassword = "correct-password"
+	// testPIN is every database test user's signing PIN; send attaches it to every request.
+	testPIN        = "246810"
 	testBaseDomain = "chaintrack.test"
 	testKey        = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" // 32 bytes, hex
 	fakeUserID     = "user-1"
@@ -55,6 +57,11 @@ func (f *fakeStore) ActiveUser(_ context.Context, id string) (auth.User, error) 
 func (f *fakeStore) SetTOTP(context.Context, string, string, bool) error { return nil }
 
 func (f *fakeStore) UseTOTPStep(context.Context, string, int64) (bool, error) { return true, nil }
+
+func (f *fakeStore) PINHash(context.Context, string) (string, error)               { return "", nil }
+func (f *fakeStore) SetPIN(context.Context, string, string) error                  { return nil }
+func (f *fakeStore) SetRecoveryCodes(context.Context, string, []string) error      { return nil }
+func (f *fakeStore) UseRecoveryCode(context.Context, string, string) (bool, error) { return false, nil }
 
 func (f *fakeStore) Scope(_ context.Context, _, slug string) (auth.Scope, error) {
 	if slug != fakeSlug {
@@ -108,6 +115,9 @@ func do(h http.Handler, method, url, token, body string) *httptest.ResponseRecor
 func send(h http.Handler, req *http.Request, token string) *httptest.ResponseRecorder {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if req.Header.Get(auth.HeaderSigningPIN) == "" {
+		req.Header.Set(auth.HeaderSigningPIN, testPIN)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

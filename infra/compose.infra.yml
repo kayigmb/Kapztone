@@ -1,4 +1,5 @@
-# Infrastructure: Postgres + automatic migrations + Redis cache. Combined with compose.dev.yml or compose.prod.yml.
+# Infrastructure: Postgres + automatic migrations + Redis cache, and in development
+# RustFS as the file bucket. Combined with compose.dev.yml or compose.prod.yml.
 # Every value comes from .env; nothing has a default.
 name: chaintrack_infra
 services:
@@ -49,5 +50,26 @@ services:
       timeout: 3s
       retries: 10
 
+  # Development stand-in for the S3 / GCS bucket that holds uploaded files.
+  # Production uses a managed bucket, so this runs only with the dev profile.
+  # Delete its volume (`make storage-reset`) to wipe every dev upload.
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    profiles: ["dev"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?set STORAGE_ACCESS_KEY in .env}
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
+    ports:
+      # Reachable from this machine only. Inside the Docker network the port is always 9000.
+      - "127.0.0.1:${STORAGE_PORT:?set STORAGE_PORT in .env}:9000"
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   db-data:
+  storage-data:

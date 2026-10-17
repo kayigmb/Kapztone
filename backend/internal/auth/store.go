@@ -89,6 +89,49 @@ func (s PgStore) UseTOTPStep(ctx context.Context, userID string, step int64) (bo
 	return tag.RowsAffected() == 1, err
 }
 
+func (s PgStore) PINHash(ctx context.Context, userID string) (string, error) {
+	var hash *string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT pin_hash FROM users WHERE id = $1::uuid AND NOT is_deleted`, userID).Scan(&hash)
+	if err != nil || hash == nil {
+		return "", notFound(err)
+	}
+	return *hash, nil
+}
+
+func (s PgStore) SetPIN(ctx context.Context, userID, hash string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET pin_hash = $2 WHERE id = $1::uuid AND NOT is_deleted`, userID, hash)
+	return err
+}
+
+func (s PgStore) SetRecoveryCodes(ctx context.Context, userID string, hashes []string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx,
+		`UPDATE recovery_codes SET is_deleted = true WHERE user_id = $1::uuid AND NOT is_deleted`, userID); err != nil {
+		return err
+	}
+	if len(hashes) > 0 {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO recovery_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`, userID, hashes); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// UseRecoveryCode marks the code used in one statement, so two requests
+// cannot both spend it.
+func (s PgStore) UseRecoveryCode(ctx context.Context, userID, hash string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE recovery_codes SET used_at = now()
+		 WHERE user_id = $1::uuid AND code_hash = $2 AND used_at IS NULL AND NOT is_deleted`, userID, hash)
+	return tag.RowsAffected() == 1, err
+}
+
 // EnsureSuperadmin creates the first superadmin if the platform has none.
 // It needs SyncRoles to have run. Safe to call on every start and from
 // several instances at once.
@@ -111,11 +154,7 @@ func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (
 		return false, err
 	}
 
-	// Checked only when one is actually created, so a platform that already
-	// has its superadmin starts whatever the environment holds.
-	if len(password) < MinPasswordLen || len(password) > MaxPasswordLen {
-		return false, fmt.Errorf("superadmin password must be %d to %d characters", MinPasswordLen, MaxPasswordLen)
-	}
+	// The length rule (by environment) lives in config, which runs first.
 	hash, err := HashPassword(password)
 	if err != nil {
 		return false, fmt.Errorf("hash superadmin password: %w", err)

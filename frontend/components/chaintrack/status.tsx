@@ -1,5 +1,6 @@
-import { CircleCheck, OctagonX, TriangleAlert, type LucideIcon } from "lucide-react";
+import { CircleCheck, Clock, OctagonX, TriangleAlert, type LucideIcon } from "lucide-react";
 
+import { copy, orgStatus, type OrgStatus } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 import type { Verdict } from "@/lib/verification";
 import { tone, verdictTone, type Tone } from "./tone";
@@ -34,4 +35,17 @@ export function StatusChip({ tone: t, icon: Icon, children }: { tone: Tone; icon
       {children}
     </span>
   );
+}
+
+// Where an organisation's verification stands.
+const orgStatusLook: Record<OrgStatus, { tone: Tone; icon: LucideIcon }> = {
+  [orgStatus.pending]: { tone: "pending", icon: Clock },
+  [orgStatus.verified]: { tone: "verified", icon: CircleCheck },
+  [orgStatus.rejected]: { tone: "danger", icon: OctagonX },
+  [orgStatus.changesRequested]: { tone: "warning", icon: TriangleAlert },
+};
+
+export function OrgStatusChip({ status }: { status: string }) {
+  const look = orgStatusLook[status as OrgStatus] ?? orgStatusLook.pending;
+  return <StatusChip tone={look.tone} icon={look.icon}>{copy.orgStatus[status as OrgStatus] ?? status}</StatusChip>;
 }

@@ -2,7 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"time"
@@ -49,6 +53,69 @@ func (a *Auth) checkCode(ctx context.Context, u User, code string, now time.Time
 		}
 	}
 	return false, nil
+}
+
+// newRecoveryCodes returns RecoveryCodeCount fresh codes and the hashes to store.
+func newRecoveryCodes() (codes, hashes []string, err error) {
+	for range RecoveryCodeCount {
+		raw := make([]byte, 7) // 56 random bits; 50 of them reach the 10 characters
+		if _, err := rand.Read(raw); err != nil {
+			return nil, nil, err
+		}
+		code := base32.StdEncoding.EncodeToString(raw)[:RecoveryCodeLen]
+		codes = append(codes, code)
+		hashes = append(hashes, recoveryHash(code))
+	}
+	return codes, hashes, nil
+}
+
+// recoveryHash is how a recovery code is stored and looked up. Case, spaces
+// and dashes are ignored, so a code copied from a printout still works.
+func recoveryHash(code string) string {
+	clean := strings.NewReplacer(" ", "", "-", "").Replace(strings.ToUpper(strings.TrimSpace(code)))
+	sum := sha256.Sum256([]byte(clean))
+	return hex.EncodeToString(sum[:])
+}
+
+// issueRecoveryCodes replaces the user's codes and returns the new ones, shown once.
+func (a *Auth) issueRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
+	codes, hashes, err := newRecoveryCodes()
+	if err != nil {
+		return nil, err
+	}
+	return codes, a.Store.SetRecoveryCodes(ctx, userID, hashes)
+}
+
+// RegenerateRecoveryCodes replaces the user's recovery codes; it needs a
+// current authenticator code. The old codes stop working.
+func (a *Auth) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
+	var in codeInput
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	u, ok := a.freshUser(w, r)
+	if !ok {
+		return
+	}
+	if !u.TOTPEnabled {
+		httpx.Error(w, http.StatusConflict, MsgTwoFactorNotOn)
+		return
+	}
+	valid, err := a.checkCode(r.Context(), u, in.Code, a.now())
+	if err != nil {
+		httpx.ServerError(w, "check 2fa code", err)
+		return
+	}
+	if !valid {
+		httpx.Error(w, http.StatusBadRequest, MsgBadCode)
+		return
+	}
+	codes, err := a.issueRecoveryCodes(r.Context(), u.ID)
+	if err != nil {
+		httpx.ServerError(w, "issue recovery codes", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"recovery_codes": codes})
 }
 
 // freshUser reloads the signed-in user with their 2FA state.
@@ -143,5 +210,18 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 		httpx.ServerError(w, "switch 2fa", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"two_factor_enabled": enable})
+	out := map[string]any{"two_factor_enabled": enable}
+	if enable {
+		// Shown once: only their hashes are kept.
+		codes, err := a.issueRecoveryCodes(r.Context(), u.ID)
+		if err != nil {
+			httpx.ServerError(w, "issue recovery codes", err)
+			return
+		}
+		out["recovery_codes"] = codes
+	} else if err := a.Store.SetRecoveryCodes(r.Context(), u.ID, nil); err != nil {
+		httpx.ServerError(w, "remove recovery codes", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }

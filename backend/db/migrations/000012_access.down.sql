@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS invites;
+DROP TABLE IF EXISTS recovery_codes;
+ALTER TABLE users DROP COLUMN IF EXISTS pin_hash;

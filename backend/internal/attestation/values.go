@@ -50,7 +50,7 @@ const MaxReasonLen = 1000
 
 // Messages shown to callers.
 const (
-	MsgNotAccredited   = "your organisation is not accredited to issue certificates"
+	MsgNotAccredited   = "your organisation is not accredited to issue this type of certificate today"
 	MsgSubjectNotFound = "the passport or facility this certificate is about was not found"
 	MsgAlreadyRevoked  = "this certificate is already revoked"
 	MsgReasonNeeded    = "give a reason for revoking"

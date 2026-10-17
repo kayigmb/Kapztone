@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fileProblem, maxUploadBytes, registrationSchema, suggestSlug } from "./org.ts";
+import { upload } from "../consts.ts";
+import { accreditationSchema, fileProblem, registrationSchema, reviewSchema, suggestSlug, toAccreditations } from "./org.ts";
+
+const maxUploadBytes = upload.maxBytes;
 
 const good = {
   user_name: "Jeanne Mukamana", email: "Jeanne@Rukundo.Test ", password: "correct-password",
@@ -43,4 +46,29 @@ test("documents: PDF, PNG or JPEG, 10 MB at most", () => {
   assert.equal(fileProblem({ size: maxUploadBytes, type: "image/jpeg" }), undefined);
   assert.match(fileProblem({ size: maxUploadBytes + 1, type: "image/png" })!, /10 MB/);
   assert.match(fileProblem({ size: 10, type: "application/x-msdownload" })!, /PDF, PNG or JPEG/);
+});
+
+test("review: a reason is required to reject or ask for changes, not to approve", () => {
+  assert.ok(reviewSchema.safeParse({ decision: "verified", reason: "" }).success);
+  for (const decision of ["rejected", "changes_requested"]) {
+    const res = reviewSchema.safeParse({ decision, reason: "   " });
+    assert.ok(!res.success, decision);
+    assert.deepEqual(res.error.issues.map((i) => i.path[0]), ["reason"]);
+    assert.ok(reviewSchema.safeParse({ decision, reason: "Licence is unreadable" }).success);
+  }
+  assert.ok(!reviewSchema.safeParse({ decision: "pending", reason: "x" }).success);
+});
+
+test("accreditation: at least one type, dates in order, sent as one window per type", () => {
+  const good = { types: ["assay_report", "export_permit"], valid_from: "2026-11-01", valid_to: "2027-10-31" };
+  const res = accreditationSchema.safeParse(good);
+  assert.ok(res.success);
+  assert.deepEqual(toAccreditations(res.data)[1], { type: "export_permit", valid_from: "2026-11-01T00:00:00Z", valid_to: "2027-10-31T23:59:59Z" });
+  const bad = (change: object) => {
+    const r = accreditationSchema.safeParse({ ...good, ...change });
+    return r.success ? [] : r.error.issues.map((i) => i.path[0]);
+  };
+  assert.deepEqual(bad({ types: [] }), ["types"]);
+  assert.deepEqual(bad({ valid_to: "2026-11-01" }), ["valid_to"]);
+  assert.deepEqual(bad({ valid_from: "" }), ["valid_from"]);
 });

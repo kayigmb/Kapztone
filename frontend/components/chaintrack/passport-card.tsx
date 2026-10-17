@@ -1,7 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { copy, type Verdict } from "@/lib/verification";
+import { copy } from "@/lib/consts";
+import { type Verdict } from "@/lib/verification";
 import { VerdictStatus } from "./status";
 
 export type Fact = { label: string; value: React.ReactNode; mono?: boolean; wide?: boolean };
@@ -41,7 +42,7 @@ export function PassportCard({ product, lotCode, icon: Icon, facts, footer, flag
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-2 bg-surface-sunken px-4 py-3 text-small text-ink-muted">
         <span>{footer.left}</span>
-        <VerdictStatus verdict={footer.verdict}>{copy.verdict[footer.verdict]}</VerdictStatus>
+        <VerdictStatus verdict={footer.verdict}>{copy.verification.verdict[footer.verdict]}</VerdictStatus>
       </footer>
     </article>
   );

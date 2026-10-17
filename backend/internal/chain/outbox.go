@@ -60,9 +60,13 @@ type MaxYieldSet struct {
 	PartsPerMillion int64  `json:"parts_per_million"`
 }
 
+// OrgAccredited sets the window in which an organisation may issue one type
+// of certificate. ValidTo 0 withdraws it. The subject is the accreditation row.
 type OrgAccredited struct {
-	OrgID      string `json:"org_id"`
-	Accredited bool   `json:"accredited"`
+	OrgID     string `json:"org_id"`
+	Type      string `json:"type"`       // an evidence key such as "export_permit"
+	ValidFrom int64  `json:"valid_from"` // unix seconds
+	ValidTo   int64  `json:"valid_to"`
 }
 
 type TransformOutput struct {
@@ -84,6 +88,7 @@ type AttestationIssue struct {
 	AttestationID string `json:"attestation_id"`
 	IssuerOrg     string `json:"issuer_org"`
 	SubjectID     string `json:"subject_id"`
+	Type          string `json:"type"` // the certificate type the issuer must be accredited for
 	DocHash       string `json:"doc_hash"`
 	ValidFrom     int64  `json:"valid_from"` // unix seconds
 	ValidTo       int64  `json:"valid_to"`
@@ -98,6 +103,11 @@ type AttestationRevoke struct {
 type PassportReason struct {
 	PassportID string `json:"passport_id"`
 	ReasonHash string `json:"reason_hash"`
+}
+
+// PassportRetire is the payload of closing a passport at its final buyer.
+type PassportRetire struct {
+	PassportID string `json:"passport_id"`
 }
 
 // Enqueue queues a change for the chain. It must be called with the database

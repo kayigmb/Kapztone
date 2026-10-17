@@ -26,15 +26,20 @@ var IssuerKinds = []string{KindCertifier, KindRegulator}
 
 // KYB statuses are declared in auth, which checks them on every request.
 const (
-	StatusPending  = auth.OrgPending
-	StatusVerified = auth.OrgVerified
-	StatusRejected = auth.OrgRejected
+	StatusPending          = auth.OrgPending
+	StatusVerified         = auth.OrgVerified
+	StatusRejected         = auth.OrgRejected
+	StatusChangesRequested = auth.OrgChangesRequested
 )
 
-var Statuses = []string{StatusPending, StatusVerified, StatusRejected}
+var Statuses = []string{StatusPending, StatusVerified, StatusRejected, StatusChangesRequested}
 
-// Decisions a reviewer can make are the two final statuses.
-var Decisions = []string{StatusVerified, StatusRejected}
+// Decisions a reviewer can make: every status but pending.
+var Decisions = []string{StatusVerified, StatusRejected, StatusChangesRequested}
+
+// Reopened are the decisions that a new document upload sends back to pending.
+// Both need a reason, which the organisation is shown.
+var Reopened = []string{StatusRejected, StatusChangesRequested}
 
 // KYB document types.
 const (
@@ -52,13 +57,20 @@ const (
 )
 
 // URL parameter names.
-const ParamStatus = "status"
+const (
+	ParamStatus = "status"
+	ParamKind   = "kind"
+)
 
 // Messages shown to callers.
 const (
 	MsgSlugTaken    = "this organisation address is already taken"
 	MsgEmailTaken   = "an account with this email already exists"
 	MsgNoDocuments  = "this organisation has no documents to review; it cannot be verified"
-	MsgReasonNeeded = "give a reason for rejecting"
+	MsgReasonNeeded = "give a reason for rejecting or asking for changes"
 	MsgNotIssuer    = "only a verified certifier or regulator can be accredited"
+
+	MsgUnknownCertType    = "each type must be evidence that a product template asks for"
+	MsgDuplicateType      = "a type is listed more than once"
+	MsgAccreditationDates = "valid_from and valid_to must be dates (2026-01-31) or RFC 3339 timestamps, with valid_to after valid_from"
 )

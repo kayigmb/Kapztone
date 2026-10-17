@@ -1,7 +1,8 @@
 import { ArrowLeftRight, CheckCheck, Flag, OctagonX, Package, RefreshCcw, Sprout, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { copy, type View } from "@/lib/verification";
+import { copy } from "@/lib/consts";
+import { type View } from "@/lib/verification";
 import { StatusChip } from "./status";
 
 const icons: Record<string, LucideIcon> = {
@@ -42,7 +43,7 @@ export function JourneyTimeline({ steps }: { steps: View["journey"] }) {
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <span className="fig rounded-sm bg-surface-sunken px-2 py-0.5 text-sm">{s.quantity}</span>
-                {s.signedByBoth && <StatusChip tone="verified" icon={CheckCheck}>{copy.signedByBoth}</StatusChip>}
+                {s.signedByBoth && <StatusChip tone="verified" icon={CheckCheck}>{copy.verification.signedByBoth}</StatusChip>}
               </div>
             </div>
           </li>

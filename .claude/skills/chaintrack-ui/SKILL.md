@@ -42,6 +42,11 @@ ChainTrack gives every shipment a digital product passport: where goods came fro
   - Don't use MUI, Chakra, Mantine or any other styled component library.
 - **Domain components** (VerdictBadge, PassportCard, JourneyTimeline, GenealogyTree, meters, CertificateTile, SignatureChip…) are custom, in `components/chaintrack/`, built on the primitives above. Use `cn()` from shadcn for class merging.
 - **Other libraries:** react-hook-form + zod (forms), TanStack Table (data tables), MapLibre GL via `react-map-gl` (maps), `qrcode` (labels), `@zxing/browser` (scanning), Sonner (toasts).
+- **Data, errors and copy (project rules):**
+  - **TanStack Query** for every API call: `useQuery` to read, `useMutation` to write, then invalidate the keys the write changed. The provider is `app/providers.tsx`. Calls live in `lib/api.ts` (`endpoints.*`) and go through the `/api/...` pass-through. Pages render on the client; a `page.tsx` only exports `metadata` and mounts the client component.
+  - **zod for API errors and answers**: every response is parsed by a schema in `lib/api.ts`; every failure is an `ApiError`. Show `problemOf(err)` in a Sonner toast, or in a blocking `Notice` when the page can't continue. A 400 about one field becomes that field's error.
+  - **`lib/consts.ts`** holds every status, kind, permission name, route, API path, query key and all UI copy. Never type a user-facing string or an API path in a component; add it there and import it.
+  - Signed-in guards use `useMeGuard()` from `lib/api.ts`; permission checks use `permissions.*` from consts.
 
 ## Hard rules (never break these)
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,8 +21,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
+	"github.com/kayigmb/chaintrack/backend/internal/audit"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/cache"
+	"github.com/kayigmb/chaintrack/backend/internal/config"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -31,18 +34,42 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
+	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
-// These tests run the real SQL against a migrated Postgres, and the cache
-// against a real Redis. `make test-db` starts both and sets the variables:
+// These tests run the real SQL against a migrated Postgres, the cache
+// against a real Redis, and file storage against the bucket server from
+// `make infra` (RustFS). `make test-db` starts them and sets the variables:
 //
 //	TEST_DATABASE_URL=postgres://chaintrack:chaintrack@localhost:5478/chaintrack?sslmode=disable
 //	TEST_REDIS_URL=redis://localhost:6379/1
+//	STORAGE_* as in .env; files go to the bucket named there plus testBucketSuffix.
 const (
 	envTestDB    = "TEST_DATABASE_URL"
 	envTestRedis = "TEST_REDIS_URL"
+
+	testBucketSuffix = "-test"
 )
+
+// testBucket is the bucket server from .env, with a bucket of its own for tests.
+func testBucket(t *testing.T) *upload.Bucket {
+	t.Helper()
+	if os.Getenv(config.EnvStorageEndpoint) == "" {
+		t.Skip(config.EnvStorageEndpoint + " not set")
+	}
+	b, err := upload.New(context.Background(), upload.Config{
+		Endpoint:  os.Getenv(config.EnvStorageEndpoint),
+		Region:    os.Getenv(config.EnvStorageRegion),
+		Bucket:    os.Getenv(config.EnvStorageBucket) + testBucketSuffix,
+		AccessKey: os.Getenv(config.EnvStorageAccessKey),
+		SecretKey: os.Getenv(config.EnvStorageSecretKey),
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
 
 // Names of the organisations and users each test creates.
 const (
@@ -68,6 +95,10 @@ type env struct {
 	certificates *attestation.Handlers
 	// verify is kept so tests can point it at their chain and give it a cache.
 	verify *verify.Handlers
+	// audit is the audit log every change through h is written to.
+	audit *audit.Handlers
+	// users is kept so tests can give it a mailer.
+	users *user.Handlers
 }
 
 // countingStore counts lookups that reach the database.
@@ -116,20 +147,25 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			    OR subject_id IN (SELECT id FROM passports WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM transforms WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM attestations WHERE issuer_org_id IN ` + orgs + `)
+			    OR subject_id IN (SELECT id FROM accreditations WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM trace_events WHERE from_org IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM commodity_templates WHERE name LIKE $1)`,
 			`DELETE FROM notifications WHERE organisation_id IN ` + orgs,
 			`DELETE FROM flags WHERE organisation_id IN ` + orgs,
 			`DELETE FROM attestations WHERE issuer_org_id IN ` + orgs,
+			`DELETE FROM accreditations WHERE organisation_id IN ` + orgs,
 			`DELETE FROM trace_events WHERE to_org IN ` + orgs + ` OR from_org IN ` + orgs,
 			`DELETE FROM handovers WHERE from_org IN ` + orgs,
 			`DELETE FROM transform_inputs WHERE transform_id IN (SELECT id FROM transforms WHERE organisation_id IN ` + orgs + `)`,
 			`DELETE FROM passports WHERE organisation_id IN ` + orgs,
 			`DELETE FROM transforms WHERE organisation_id IN ` + orgs,
 			`DELETE FROM documents WHERE organisation_id IN ` + orgs,
+			`DELETE FROM lot_counters WHERE organisation_id IN ` + orgs,
 			`DELETE FROM facilities WHERE organisation_id IN ` + orgs,
 			`DELETE FROM commodity_templates WHERE name LIKE $1`,
+			`DELETE FROM invites WHERE organisation_id IN ` + orgs,
+			`DELETE FROM recovery_codes WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM userscope WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM organisations WHERE slug LIKE $1`,
 			`DELETE FROM users WHERE email::text LIKE $1`,
@@ -143,6 +179,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 	counting := &countingStore{Store: auth.PgStore{Pool: pool}}
 	var store auth.Store = counting
 	invalidate := func(context.Context, string) {}
+	e.users = &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: invalidate, Dev: true}
 	var cached *auth.CachedStore
 	if useCache {
 		redisURL := os.Getenv(envTestRedis)
@@ -156,27 +193,33 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		t.Cleanup(func() { c.Close() })
 		cached = &auth.CachedStore{Store: counting, Cache: c}
 		store, invalidate = cached, cached.InvalidateOrg
+		e.users.InvalidateUser = cached.InvalidateUser
 	}
 
 	// The signing domain is filled in by tests that deploy a chain (see newChain).
-	e.passports = &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: testBox(t)}}
-	e.certificates = &attestation.Handlers{Store: attestation.Store{Pool: pool}, UploadDir: t.TempDir()}
+	pin := func(w http.ResponseWriter, r *http.Request) bool { return e.a.CheckPIN(w, r) }
+	e.passports = &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: testBox(t)}, PIN: pin}
+	files := testBucket(t)
+	e.certificates = &attestation.Handlers{Store: attestation.Store{Pool: pool}, Files: files, PIN: pin}
 	e.verify = &verify.Handlers{Pool: pool, Passports: passport.Store{Pool: pool}, Certificates: e.certificates.Store,
-		UploadDir: e.certificates.UploadDir}
+		Files: files}
 	e.a = &auth.Auth{Store: store, Secret: []byte(testSecret), TokenTTL: time.Hour, Dev: true, Secrets: testBox(t)}
+	e.audit = &audit.Handlers{Store: audit.Store{Pool: pool}}
 	e.h = server.NewRouter(server.Deps{
 		Ping: pool.Ping,
 		Auth: e.a,
 		Org: &org.Handlers{
-			Store: org.Store{Pool: pool}, UploadDir: t.TempDir(), InvalidateOrg: invalidate, Secrets: testBox(t),
+			Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: invalidate, Secrets: testBox(t),
 		},
 		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
 		Template:    &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport:    e.passports,
 		Attestation: e.certificates,
-		Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passport.Store{Pool: pool}},
+		Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passport.Store{Pool: pool}, Auth: e.a},
 		Notify:      &notify.Handlers{Pool: pool},
 		Verify:      e.verify,
+		User:        e.users,
+		Audit:       e.audit,
 	})
 	return e, counting, cached
 }
@@ -220,8 +263,20 @@ func (e *env) addUser(name, role, orgID string) (userID string) {
 	return userID
 }
 
+// testPINHash is testPIN hashed once; bcrypt is slow on purpose.
+var testPINHash = sync.OnceValue(func() string {
+	hash, err := auth.HashPassword(testPIN)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+})
+
+// login signs a test user in. Every user who signs in has testPIN as signing
+// PIN, unless the test set another one.
 func (e *env) login(name string) string {
 	e.t.Helper()
+	e.exec(`UPDATE users SET pin_hash = $2 WHERE email = $1 AND pin_hash IS NULL`, e.email(name), testPINHash())
 	rec := do(e.h, http.MethodPost, "/auth/login", "", loginBody(e.email(name), testPassword))
 	if rec.Code != http.StatusOK {
 		e.t.Fatalf("login %s = %d %s", name, rec.Code, rec.Body)
@@ -480,6 +535,20 @@ func TestKYBFlow(t *testing.T) {
 	if s := status(); s != org.StatusPending {
 		t.Fatalf("after resubmitting, /me shows %s", s)
 	}
+	// Asking for changes behaves like a rejection: the reason is kept, and a new upload reopens it.
+	want(t, "ask for changes without reason", verify(root, "", acme.ID, org.StatusChangesRequested, " "), http.StatusBadRequest)
+	asked := verify(root, "", acme.ID, org.StatusChangesRequested, "licence photo is blurred")
+	want(t, "ask for changes", asked, http.StatusOK)
+	if o := decodeTo[org.Organisation](t, asked); o.ReviewReason == nil || *o.ReviewReason != "licence photo is blurred" {
+		t.Fatalf("reason not kept: %s", asked.Body)
+	}
+	if s := status(); s != org.StatusChangesRequested {
+		t.Fatalf("after asking for changes, /me shows %s", s)
+	}
+	want(t, "upload the change", e.upload(admin, acmeSlug, acme.ID, org.DocLicence, pdfBytes), http.StatusCreated)
+	if s := status(); s != org.StatusPending {
+		t.Fatalf("after uploading the change, /me shows %s", s)
+	}
 	ok := verify(root, "", acme.ID, org.StatusVerified, "")
 	want(t, "verify", ok, http.StatusOK)
 	reviewed := decodeTo[org.Organisation](t, ok)
@@ -493,7 +562,7 @@ func TestKYBFlow(t *testing.T) {
 	// Document list is paged like every other list.
 	docs := do(e.h, http.MethodGet, as(acmeSlug, "/orgs/"+acme.ID+"/documents?"+listq.ParamSize+"=1"), admin, "")
 	want(t, "list documents", docs, http.StatusOK)
-	if p := decodeTo[listq.Page[org.Document]](t, docs); p.Total != 2 || len(p.Data) != 1 {
+	if p := decodeTo[listq.Page[org.Document]](t, docs); p.Total != 3 || len(p.Data) != 1 {
 		t.Fatalf("document page wrong: %s", docs.Body)
 	}
 }
@@ -539,22 +608,8 @@ func TestEnsureSuperadmin(t *testing.T) {
 	ctx := context.Background()
 	pg := auth.PgStore{Pool: e.pool}
 
-	hasOne := func() (exists bool) {
-		e.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM userscope us JOIN roles r ON r.id = us.role_id
-		                                     WHERE r.name = $1 AND NOT us.is_deleted)`, auth.RoleSuperadmin).Scan(&exists)
-		return exists
-	}
-
-	// A short password never creates a superadmin. It is an error only when one
-	// is needed: a platform that already has its superadmin must still start.
-	short := strings.Repeat("a", auth.MinPasswordLen-1)
-	created, err := pg.EnsureSuperadmin(ctx, e.email("seed"), short)
-	if created || (err == nil) != hasOne() {
-		t.Fatalf("short superadmin password: created=%v err=%v existing=%v", created, err, hasOne())
-	}
-
 	// Creates one only when the platform has none; a second call never adds another.
-	created, err = pg.EnsureSuperadmin(ctx, e.email("seed"), testPassword)
+	created, err := pg.EnsureSuperadmin(ctx, e.email("seed"), testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}

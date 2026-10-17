@@ -102,8 +102,9 @@ func tellOwner(ctx context.Context, tx pgx.Tx, a Attestation, kind, message stri
 	return notify.Add(ctx, tx, owner, kind, a.ID, message)
 }
 
-// Issue records a certificate and queues it for the chain. The issuer must
-// be accredited and the subject must exist; the contract checks the first again.
+// Issue records a certificate and queues it for the chain. The issuer must be
+// verified and accredited for this type of certificate today, and the subject
+// must exist; the contract checks the first again.
 func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f upload.File) (Attestation, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -113,9 +114,11 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 
 	var accredited, exists bool
 	err = tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM organisations WHERE id = $1::uuid AND status = $2 AND accredited AND NOT is_deleted),
+		`SELECT EXISTS (SELECT 1 FROM organisations o JOIN accreditations ac ON ac.organisation_id = o.id
+		                WHERE o.id = $1::uuid AND o.status = $2 AND NOT o.is_deleted
+		                  AND ac.cert_type = $4 AND NOT ac.is_deleted AND now() BETWEEN ac.valid_from AND ac.valid_to),
 		        EXISTS (SELECT 1 FROM `+subjectTable[in.SubjectType]+` WHERE id = $3::uuid AND NOT is_deleted)`,
-		orgID, auth.OrgVerified, in.SubjectID).Scan(&accredited, &exists)
+		orgID, auth.OrgVerified, in.SubjectID, in.Type).Scan(&accredited, &exists)
 	switch {
 	case err != nil:
 		return Attestation{}, err
@@ -137,7 +140,7 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 		return Attestation{}, err
 	}
 	err = chain.Enqueue(ctx, tx, chain.KindAttestationIssue, a.ID, chain.AttestationIssue{
-		AttestationID: a.ID, IssuerOrg: orgID, SubjectID: in.SubjectID, DocHash: docHash,
+		AttestationID: a.ID, IssuerOrg: orgID, SubjectID: in.SubjectID, Type: in.Type, DocHash: docHash,
 		ValidFrom: in.ValidFrom.Unix(), ValidTo: in.ValidTo.Unix(),
 	})
 	if err != nil {

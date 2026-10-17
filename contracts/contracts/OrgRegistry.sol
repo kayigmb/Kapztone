@@ -13,30 +13,44 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 contract OrgRegistry is AccessControl {
     /// @notice May submit transactions on behalf of organisations.
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
+    /// @notice Routine platform decisions: verify organisations, accredit
+    ///         issuers, set yields, suspend facilities, revoke passports.
+    ///         The admin only grants roles and does one-time wiring, so its
+    ///         key can stay offline.
+    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
 
     struct Org {
         address signer;
         bool verified;
-        bool accredited;
+    }
+
+    /// @notice When an issuer may issue one type of certificate.
+    struct Window {
+        uint64 validFrom;
+        uint64 validTo;
     }
 
     mapping(bytes32 orgId => Org) private _orgs;
+    mapping(bytes32 orgId => mapping(bytes32 certType => Window)) private _accreditations;
     mapping(address signer => bytes32 orgId) public orgOfSigner;
 
     event OrgRegistered(bytes32 indexed orgId, address indexed signer);
     event OrgSignerChanged(bytes32 indexed orgId, address indexed signer);
     event OrgVerified(bytes32 indexed orgId, bool verified);
-    event IssuerAccredited(bytes32 indexed orgId, bool accredited);
+    event IssuerAccredited(bytes32 indexed orgId, bytes32 indexed certType, uint64 validFrom, uint64 validTo);
 
     error ZeroValue();
     error OrgExists(bytes32 orgId);
     error OrgUnknown(bytes32 orgId);
     error SignerInUse(address signer);
+    error BadValidity(uint64 validFrom, uint64 validTo);
 
     constructor(address admin, address relayer) {
         if (admin == address(0) || relayer == address(0)) revert ZeroValue();
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(RELAYER_ROLE, relayer);
+        // The relayer process sends the routine decisions too.
+        _grantRole(OPERATOR_ROLE, relayer);
     }
 
     /// @notice Record an organisation and the address of its signing key.
@@ -49,7 +63,7 @@ contract OrgRegistry is AccessControl {
     }
 
     /// @notice Replace an organisation's signing key, e.g. after a key rotation.
-    function setSigner(bytes32 orgId, address signer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setSigner(bytes32 orgId, address signer) external onlyRole(OPERATOR_ROLE) {
         address old = _known(orgId).signer;
         delete orgOfSigner[old];
         _bindSigner(orgId, signer);
@@ -57,25 +71,36 @@ contract OrgRegistry is AccessControl {
     }
 
     /// @notice Mark an organisation as having passed (or lost) KYB.
-    function setVerified(bytes32 orgId, bool verified) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setVerified(bytes32 orgId, bool verified) external onlyRole(OPERATOR_ROLE) {
         _known(orgId).verified = verified;
         emit OrgVerified(orgId, verified);
     }
 
-    /// @notice Allow (or stop) an organisation issuing attestations.
-    function setAccredited(bytes32 orgId, bool accredited) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _known(orgId).accredited = accredited;
-        emit IssuerAccredited(orgId, accredited);
+    /// @notice Allow an organisation to issue one type of certificate inside a
+    ///         window, or stop it (validTo 0).
+    function setAccreditation(bytes32 orgId, bytes32 certType, uint64 validFrom, uint64 validTo)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        _known(orgId);
+        if (certType == bytes32(0)) revert ZeroValue();
+        if (validTo == 0) {
+            delete _accreditations[orgId][certType];
+        } else {
+            if (validTo <= validFrom) revert BadValidity(validFrom, validTo);
+            _accreditations[orgId][certType] = Window(validFrom, validTo);
+        }
+        emit IssuerAccredited(orgId, certType, validFrom, validTo);
     }
 
     function isVerified(bytes32 orgId) external view returns (bool) {
         return _orgs[orgId].verified;
     }
 
-    /// @notice An issuer must be both verified and accredited.
-    function isAccredited(bytes32 orgId) external view returns (bool) {
-        Org storage o = _orgs[orgId];
-        return o.verified && o.accredited;
+    /// @notice An issuer must be verified and inside its window for this type.
+    function isAccredited(bytes32 orgId, bytes32 certType) external view returns (bool) {
+        Window storage w = _accreditations[orgId][certType];
+        return _orgs[orgId].verified && block.timestamp >= w.validFrom && block.timestamp <= w.validTo;
     }
 
     /// @notice The address whose signature counts as this organisation's; zero if unknown.

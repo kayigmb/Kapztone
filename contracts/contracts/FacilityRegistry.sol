@@ -57,7 +57,7 @@ contract FacilityRegistry is Managed {
         emit FacilityRegistered(facilityId, orgId, dataHash, capacityPerPeriod);
     }
 
-    function setSuspended(bytes32 facilityId, bool suspended) external onlyAdmin {
+    function setSuspended(bytes32 facilityId, bool suspended) external onlyOperator {
         _known(facilityId).suspended = suspended;
         emit FacilitySuspended(facilityId, suspended);
     }

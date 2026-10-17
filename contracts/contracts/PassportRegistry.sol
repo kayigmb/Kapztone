@@ -81,7 +81,7 @@ contract PassportRegistry is Managed {
         emit CustodianSet(custodian_);
     }
 
-    function setMaxYield(bytes32 commodity, bytes32 stage, uint256 partsPerMillion) external onlyAdmin {
+    function setMaxYield(bytes32 commodity, bytes32 stage, uint256 partsPerMillion) external onlyOperator {
         if (commodity == bytes32(0) || stage == bytes32(0) || partsPerMillion == 0) revert ZeroValue();
         maxYield[commodity][stage] = partsPerMillion;
         emit MaxYieldSet(commodity, stage, partsPerMillion);
@@ -178,7 +178,7 @@ contract PassportRegistry is Managed {
     }
 
     /// @notice Revoke a passport for good, whatever its state.
-    function revoke(bytes32 passportId, bytes32 reasonHash) external onlyAdmin {
+    function revoke(bytes32 passportId, bytes32 reasonHash) external onlyOperator {
         Passport storage p = _known(passportId);
         if (p.status == Status.Revoked) revert AlreadyRevoked(passportId);
         p.status = Status.Revoked;

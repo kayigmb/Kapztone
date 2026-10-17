@@ -1,24 +1,34 @@
 # All configuration comes from one file. Copy .env.example to .env first.
 ENV_FILE ?= .env
+# Go builds without cgo: pure-Go linker, no Apple clang (whose linker fails on
+# the macOS 27 SDK). Nothing here needs cgo; Docker builds run on Linux and are unaffected.
+export CGO_ENABLED := 0
 COMPOSE  := docker compose --env-file $(ENV_FILE)
 INFRA    := -f infra/compose.infra.yml
 # dev and prod are separate compose projects, so each keeps its own database volume.
-DEV      := $(COMPOSE) -p chaintrack-dev $(INFRA) -f infra/compose.dev.yml
+# The dev profile adds RustFS, the stand-in for the production bucket.
+DEV_INFRA := $(COMPOSE) -p chaintrack-dev $(INFRA) --profile dev
+DEV      := $(DEV_INFRA) -f infra/compose.dev.yml
 PROD     := $(COMPOSE) -p chaintrack-prod $(INFRA) -f infra/compose.prod.yml
 # Puts every value from the env file into the environment of the commands that follow.
 LOAD_ENV := set -a && . $(abspath $(ENV_FILE)) && set +a
 
-.PHONY: infra api web relayer chain deploy bindings dev prod down prod-down logs test test-db slither
+.PHONY: infra storage-reset api web relayer chain deploy bindings dev prod down prod-down logs test test-db slither
 
 # Targets that cannot run without the env file.
-infra api web relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
+infra storage-reset api web relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
 
 $(ENV_FILE):
 	@echo "$(ENV_FILE) not found: copy .env.example to $(ENV_FILE) and fill in every value" && exit 1
 
-infra: ## database + migrations + redis
-	$(DEV) up -d --wait db redis
-	$(DEV) run --rm migrate
+# Only the infra file: the app services' settings (contract addresses...) are not needed yet.
+infra: ## database + migrations + redis + rustfs (file bucket)
+	$(DEV_INFRA) up -d --wait db redis rustfs
+	$(DEV_INFRA) run --rm migrate
+
+storage-reset: ## delete every dev upload (the RustFS volume); the API recreates the bucket on start
+	$(DEV_INFRA) rm -sf rustfs
+	docker volume rm chaintrack-dev_storage-data
 
 api: ## run the API on this machine (needs `make infra`)
 	$(LOAD_ENV) && cd backend && go run ./cmd/api

@@ -26,6 +26,9 @@ const (
 	OrgPending  = "pending"
 	OrgVerified = "verified"
 	OrgRejected = "rejected"
+	// OrgChangesRequested: the reviewer wants corrected documents. Like a
+	// rejection, a new upload sends the organisation back to pending.
+	OrgChangesRequested = "changes_requested"
 )
 
 const (
@@ -42,10 +45,19 @@ const (
 	// a browser's request through to the API.
 	HeaderForwardedHost  = "X-Forwarded-Host"
 	HeaderForwardedProto = "X-Forwarded-Proto"
+	// HeaderForwardedFor carries the visitor's address from the web app.
+	HeaderForwardedFor = "X-Forwarded-For"
 	// SessionCookie holds the sign-in token in a browser. The API sets and
 	// clears it; scripts on the page cannot read it.
-	SessionCookie  = "ct_session"
-	superadminName = "Platform admin"
+	SessionCookie = "ct_session"
+	// HeaderSigningPIN carries the user's signing PIN on every signing action.
+	HeaderSigningPIN = "X-Signing-PIN"
+	PINLen           = 6
+
+	// 2FA recovery codes: shown once, each works once in place of an app code.
+	RecoveryCodeCount = 10
+	RecoveryCodeLen   = 10
+	superadminName    = "Platform admin"
 )
 
 // Messages shown to callers.
@@ -62,6 +74,11 @@ const (
 	MsgTwoFactorAlreadyOn  = "two-factor sign-in is already on"
 	MsgTwoFactorNotOn      = "two-factor sign-in is not on"
 	MsgTwoFactorSetupFirst = "set up two-factor sign-in first"
+	MsgPINNotSet           = "set a signing PIN first"
+	MsgPINNeeded           = "enter your signing PIN"
+	MsgBadPIN              = "signing PIN is incorrect"
+	MsgPINFormat           = "signing PIN must be exactly 6 digits"
+	MsgPINLocked           = "too many wrong PINs; signing is locked for 15 minutes"
 )
 
 // Cache keys.
