@@ -8,10 +8,10 @@ PROD     := $(COMPOSE) -p chaintrack-prod $(INFRA) -f infra/compose.prod.yml
 # Puts every value from the env file into the environment of the commands that follow.
 LOAD_ENV := set -a && . $(abspath $(ENV_FILE)) && set +a
 
-.PHONY: infra api relayer chain deploy bindings dev prod down prod-down logs test test-db slither
+.PHONY: infra api web relayer chain deploy bindings dev prod down prod-down logs test test-db slither
 
 # Targets that cannot run without the env file.
-infra api relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
+infra api web relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
 
 $(ENV_FILE):
 	@echo "$(ENV_FILE) not found: copy .env.example to $(ENV_FILE) and fill in every value" && exit 1
@@ -22,6 +22,9 @@ infra: ## database + migrations + redis
 
 api: ## run the API on this machine (needs `make infra`)
 	$(LOAD_ENV) && cd backend && go run ./cmd/api
+
+web: ## run the web app on this machine (needs `make api`)
+	$(LOAD_ENV) && cd frontend && pnpm dev --port 3000
 
 relayer: ## carry queued changes to the chain (needs `make infra`, a chain, deployed contracts)
 	$(LOAD_ENV) && cd backend && go run ./cmd/relayer
@@ -49,7 +52,7 @@ logs:
 
 test:
 	cd backend && go vet ./... && go test ./...
-	cd frontend && pnpm lint && pnpm build
+	cd frontend && pnpm lint && pnpm build && node --test "lib/**/*.test.ts"
 	cd contracts && pnpm test
 
 # Backend tests against the real Postgres and Redis from `make infra`, with

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -44,12 +45,49 @@ func CurrentScope(ctx context.Context) Scope {
 	return s
 }
 
+// sessionToken finds the sign-in token: in the Authorization header (scripts,
+// other services), else in the session cookie (browsers).
+func sessionToken(r *http.Request) (token string, fromCookie bool) {
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), bearerPrefix); ok {
+		return token, false
+	}
+	if c, err := r.Cookie(SessionCookie); err == nil {
+		return c.Value, true
+	}
+	return "", false
+}
+
+// sameSite reports whether a browser's request came from a page of the site
+// it is addressed to. A browser attaches the session cookie to any request
+// for this site, whichever site's page caused it, and names that page's site
+// in Origin; a request that changes something must come from our own pages.
+// SameSite on the cookie does not cover this alone: another organisation's
+// subdomain counts as the same site.
+func sameSite(r *http.Request) bool {
+	u, err := url.Parse(r.Header.Get(HeaderOrigin))
+	return err == nil && u.Host != "" && strings.EqualFold(u.Host, siteHost(r))
+}
+
+func (a *Auth) sessionCookie(value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name: SessionCookie, Value: value, Path: "/", MaxAge: maxAge,
+		HttpOnly: true,                 // never readable by scripts
+		Secure:   !a.Dev,               // https only, except on a developer's machine
+		SameSite: http.SameSiteLaxMode, // not sent on requests other sites make in the background
+	}
+}
+
 // Authenticate requires a valid sign-in token for a user who is still active.
 func (a *Auth) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), bearerPrefix)
-		if !ok {
+		token, fromCookie := sessionToken(r)
+		if token == "" {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
+			return
+		}
+		reads := r.Method == http.MethodGet || r.Method == http.MethodHead
+		if fromCookie && !reads && !sameSite(r) {
+			httpx.Error(w, http.StatusForbidden, MsgForeignOrigin)
 			return
 		}
 		userID, err := a.ParseToken(token)
@@ -192,10 +230,20 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "issue token", err)
 		return
 	}
+	// Browsers keep the token in the cookie. It is also returned for callers
+	// that are not browsers.
+	http.SetCookie(w, a.sessionCookie(token, int(a.TokenTTL.Seconds())))
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"token":      token,
 		"expires_in": int(a.TokenTTL.Seconds()),
 	})
+}
+
+// Logout clears the session cookie. The page cannot do it: scripts have no
+// access to the cookie. It needs no sign-in, since it only removes one.
+func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, a.sessionCookie("", -1))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Me reports who is signed in and what they may do in the acting organisation.

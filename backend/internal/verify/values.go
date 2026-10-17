@@ -52,20 +52,24 @@ const (
 // CacheKeyPrefix starts the cache key of every stored answer.
 const CacheKeyPrefix = "verify:"
 
+// The messages are shown on the public page as they are, so they follow its
+// rule: say what was checked, never how. ForbiddenWords may not appear in them.
+var ForbiddenWords = []string{"blockchain", "crypto", "wallet", "token", "on-chain", "smart contract", "hash"}
+
 var messages = map[string]string{
 	RecordAltered:       "This passport's record was changed after it was written.",
-	NotAnchored:         "This record has not been written to the blockchain yet.",
-	ChainUnreachable:    "The blockchain could not be reached, so records could not be compared with it.",
-	ChainMismatch:       "This record differs from what the blockchain holds.",
-	ChainMissing:        "This record is marked as anchored, but the blockchain does not hold it.",
-	CustodyPending:      "The latest change of holder has not been written to the blockchain yet.",
+	NotAnchored:         "This record has not been sealed yet. Check again in a few minutes.",
+	ChainUnreachable:    "The ledger could not be reached, so records could not be compared with their sealed copies. Check again later.",
+	ChainMismatch:       "This record differs from its sealed copy.",
+	ChainMissing:        "This record is marked as sealed, but no sealed copy exists.",
+	CustodyPending:      "The latest change of holder has not been sealed yet. Check again in a few minutes.",
 	OriginMissing:       "This lot cannot be traced back to an origin facility.",
-	FacilityAltered:     "The origin facility's record differs from what the blockchain holds.",
+	FacilityAltered:     "The origin facility's record differs from its sealed copy.",
 	FacilitySuspended:   "The origin facility is suspended.",
 	OwnerNotVerified:    "The organisation that owns the origin facility is not verified.",
 	CapacityExceeded:    "More was issued from the origin facility in the period than its capacity allows.",
 	MassBalanceBroken:   "More came out of a processing step than its inputs could yield.",
-	CertificateAltered:  "A certificate does not match the fingerprint recorded when it was issued.",
+	CertificateAltered:  "A certificate does not match the copy sealed when it was issued.",
 	CertificateExpired:  "A certificate has expired.",
 	CertificateRevoked:  "A certificate was revoked by its issuer.",
 	CertificateFileGone: "A certificate's file could not be read to check it.",

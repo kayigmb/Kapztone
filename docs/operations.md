@@ -84,6 +84,16 @@ After changing a contract: `make bindings` regenerates the Go bindings, and the 
 SELECT count(*), min(created_at) FROM notifications WHERE emailed_at IS NULL;
 ```
 
+## Sessions
+
+A browser's sign-in is a cookie, `ct_session`, that the API sets at `POST /auth/login` and clears at `POST /auth/logout`. It is `HttpOnly` always, `Secure` unless `APP_ENV=dev`, and has no domain: it belongs to the one address the user signed in on, so each organisation's address has its own session. Callers that are not browsers keep using `Authorization: Bearer`.
+
+The browser only talks to the web app, which passes `/api/*` through to the API and adds `X-Forwarded-Host`. The API takes the acting organisation from that host's first label. A request that uses the cookie to change anything must carry an `Origin` equal to that host, or it is refused with 403.
+
+Known limit: the API counts sign-in, registration and verification attempts per calling address, and behind the web app that address is the web app's. Until the API is told to trust a forwarded client address, those limits are shared by everyone.
+
+In dev, `http://acme.localhost:3000` acts for the organisation `acme`; `http://localhost:3000` acts for none.
+
 ## Public verification
 
 `GET /verify/{passportId}` is open to anyone. The API reads the chain for it, so the API now needs `CHAIN_RPC_URL` reachable as well as the relayer does; while the chain is down every answer is a warning, never "verified". Answers are cached for 60 seconds, so a revocation can take that long to show: `redis-cli --scan --pattern 'verify:*'` then `DEL` clears them. Each address may ask 60 times a minute (the direct peer address; behind nginx that is the proxy until the forwarded address is used).

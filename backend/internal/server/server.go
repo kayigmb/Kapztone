@@ -73,6 +73,7 @@ func Routes(d Deps) []Route {
 	return []Route{
 		{get, "/healthz", Public, "", healthz(d.Ping)},
 		{post, "/auth/login", Public, "", a.Login},
+		{post, "/auth/logout", Public, "", a.Logout},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
 		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
 

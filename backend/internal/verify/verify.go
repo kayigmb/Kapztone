@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
@@ -59,13 +60,15 @@ type Origin struct {
 
 // Result is everything the public verification page shows.
 type Result struct {
-	Verdict      string                    `json:"verdict"`
-	Reasons      []Reason                  `json:"reasons"`
-	Checks       []Check                   `json:"checks"`
-	Passport     passport.Passport         `json:"passport"`
-	Origins      []Origin                  `json:"origins"`
-	Genealogy    passport.Genealogy        `json:"genealogy"`
-	Certificates []attestation.Attestation `json:"certificates"`
+	Verdict  string            `json:"verdict"`
+	Reasons  []Reason          `json:"reasons"`
+	Checks   []Check           `json:"checks"`
+	Passport passport.Passport `json:"passport"`
+	Origins  []Origin          `json:"origins"`
+	// Organisations names every organisation the answer refers to by id.
+	Organisations []Named                   `json:"organisations"`
+	Genealogy     passport.Genealogy        `json:"genealogy"`
+	Certificates  []attestation.Attestation `json:"certificates"`
 }
 
 type Handlers struct {
@@ -191,6 +194,10 @@ func (h *Handlers) Run(ctx context.Context, id string) (Result, error) {
 		return res, err
 	}
 
+	if err := v.names(); err != nil {
+		return res, err
+	}
+
 	// The verdict is the worst level found; each check reports its own worst.
 	worst := map[string]string{}
 	rank := map[string]int{Verified: 0, Warning: 1, Failed: 2}
@@ -211,6 +218,41 @@ func (h *Handlers) Run(ctx context.Context, id string) (Result, error) {
 		res.Checks = append(res.Checks, Check{Name: name, Result: result})
 	}
 	return res, nil
+}
+
+// names looks up the name of every organisation the answer mentions.
+func (v *run) names() error {
+	res := v.res
+	ids := []string{}
+	add := func(id *string) {
+		if id != nil {
+			ids = append(ids, *id)
+		}
+	}
+	for _, p := range res.Genealogy.Nodes {
+		add(&p.OrganisationID)
+	}
+	for _, e := range res.Passport.Events {
+		add(e.FromOrg)
+		add(e.ToOrg)
+	}
+	for _, a := range res.Certificates {
+		add(&a.IssuerOrgID)
+	}
+	for _, o := range res.Origins {
+		add(&o.Organisation.ID)
+	}
+	rows, err := v.h.Pool.Query(v.ctx,
+		`SELECT id::text, name FROM organisations WHERE id = ANY($1::uuid[]) ORDER BY name`, ids)
+	if err != nil {
+		return err
+	}
+	res.Organisations, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Named, error) {
+		var n Named
+		err := row.Scan(&n.ID, &n.Name)
+		return n, err
+	})
+	return err
 }
 
 // passport checks one passport of the tree: its record, its copy on-chain, its status.

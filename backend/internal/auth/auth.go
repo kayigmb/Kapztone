@@ -149,22 +149,33 @@ type Frontend struct {
 	Host   string // lowercase host without port, e.g. "acme.chaintrack.app"
 }
 
+// siteHost is the host (with port) of the site the browser is on: the one
+// the web app forwarded, or the request's own when called directly.
+func siteHost(r *http.Request) string {
+	if h := r.Header.Get(HeaderForwardedHost); h != "" {
+		return h
+	}
+	return r.Host
+}
+
 // frontendOf works out the frontend from the request. A browser names the
-// calling site in the Origin header; without one (same-address deployments,
-// curl) the request's own host is used. Either way it is only a claim.
+// calling site in the Origin header; without one (a page load, curl) it is
+// the host the web app forwarded, or the request's own. Either way it is
+// only a claim.
 func frontendOf(r *http.Request) Frontend {
 	if u, err := url.Parse(r.Header.Get(HeaderOrigin)); err == nil && u.Host != "" {
 		return Frontend{Origin: u.Scheme + "://" + u.Host, Host: strings.ToLower(u.Hostname())}
 	}
 	scheme := "http"
-	if r.TLS != nil {
+	if r.TLS != nil || r.Header.Get(HeaderForwardedProto) == "https" {
 		scheme = "https"
 	}
-	host := r.Host
+	host := siteHost(r)
+	full := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	return Frontend{Origin: scheme + "://" + r.Host, Host: strings.ToLower(host)}
+	return Frontend{Origin: scheme + "://" + full, Host: strings.ToLower(host)}
 }
 
 // Slug returns the organisation slug the request names, or "" if none: the

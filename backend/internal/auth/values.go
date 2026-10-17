@@ -37,7 +37,14 @@ const (
 
 	bearerPrefix = "Bearer "
 	// HeaderOrigin is the header a browser sets to the address of the calling site.
-	HeaderOrigin   = "Origin"
+	HeaderOrigin = "Origin"
+	// HeaderForwardedHost carries the site's own host when the web app passes
+	// a browser's request through to the API.
+	HeaderForwardedHost  = "X-Forwarded-Host"
+	HeaderForwardedProto = "X-Forwarded-Proto"
+	// SessionCookie holds the sign-in token in a browser. The API sets and
+	// clears it; scripts on the page cannot read it.
+	SessionCookie  = "ct_session"
 	superadminName = "Platform admin"
 )
 
@@ -46,6 +53,7 @@ const (
 	MsgSignInRequired      = "sign in required"
 	MsgBadCredentials      = "email or password is incorrect"
 	MsgNotAllowed          = "you are not allowed to do this"
+	MsgForeignOrigin       = "this request did not come from the site you are signed in to"
 	MsgNoOrgSelected       = "choose an organisation to act for"
 	MsgOrgNotVerified      = "your organisation must be verified before it can do this"
 	MsgTooManyAttempts     = "too many attempts; try again later"

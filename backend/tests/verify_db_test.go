@@ -70,6 +70,14 @@ func TestPublicVerification(t *testing.T) {
 				t.Fatalf("%s: no %s reason in %+v", what, code, res.Reasons)
 			}
 		}
+		// Messages are shown to the public as they are: they say what was checked, never how.
+		for _, r := range res.Reasons {
+			for _, word := range verify.ForbiddenWords {
+				if strings.Contains(strings.ToLower(r.Message), word) {
+					t.Fatalf("%s: message for %s says %q: %s", what, r.Code, word, r.Message)
+				}
+			}
+		}
 		return res
 	}
 	// tamper changes a row behind the API's back, checks the verdict, and puts the row back.
@@ -124,7 +132,7 @@ func TestPublicVerification(t *testing.T) {
 	if len(clean.Reasons) != 0 || len(clean.Checks) != len(verify.Checks) || len(clean.Genealogy.Nodes) != 2 ||
 		len(clean.Genealogy.Edges) != 1 || len(clean.Certificates) != 1 || len(clean.Passport.Events) != 1 ||
 		len(clean.Origins) != 1 || clean.Origins[0].Facility.Name != plot.Name || clean.Origins[0].Organisation.ID != producer.ID ||
-		len(clean.Origins[0].Facility.Location) == 0 {
+		len(clean.Origins[0].Facility.Location) == 0 || len(clean.Organisations) != 3 {
 		t.Fatalf("clean verification: %s", rec.Body)
 	}
 	for _, ch := range clean.Checks {

@@ -63,6 +63,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm build
+      - run: node --test "lib/**/*.test.ts"
 
   contracts:
     runs-on: ubuntu-latest
