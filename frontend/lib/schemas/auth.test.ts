@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { signInSchema } from "./auth.ts";
+import { resetSchema, signInSchema } from "./auth.ts";
 
 test("sign-in: accepts what the API accepts, tidied the way the API tidies it", () => {
   const ok = signInSchema.safeParse({ email: "  Ada@Acme.Test ", password: "x", code: "" });
@@ -22,4 +22,12 @@ test("sign-in: refuses a missing email, password or a code that is not 6 digits,
     assert.deepEqual(res.error.issues.map((i) => i.path[0]), [field]);
     assert.match(res.error.issues[0].message, /^Enter /);
   }
+});
+
+test("a reset password must be long enough and typed the same twice", () => {
+  assert.equal(resetSchema.safeParse({ new: "harbour-lantern-41", confirm: "harbour-lantern-41" }).success, true);
+  assert.equal(resetSchema.safeParse({ new: "short", confirm: "short" }).success, false);
+  const differ = resetSchema.safeParse({ new: "harbour-lantern-41", confirm: "harbour-lantern-42" });
+  assert.equal(differ.success, false);
+  assert.deepEqual(differ.error?.issues[0].path, ["confirm"]);
 });

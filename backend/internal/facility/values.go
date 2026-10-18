@@ -18,11 +18,18 @@ const (
 var Kinds = []string{KindFarmPlot, KindMineSite, KindWashingStation, KindProcessingPlant, KindWarehouse}
 
 const (
+	// StatusPending: registered, waiting for the platform to approve it. It
+	// cannot originate goods and is not on the ledger yet.
+	StatusPending   = "pending_approval"
 	StatusActive    = "active"
 	StatusSuspended = "suspended"
 )
 
-var Statuses = []string{StatusActive, StatusSuspended}
+var Statuses = []string{StatusPending, StatusActive, StatusSuspended}
+
+// SettableStatuses are the ones POST /facilities/{id}/status may set; a
+// pending facility becomes active only by approval.
+var SettableStatuses = []string{StatusActive, StatusSuspended}
 
 // The period a facility's capacity applies to.
 const (
@@ -53,7 +60,17 @@ const (
 
 	minLon, maxLon = -180.0, 180.0
 	minLat, maxLat = -90.0, 90.0
+
+	// DateLayout is how licence dates are written: 2027-12-31.
+	DateLayout = "2006-01-02"
+
+	// createLock serialises facility registration, so two overlapping
+	// facilities cannot both pass the overlap check. Arbitrary.
+	createLock = 7203116
 )
+
+// Multipart field beside a licence document: its (new) end date.
+const FormLicenceValidTo = "licence_valid_to"
 
 // URL parameter names.
 const (
@@ -63,6 +80,15 @@ const (
 
 // Messages shown to callers.
 const (
-	MsgBadGeometry = "location is not a valid shape (a boundary must not cross itself)"
-	MsgBadBBox     = ParamBBox + " must be minLon,minLat,maxLon,maxLat"
+	MsgBadGeometry   = "location is not a valid shape (a boundary must not cross itself)"
+	MsgBadBBox       = ParamBBox + " must be minLon,minLat,maxLon,maxLat"
+	MsgLicenceDate   = "licence_valid_to must be a date, e.g. 2027-12-31"
+	MsgNotPending    = "this facility is not waiting for approval"
+	MsgPending       = "this facility is waiting for approval; its status changes once it is approved"
+	MsgNoLicenceFile = "no licence document has been uploaded for this facility"
+	// MsgOverlapsOther names nothing: another organisation's facility is not the caller's to see.
+	MsgOverlapsOther = "overlaps a facility registered by another organisation"
 )
+
+// MsgOverlaps names the caller's own facility the new one overlaps.
+func MsgOverlaps(name string) string { return "overlaps " + name }

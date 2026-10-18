@@ -86,12 +86,10 @@ func TestPublicVerification(t *testing.T) {
 		e.exec(restore.sql, restore.args...)
 	}
 
-	rec := post(e, prodTok, as(prodSlug, "/facilities"), facilityInput(plotGeo))
-	want(t, "create facility", rec, http.StatusCreated)
-	plot := decodeTo[facility.Facility](t, rec)
+	plot := e.approvedFacility(prodTok, prodSlug, root, facilityInput(newPlot()))
 	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec = post(e, root, "/templates", tplIn)
+	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
 	// Certificates below are export permits, evidence the template asks for.
@@ -110,13 +108,14 @@ func TestPublicVerification(t *testing.T) {
 		rec := post(e, fromTok, as(fromSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Stage: stageWashing})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
-		want(t, "accept handover", post(e, toTok, as(toSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
+		want(t, "accept handover", post(e, toTok, as(toSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
 	}
 	handOver(origin.ID, prodTok, prodSlug, processor.ID, procTok, procSlug)
 	rec = post(e, procTok, as(procSlug, "/transforms"), passport.TransformInput{
-		Stage:   "washing_station",
-		Inputs:  []passport.TransformSource{{PassportID: origin.ID, Quantity: qty}},
-		Outputs: []passport.TransformOutput{{Quantity: qty / 5}},
+		Stage:  "washing_station",
+		Inputs: []passport.TransformSource{{PassportID: origin.ID, Quantity: qty}},
+		// 90% of the most washing may yield: under the share at which the rules flag a transform.
+		Outputs: []passport.TransformOutput{{Quantity: qty / 5 * 9 / 10}},
 	})
 	want(t, "transform", rec, http.StatusCreated)
 	tr := decodeTo[passport.Transform](t, rec)

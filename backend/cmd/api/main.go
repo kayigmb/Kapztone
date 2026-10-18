@@ -83,12 +83,14 @@ func main() {
 	}
 
 	a := &auth.Auth{
-		Store:    store,
-		Secret:   cfg.JWTSecret,
-		TokenTTL: cfg.TokenTTL,
-		Dev:      cfg.Dev,
-		Secrets:  cfg.Secrets,
-		Limiter:  &auth.Limiter{Cache: c},
+		Store:       store,
+		Secret:      cfg.JWTSecret,
+		TokenTTL:    cfg.TokenTTL,
+		RememberTTL: cfg.RememberTTL,
+		Accounts:    pg,
+		Dev:         cfg.Dev,
+		Secrets:     cfg.Secrets,
+		Limiter:     &auth.Limiter{Cache: c},
 	}
 	o := &org.Handlers{
 		Store:         org.Store{Pool: pool},
@@ -106,6 +108,7 @@ func main() {
 	if cfg.SMTP != nil {
 		mailer := notify.NewMailer(pool, *cfg.SMTP)
 		users.Mail = mailer.SendOne
+		a.Mail = mailer.SendOne
 		go mailer.Run(ctx)
 	}
 
@@ -124,12 +127,14 @@ func main() {
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: server.NewRouter(server.Deps{
-			Ping:        pool.Ping,
-			Auth:        a,
-			Org:         o,
-			Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
-			Template:    &template.Handlers{Store: template.Store{Pool: pool}},
-			Passport:    &passport.Handlers{Store: passports, PIN: a.CheckPIN},
+			Ping:     pool.Ping,
+			Auth:     a,
+			Org:      o,
+			Facility: &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
+			Template: &template.Handlers{Store: template.Store{Pool: pool}},
+			Passport: &passport.Handlers{Store: passports, PIN: a.CheckPIN, Files: files,
+				// Rejected handovers and the rules flag passports, in the same transaction.
+				RaiseFlag: flag.RaiseFlag},
 			Attestation: certificates,
 			Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passports, Auth: a},
 			User:        users,

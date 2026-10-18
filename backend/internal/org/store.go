@@ -13,6 +13,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/dbx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/notify"
 )
 
 var (
@@ -150,6 +151,9 @@ func (s Store) Register(ctx context.Context, in Registration, passwordHash strin
 	if tag.RowsAffected() != 1 {
 		return Organisation{}, errors.New("role " + auth.RoleOrgAdmin + " is missing: run SyncRoles")
 	}
+	if err := notify.Add(ctx, tx, notify.Platform, notify.KindOrgRegistered, o.ID, MsgNotifyRegistered); err != nil {
+		return Organisation{}, err
+	}
 	return o, tx.Commit(ctx)
 }
 
@@ -241,6 +245,10 @@ func (s Store) AddDocument(ctx context.Context, d Document) (doc Document, statu
 		 WHERE id = $1::uuid AND status = ANY($3) AND NOT is_deleted`,
 		d.OrganisationID, StatusPending, Reopened)
 	if err != nil {
+		return Document{}, false, err
+	}
+	// ponytail: one notice per uploaded file; group them per organisation if a busy queue gets noisy.
+	if err := notify.Add(ctx, tx, notify.Platform, notify.KindDocumentsUploaded, d.OrganisationID, MsgNotifyDocuments); err != nil {
 		return Document{}, false, err
 	}
 	return doc, tag.RowsAffected() == 1, tx.Commit(ctx)

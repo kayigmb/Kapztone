@@ -1,5 +1,21 @@
 # Screens
 
+**Visual source:** the Claude Design drafts (`ui/ChainTrack Drafts.dc.html`) for content and flows, and the Figma Make app (`ui/figma-make/`) for the look. Both are reference only. Each screen below names its draft ids; where the Figma file shows a field the API does not have, it is listed in the gap table in `docs/design.md` and left out of the screen.
+
+| Screen | Drafts | Figma component |
+| --- | --- | --- |
+| 01 Public verification | 1a, 1b, 1c | `PublicVerification` |
+| 02 Dashboard | 1d, 3o | `Dashboard` |
+| 03 Access and onboarding | 2a–2m | `AuthFlow` |
+| 04 Facility registry | 3a, 3b | `Facilities`, `RegisterFacility` |
+| 05 Issue origin passport | 3c, 3d | `IssuePassport` |
+| 06 Handover (and passport detail) | 1f, 3e, 3g, 3h | `Handovers`, `Passports` |
+| 07 Transform / scan | 1e, 3f | `Transform`, `Scanner` |
+| 08 Certificates and flags | 3i, 3j, 3k | `Certificates`, `Flags` |
+| 09 Admin (organisations, templates, users) | 3l, 3m | `VerificationQueue`, `Templates`, `Users` |
+| 10 Reports and audit | 3n | `Reports` |
+| Profile | 2m | `Profile` |
+
 Every screen from the design, in build order. For each: who uses it, the sections in order, the data shown, and the states to build. Sample names and numbers are illustrative; use real data. Layout rules are in `patterns.md`; component specs in `components.md`.
 
 ---

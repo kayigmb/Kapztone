@@ -19,6 +19,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | --- | --- | --- |
 | `JWT_SECRET` | signs sign-in tokens | prod: at least 32 characters (dev: any); changing it signs everyone out |
 | `JWT_TTL` | how long a sign-in lasts | whole minutes: `90` is 90 minutes |
+| `JWT_TTL_REMEMBER` | how long a sign-in lasts with "Keep me signed in" | whole minutes: `43200` is 30 days |
 | `ENCRYPTION_KEY` | seals 2FA secrets in the database | exactly 64 hex characters (`openssl rand -hex 32`); if it is lost or changed, every user must set 2FA up again |
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | first platform admin | used only when no superadmin exists; password 12 to 72 characters in prod, up to 72 in dev |
 | `APP_ENV` | `dev` or `prod` | `dev` also accepts `?pslug=` to choose the acting organisation |
@@ -87,8 +88,15 @@ After changing a contract: `make bindings` regenerates the Go bindings, and the 
 
 ## Provenance: what to know when operating it
 
-- **Yields.** Saving a template queues each stage's `maxYield` for the chain. A transform is refused on-chain (`YieldNotSet`) until that item is anchored, so run the relayer after creating or changing a template. A template's commodity and unit cannot change once passports use it; its yields can, and apply to transforms made from then on. Each transform records the yield it was judged by (`transforms.max_yield_ppm`).
+- **Templates: draft, publish, version.** `PUT /templates/{id}` saves the next version as a draft (`draft` in `GET`); every check keeps using the published rules until `POST /templates/{id}/publish`, which makes the draft live as `version + 1` (409 without a draft). Transforms and handovers record the version they were judged by (`template_version`, filled in by a database trigger).
+- **Yields.** Creating or publishing a template queues each stage's `maxYield` for the chain, plus the reserved stage `split` at yield 1 (no template may name a stage `split`). A transform is refused on-chain (`YieldNotSet`) until that item is anchored, so run the relayer after creating or publishing a template. A template's commodity and unit cannot change once passports use it; its yields can, and apply to transforms made from then on. Each transform records the yield it was judged by (`transforms.max_yield_ppm`). A template published before `split` existed gets its split yield queued at its first partial handover.
 - **Split and merge** are transforms at a stage whose `maxYield` is `1`. Give each commodity such a stage if lots are split or merged without processing.
+- **Partial handover.** `POST /passports/{id}/handovers` takes `quantity` (default: all that remains). Less than the remainder first records a split transform (one input, one child, yield 1, stage `split`) in the same transaction; the child is handed over (`child_passport_id`, `split_from_passport_id`) and the parent keeps the rest. If the handover is rejected, cancelled or lapses, the child simply stays with the sender. Certificates stay on the parent: the child starts with none.
+- **Handover photos and place.** The sender's start and the receiver's accept take JSON, or a multipart form with up to 6 PNG / JPEG `photos` (10 MB each) in the bucket. `lat` / `lon` are optional, together. The sender's place and photo hashes are inside the signed record hash; the receiver's are kept beside it. `GET /handovers/{id}/photos/{photoId}`: the two parties only.
+- **Weight tolerance.** Accepting needs `received_quantity`. If it differs from what was sent by more than the stage's `handoverTolerance` percent (default 1%, `template.DefaultHandoverTolerance`), the answer is 409 `{error, difference, tolerance, sent, received}`; reject or flag instead. Accepted with a difference above half the tolerance, the rules raise a flag.
+- **Rejecting** takes `reasons` (one or more of `weight_short`, `damaged`, `wrong_product`, `seal_broken`, `not_expected`), an optional `note`, and `also_flag`, which raises a flag about the passport in the same transaction.
+- **Facilities.** A new facility needs `licence_valid_to` and waits as `pending_approval`; it is put on the ledger only when approved (`POST /facilities/{id}/approve`, permission `facility:suspend`). It cannot originate goods while pending or after its licence's last day. The licence document: `POST /facilities/{id}/licence` (multipart `file`, optional new `licence_valid_to`), `GET` to download. A boundary that touches another live facility is refused with 409: the caller's own facility is named (`{error: "overlaps <name>", facility_id}`), another organisation's is not (`facility_id: null`).
+- **Rules flags.** The rules raise a flag (`raised_by: "rules"`) on a transform at 98% or more of the maximum yield at a stage that loses mass, and on an accepted handover whose difference exceeds half the tolerance. They are notified like any flag. Investigators set who looks into one with `PUT /flags/{id}/assignee {"user_id": "…" | null}`; the assignee must be a platform admin or a member of a verified regulator.
 - **Accreditation.** `POST /orgs/{id}/accredit {"accredited": true}` (permission `org:verify`) lets a verified certifier or regulator issue certificates.
 - **Revocation.** Resolving a flag as `confirmed` revokes the passport and every passport made from it, each with its own chain transaction. It cannot be undone.
 - **Certificates on IPFS.** With `PINATA_JWT` set, a failed pin does not stop the certificate being issued; it is logged (`pin certificate <id>`) and `ipfs_cid` stays empty. Nothing retries it.
@@ -123,11 +131,22 @@ Every successful change made through the API (any non-GET request answered 2xx) 
 
 ## Reports
 
-`GET /reports/volume?start_date=&end_date=` (`report:read`; superadmin all, organisation admin their own): quantity issued at origin per month (UTC), commodity and unit, revoked lots included. Transform outputs are left out, since they are made from lots already counted. `?format=csv` downloads it.
+`GET /reports/volume?start_date=&end_date=` (`report:read`; superadmin all, organisation admin their own): quantity issued at origin per month (UTC), commodity and unit, revoked lots included. Transform outputs are left out, since they are made from lots already counted. `exported` is the quantity of completed handovers, sent by the organisation, at a stage that allows `EXPORT`, by the month they were accepted. `?format=csv` downloads it.
+
+`GET /reports/blocked?start_date=&end_date=` (`report:read`): `{data: [{rule, count}]}` for every rule, zero included: `capacity`, `mass_balance`, `evidence`, `tolerance`, `handover_rejected`. The first four are counted in `rule_events` when a rule refuses a request (written outside the refused request's rolled-back transaction); rejected handovers are counted from the handovers, for both parties. `?format=csv` downloads it.
+
+## Password reset, sign-out everywhere, lock
+
+- **Token version:** every user has a token version. Each sign-in token (and trusted-device cookie) carries it, and a token whose version is out of date is refused. Changing or resetting a password, "Sign out other devices" (`POST /auth/sessions/revoke`) and "Lock my account" all bump it, so every earlier session ends at once. The caller of a change or a sign-out gets a new token and stays signed in.
+- **Forgot password:** `POST /auth/password/forgot` always answers 202, whether or not the email has an account. An account gets an emailed link `<site>/reset/<token>` that works once, for 30 minutes. In dev the link is also written to the API log. With `SMTP_HOST=none`, the log is the only place it appears, and only in dev.
+- **Reset:** `POST /auth/password/reset`. A new password must be 12–72 characters and not one of the last 5. After any password change the user gets an email with a "Lock my account" link (`<site>/lock/<token>`, once, 7 days). That link disables the account; re-enable it by setting `users.status` back to `active`.
+- **Keep me signed in:** that sign-in lasts `JWT_TTL_REMEMBER` minutes instead of `JWT_TTL`.
+- **Trust this device:** after a 2FA sign-in with an app code, the `ct_trust` cookie (HttpOnly, per address) skips the code for 30 days. It ends early on any token-version bump.
+- Only hashes of the reset and lock tokens are stored, in `password_resets`.
 
 ## Sign-in lockout
 
-Five failed sign-ins for one email from one address lock that pair for 15 minutes. To clear it early, delete the key in Redis: `redis-cli --scan --pattern 'auth:rate:login:*'`, then `DEL` the key.
+Five failed sign-ins for one email from one address lock that pair for 15 minutes. A failed sign-in answers with `attempts_left`. To clear it early, delete the key in Redis: `redis-cli --scan --pattern 'auth:rate:login:*'`, then `DEL` the key.
 
 ## Visitor addresses and the API port
 

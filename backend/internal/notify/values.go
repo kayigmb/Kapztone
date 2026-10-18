@@ -18,7 +18,14 @@ const (
 	KindFlagRaised         = "flag_raised"
 	KindFlagResolved       = "flag_resolved"
 	KindPassportRevoked    = "passport_revoked"
+
+	// Platform notifications (no organisation): things the platform admin acts on.
+	KindOrgRegistered     = "org_registered"     // subject: the organisation
+	KindDocumentsUploaded = "documents_uploaded" // subject: the organisation, ready for (re-)review
 )
+
+// Platform is the organisation id Add takes for a platform notification.
+const Platform = ""
 
 // URL parameter names.
 const ParamUnread = "unread"

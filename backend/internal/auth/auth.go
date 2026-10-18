@@ -25,6 +25,9 @@ type User struct {
 	Email        string `json:"email"`
 	Name         string `json:"name"`
 	PasswordHash string `json:"-"`
+	// TokenVersion must match the "ver" claim of a sign-in token. Kept in the
+	// cached copy, so it is serialised; Me never shows it.
+	TokenVersion int `json:"token_version"`
 
 	// Two-factor state; filled by UserByEmail only.
 	TOTPSecret  string `json:"-"` // sealed with secret.Box
@@ -95,14 +98,43 @@ type Store interface {
 	UseRecoveryCode(ctx context.Context, userID, hash string) (bool, error)
 }
 
+// AccountStore is the database access of the account flows: password
+// changes and resets, sign-out everywhere, lock. Separate from Store so the
+// per-request lookups stay small (and their test doubles too).
+type AccountStore interface {
+	// RecentPasswordHashes returns the last n password hashes: the current one
+	// and the n-1 most recent earlier ones.
+	RecentPasswordHashes(ctx context.Context, userID string, n int) ([]string, error)
+	// SetPassword stores a new password hash, moves the old one into the history and
+	// bumps the token version. Returns the new version.
+	SetPassword(ctx context.Context, userID, hash string) (int, error)
+	// BumpTokenVersion voids every token issued so far. Returns the new version.
+	BumpTokenVersion(ctx context.Context, userID string) (int, error)
+	// AddLink stores an emailed one-use link (only its hash).
+	AddLink(ctx context.Context, userID, kind, tokenHash string, expires time.Time) error
+	// LinkUser names the user of an unused, unexpired link without spending it.
+	LinkUser(ctx context.Context, kind, tokenHash string, now time.Time) (userID string, err error)
+	// UseLink spends an unused, unexpired link of that kind; ErrNotFound otherwise.
+	UseLink(ctx context.Context, kind, tokenHash string, now time.Time) (userID string, err error)
+	// Lock disables the account and bumps the token version.
+	Lock(ctx context.Context, userID string) error
+	// UserByID returns the user (any status) with email and password hash.
+	UserByID(ctx context.Context, userID string) (User, error)
+}
+
 type Auth struct {
 	Store    Store
-	Secret   []byte           // signs sign-in tokens
-	TokenTTL time.Duration    // how long a sign-in lasts
-	Dev      bool             // accept ?pslug= in place of the frontend subdomain
-	Secrets  *secret.Box      // seals 2FA secrets
-	Limiter  *Limiter         // nil disables rate limiting
-	Now      func() time.Time // the clock; nil means time.Now (tests set it)
+	Accounts AccountStore
+	Secret   []byte        // signs sign-in tokens and trusted-device cookies
+	TokenTTL time.Duration // how long a sign-in lasts
+	// RememberTTL is how long a sign-in lasts with "keep me signed in".
+	RememberTTL time.Duration
+	// Mail sends one email now; nil when e-mail is off (links are then only logged in dev).
+	Mail    func(to, subject, body string) error
+	Dev     bool             // accept ?pslug= in place of the frontend subdomain
+	Secrets *secret.Box      // seals 2FA secrets
+	Limiter *Limiter         // nil disables rate limiting
+	Now     func() time.Time // the clock; nil means time.Now (tests set it)
 }
 
 func (a *Auth) now() time.Time {
@@ -125,29 +157,48 @@ func CheckPassword(hash, password string) bool {
 // permissions are deliberately left out: they are looked up on every request,
 // so removing them takes effect immediately.
 func (a *Auth) IssueToken(userID string, now time.Time) (string, error) {
-	claims := jwt.RegisteredClaims{
-		Subject:   userID,
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(a.TokenTTL)),
+	return a.issue(userID, 0, a.TokenTTL, now)
+}
+
+// tokenClaims are who the user is, plus the token version they signed in at.
+type tokenClaims struct {
+	jwt.RegisteredClaims
+	Ver int `json:"ver"`
+}
+
+func (a *Auth) issue(userID string, ver int, ttl time.Duration, now time.Time) (string, error) {
+	claims := tokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		},
+		Ver: ver,
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(a.Secret)
 }
 
 // ParseToken returns the user id from a valid, unexpired token.
 func (a *Auth) ParseToken(token string) (string, error) {
-	var claims jwt.RegisteredClaims
-	_, err := jwt.ParseWithClaims(token, &claims,
+	userID, _, err := a.parse(token)
+	return userID, err
+}
+
+// parse returns the user id and the token version a token was issued at.
+func (a *Auth) parse(token string) (userID string, ver int, err error) {
+	var claims tokenClaims
+	_, err = jwt.ParseWithClaims(token, &claims,
 		func(*jwt.Token) (any, error) { return a.Secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if claims.Subject == "" {
-		return "", errors.New("token has no subject")
+		return "", 0, errors.New("token has no subject")
 	}
-	return claims.Subject, nil
+	return claims.Subject, claims.Ver, nil
 }
 
 // Frontend is where the user's browser is: the site that made the request.

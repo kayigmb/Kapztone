@@ -79,11 +79,18 @@ func Routes(d Deps) []Route {
 		{get, "/healthz", Public, "", healthz(d.Ping)},
 		{post, "/auth/login", Public, "", a.Login},
 		{post, "/auth/logout", Public, "", a.Logout},
+		{post, "/auth/password/forgot", Public, "", a.LimitIP(auth.ForgotRate, a.ForgotPassword)},
+		{post, "/auth/password/reset", Public, "", a.LimitIP(auth.RegisterRate, a.ResetPassword)},
+		{post, "/auth/lock", Public, "", a.LimitIP(auth.RegisterRate, a.LockAccount)},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
 		{post, "/invites/{" + user.ParamToken + "}/accept", Public, "", a.LimitIP(auth.RegisterRate, u.Accept)},
 		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
 
 		{get, "/me", SignedIn, "", a.Me},
+		{put, "/me", SignedIn, "", u.SetName},
+		{get, "/me/organisations", SignedIn, "", u.MyOrganisations},
+		{post, "/auth/password", SignedIn, "", a.ChangePassword},
+		{post, "/auth/sessions/revoke", SignedIn, "", a.RevokeSessions},
 		{post, "/auth/2fa/setup", SignedIn, "", a.SetupTwoFactor},
 		{post, "/auth/2fa/enable", SignedIn, "", a.EnableTwoFactor},
 		{post, "/auth/2fa/disable", SignedIn, "", a.DisableTwoFactor},
@@ -106,12 +113,16 @@ func Routes(d Deps) []Route {
 		{get, "/facilities", Permission, auth.FacilityRead, f.List},
 		{get, "/facilities" + idPath, Permission, auth.FacilityRead, f.Get},
 		{post, "/facilities" + idPath + "/status", Permission, auth.FacilitySuspend, f.SetStatus},
+		{post, "/facilities" + idPath + "/approve", Permission, auth.FacilitySuspend, f.Approve},
+		{post, "/facilities" + idPath + "/licence", Permission, auth.FacilityManage, f.UploadLicence},
+		{get, "/facilities" + idPath + "/licence", Permission, auth.FacilityRead, f.Licence},
 		{del, "/facilities" + idPath, Permission, auth.FacilityManage, f.Delete},
 
 		{post, "/templates", Permission, auth.TemplateManage, t.Create},
 		{get, "/templates", Permission, auth.TemplateRead, t.List},
 		{get, "/templates" + idPath, Permission, auth.TemplateRead, t.Get},
 		{put, "/templates" + idPath, Permission, auth.TemplateManage, t.Update},
+		{post, "/templates" + idPath + "/publish", Permission, auth.TemplateManage, t.Publish},
 		{del, "/templates" + idPath, Permission, auth.TemplateManage, t.Delete},
 
 		{post, "/passports", VerifiedPermission, auth.PassportIssue, p.Issue},
@@ -123,6 +134,7 @@ func Routes(d Deps) []Route {
 		{post, "/passports" + idPath + "/handovers", VerifiedPermission, auth.HandoverCreate, p.StartHandover},
 		{get, "/handovers", Permission, auth.PassportRead, p.ListHandovers},
 		{get, "/handovers" + idPath, Permission, auth.PassportRead, p.GetHandover},
+		{get, "/handovers" + idPath + "/photos/{" + passport.ParamPhotoID + "}", Permission, auth.PassportRead, p.HandoverPhoto},
 		{post, "/handovers" + idPath + "/accept", VerifiedPermission, auth.HandoverAccept, p.Accept},
 		{post, "/handovers" + idPath + "/reject", VerifiedPermission, auth.HandoverAccept, p.Reject},
 		{post, "/handovers" + idPath + "/cancel", VerifiedPermission, auth.HandoverCreate, p.Cancel},
@@ -138,6 +150,8 @@ func Routes(d Deps) []Route {
 		{get, "/flags" + idPath, Permission, auth.FlagCreate, fl.Get},
 		// The handler decides who resolves: the superadmin or a verified regulator.
 		{post, "/flags" + idPath + "/resolve", Permission, auth.FlagCreate, fl.Resolve},
+		// Likewise the handler decides who assigns: an investigator.
+		{put, "/flags" + idPath + "/assignee", Permission, auth.FlagCreate, fl.Assign},
 
 		{get, "/users", Permission, auth.UserManage, u.List},
 		{post, "/invites", Permission, auth.UserManage, u.Invite},
@@ -148,6 +162,7 @@ func Routes(d Deps) []Route {
 		{get, "/audit", Permission, auth.AuditRead, d.Audit.List},
 		{get, "/audit/verify", Permission, auth.AuditVerify, d.Audit.Verify},
 		{get, "/reports/volume", Permission, auth.ReportRead, d.Audit.Volume},
+		{get, "/reports/blocked", Permission, auth.ReportRead, d.Audit.Blocked},
 	}
 }
 

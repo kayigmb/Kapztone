@@ -132,9 +132,7 @@ func TestVolumeReport(t *testing.T) {
 	admin, rivalAdmin := e.login(tAcme), e.login(tRival)
 
 	facilityOf := func(token, slug string) facility.Facility {
-		rec := post(e, token, as(slug, "/facilities"), facilityInput(plotGeo))
-		want(t, "facility", rec, http.StatusCreated)
-		return decodeTo[facility.Facility](t, rec)
+		return e.approvedFacility(token, slug, root, facilityInput(newPlot()))
 	}
 	plot, rivalPlot := facilityOf(admin, e.slug(tAcme)), facilityOf(rivalAdmin, e.slug(tRival))
 	tplIn := coffeeTemplate("coffee_" + e.suffix)
@@ -188,8 +186,8 @@ func TestVolumeReport(t *testing.T) {
 
 	rec = do(e.h, http.MethodGet, as(e.slug(tAcme), "/reports/volume?format=csv&start_date=2026-03-01&end_date=2026-04-30"), admin, "")
 	want(t, "volume csv", rec, http.StatusOK)
-	wantCSV := strings.Join(audit.VolumeColumns, ",") + "\n2026-03," + tpl.Commodity + "," + tpl.Unit + ",150\n2026-04," +
-		tpl.Commodity + "," + tpl.Unit + ",7\n"
+	wantCSV := strings.Join(audit.VolumeColumns, ",") + "\n2026-03," + tpl.Commodity + "," + tpl.Unit + ",150,0\n2026-04," +
+		tpl.Commodity + "," + tpl.Unit + ",7,0\n"
 	if rec.Body.String() != wantCSV {
 		t.Fatalf("volume csv = %q, want %q", rec.Body.String(), wantCSV)
 	}

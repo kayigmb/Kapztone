@@ -73,3 +73,19 @@ test("certificate states: revoked is red with its reason, expiring within 30 day
   assert.equal(v.certificates[0].issuer, "Rwanda Standards Board");
   assert.equal(v.certificates[0].type, "Export permit");
 });
+
+test("the lot code is shown when the API gives it, and each earlier lot says how it went in", () => {
+  const api: ApiVerification = {
+    ...base,
+    passport: { ...passport, code: "MILL-2026-0007" },
+    genealogy: {
+      nodes: [passport, { ...passport, id: "origin-lot", code: "FARM-2026-0001", facility_id: "f1", transform_id: null, quantity: 6000, events: undefined }],
+      edges: [{ parent_id: "origin-lot", child_id: passport.id, stage: "washing_station", quantity_used: 6000 }],
+    },
+  };
+  const v = toView(api, now);
+  assert.equal(v.product.lotCode, "MILL-2026-0007");
+  assert.equal(v.product.holder, "Kitabi Washing Station");
+  assert.deepEqual(v.madeFrom.map((m) => [m.lotCode, m.via]), [["FARM-2026-0001", "Washing station · 6,000 kg used"]]);
+  assert.equal(v.records, "2 records");
+});

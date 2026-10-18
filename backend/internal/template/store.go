@@ -19,12 +19,16 @@ var (
 	ErrNotFound       = errors.New("not found")
 	ErrCommodityTaken = errors.New("commodity taken")
 	ErrInUse          = errors.New("template in use")
+	ErrNoDraft        = errors.New("no draft")
 )
 
-// Template is a stored commodity template: the submitted rules plus the base fields.
+// Template is a stored commodity template: the published rules plus the base
+// fields. Edits wait in Draft until published; every publish is a new Version.
 type Template struct {
 	ID string `json:"id"`
 	Input
+	Version   int       `json:"version"`
+	Draft     *Input    `json:"draft"` // null when nothing waits to be published
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -37,17 +41,24 @@ var List = listq.Config{
 }
 
 const columns = `t.id::text, t.commodity, t.name, t.unit, t.origin_facility_kind,
-                 t.capacity_rule::text, t.stages::text, t.created_at, t.updated_at`
+                 t.capacity_rule::text, t.stages::text, t.version, t.draft::text, t.created_at, t.updated_at`
 
 func scan(row pgx.CollectableRow) (Template, error) {
 	var (
 		t            Template
 		rule, stages string
+		draft        *string
 	)
 	err := row.Scan(&t.ID, &t.Commodity, &t.Name, &t.Unit, &t.OriginFacilityKind,
-		&rule, &stages, &t.CreatedAt, &t.UpdatedAt)
+		&rule, &stages, &t.Version, &draft, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return t, err
+	}
+	if draft != nil {
+		t.Draft = &Input{}
+		if err := json.Unmarshal([]byte(*draft), t.Draft); err != nil {
+			return t, err
+		}
 	}
 	if err := json.Unmarshal([]byte(rule), &t.CapacityRule); err != nil {
 		return t, err
@@ -87,10 +98,13 @@ func YieldPPM(maxYield float64) int64 {
 	return int64(math.Round(maxYield * chain.YieldScale))
 }
 
-// queueYields tells the chain every yield the template sets. The contract
-// refuses a transform at a stage whose yield it has not been told.
+// queueYields tells the chain every yield the template sets, and the split
+// stage's yield of 1 (see StageSplit). The contract refuses a transform at a
+// stage whose yield it has not been told.
 func queueYields(ctx context.Context, tx pgx.Tx, t Template) error {
-	for _, st := range t.Stages {
+	whole := 1.0
+	stages := append(t.Stages, Stage{Key: StageSplit, MaxYield: &whole})
+	for _, st := range stages {
 		if st.MaxYield == nil {
 			continue
 		}
@@ -101,6 +115,21 @@ func queueYields(ctx context.Context, tx pgx.Tx, t Template) error {
 		}
 	}
 	return nil
+}
+
+// QueueSplitYield queues the split stage's yield for a commodity unless it
+// was queued before: templates published before splits existed lack it.
+func QueueSplitYield(ctx context.Context, tx pgx.Tx, templateID, commodity string) error {
+	var queued bool
+	err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM chain_outbox WHERE kind = $1
+		                AND payload->>'commodity' = $2 AND payload->>'stage' = $3)`,
+		chain.KindMaxYieldSet, commodity, StageSplit).Scan(&queued)
+	if err != nil || queued {
+		return err
+	}
+	return chain.Enqueue(ctx, tx, chain.KindMaxYieldSet, templateID,
+		chain.MaxYieldSet{Commodity: commodity, Stage: StageSplit, PartsPerMillion: chain.YieldScale})
 }
 
 // save runs one insert or update and queues the template's yields with it.
@@ -143,31 +172,87 @@ func (s Store) Get(ctx context.Context, id string) (Template, error) {
 		`SELECT `+columns+` FROM commodity_templates t WHERE t.id = $1::uuid AND NOT t.is_deleted`, id))
 }
 
-// Update replaces the template. Passports copy the commodity and unit they
-// were issued under, so those two cannot change once passports exist.
-func (s Store) Update(ctx context.Context, id string, in Input) (Template, error) {
-	rule, stages := jsonArgs(in)
-	inUse := func(tx pgx.Tx) error {
-		var changes, used bool
-		err := tx.QueryRow(ctx,
-			`SELECT (t.commodity <> $2 OR t.unit <> $3),
-			        EXISTS (SELECT 1 FROM passports p WHERE p.template_id = t.id AND NOT p.is_deleted)
-			 FROM commodity_templates t WHERE t.id = $1::uuid AND NOT t.is_deleted FOR UPDATE`,
-			id, in.Commodity, in.Unit).Scan(&changes, &used)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
-		if err == nil && changes && used {
-			return ErrInUse
-		}
-		return err
+// inUse refuses a change of commodity or unit once passports use the
+// template: passports copy the two they were issued under. It locks the row.
+func inUse(ctx context.Context, tx pgx.Tx, id string, in Input) error {
+	var changes, used bool
+	err := tx.QueryRow(ctx,
+		`SELECT (t.commodity <> $2 OR t.unit <> $3),
+		        EXISTS (SELECT 1 FROM passports p WHERE p.template_id = t.id AND NOT p.is_deleted)
+		 FROM commodity_templates t WHERE t.id = $1::uuid AND NOT t.is_deleted FOR UPDATE`,
+		id, in.Commodity, in.Unit).Scan(&changes, &used)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
 	}
-	return s.save(ctx, inUse,
+	if err == nil && changes && used {
+		return ErrInUse
+	}
+	return err
+}
+
+// Update saves the template's next version as a draft. The published rules,
+// which every check uses, do not change until Publish.
+func (s Store) Update(ctx context.Context, id string, in Input) (Template, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Template{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := inUse(ctx, tx, id, in); err != nil {
+		return Template{}, err
+	}
+	draft, _ := json.Marshal(in)
+	t, err := one(tx.Query(ctx,
+		`UPDATE commodity_templates AS t SET draft = $2::jsonb
+		 WHERE t.id = $1::uuid AND NOT t.is_deleted RETURNING `+columns, id, string(draft)))
+	if err != nil {
+		return Template{}, err
+	}
+	return t, tx.Commit(ctx)
+}
+
+// Publish makes the draft the template's rules, as the next version, and
+// queues its yields for the chain. Transforms and handovers record the
+// version they were judged by.
+func (s Store) Publish(ctx context.Context, id string) (Template, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Template{}, err
+	}
+	defer tx.Rollback(ctx)
+	var draft *string
+	err = tx.QueryRow(ctx,
+		`SELECT draft::text FROM commodity_templates WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id).Scan(&draft)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Template{}, ErrNotFound
+	}
+	if err != nil {
+		return Template{}, err
+	}
+	if draft == nil {
+		return Template{}, ErrNoDraft
+	}
+	var in Input
+	if err := json.Unmarshal([]byte(*draft), &in); err != nil {
+		return Template{}, err
+	}
+	if err := inUse(ctx, tx, id, in); err != nil {
+		return Template{}, err
+	}
+	rule, stages := jsonArgs(in)
+	t, err := one(tx.Query(ctx,
 		`UPDATE commodity_templates AS t
 		 SET commodity = $2, name = $3, unit = $4, origin_facility_kind = $5,
-		     capacity_rule = $6::jsonb, stages = $7::jsonb
-		 WHERE t.id = $1::uuid AND NOT t.is_deleted RETURNING `+columns,
-		id, in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, rule, stages)
+		     capacity_rule = $6::jsonb, stages = $7::jsonb, version = t.version + 1, draft = NULL
+		 WHERE t.id = $1::uuid RETURNING `+columns,
+		id, in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, rule, stages))
+	if err != nil {
+		return Template{}, err
+	}
+	if err := queueYields(ctx, tx, t); err != nil {
+		return Template{}, err
+	}
+	return t, tx.Commit(ctx)
 }
 
 // Delete marks the template deleted; it stays in the database for history.

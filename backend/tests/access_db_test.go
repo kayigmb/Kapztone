@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
-	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
@@ -93,16 +92,14 @@ func lotForFlags(t *testing.T, e *env, root string) flag.Flag {
 	t.Helper()
 	acme := e.login(tAcme)
 	slug := e.slug(tAcme)
-	rec := post(e, acme, as(slug, "/facilities"), facilityInput(plotGeo))
-	want(t, "create facility", rec, http.StatusCreated)
-	plot := decodeTo[facility.Facility](t, rec)
+	plot := e.approvedFacility(acme, slug, root, facilityInput(newPlot()))
 
 	tplIn := coffeeTemplate("coffee_" + e.suffix)
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
 	for i := range tplIn.Stages {
 		tplIn.Stages[i].RequiredEvidence = nil // evidence rules are not what this test is about
 	}
-	rec = post(e, root, "/templates", tplIn)
+	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
 

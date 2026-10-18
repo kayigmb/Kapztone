@@ -33,6 +33,15 @@ const (
 	MaxUnitLen = 16
 )
 
+// StageSplit is the stage at which part of a lot is cut into its own passport
+// before being handed over. It is the platform's, at a yield of 1, so no
+// template may use the key for a stage of its own.
+const StageSplit = "split"
+
+// DefaultHandoverTolerance is the weight difference, in percent, a receiver
+// may accept when the stage sets no handoverTolerance of its own.
+const DefaultHandoverTolerance = 1.0
+
 // Keys (commodity, stage, evidence) are lowercase identifiers such as "washing_station".
 var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
 
@@ -48,4 +57,5 @@ func ValidKey(s string) bool { return keyPattern.MatchString(s) }
 const (
 	MsgCommodityTaken = "a template for this commodity already exists"
 	MsgInUse          = "passports already use this template; its commodity and unit can no longer change"
+	MsgNoDraft        = "this template has no draft to publish; save the changes first"
 )

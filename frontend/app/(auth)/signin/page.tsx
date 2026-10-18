@@ -7,21 +7,19 @@ const t = copy.signin;
 
 export const metadata = { title: copy.meta.signin };
 
-// Phone-first, no app shell (screens.md §03).
+// Phone-first, inside the access layout (screens.md §03; Figma AuthFlow → sign in).
 export default async function Page({ searchParams }: PageProps<"/signin">) {
   const { email } = await searchParams;
   return (
-    <main className="mx-auto grid min-h-dvh w-full max-w-md content-center gap-6 px-4 py-8">
-      <header className="grid gap-1">
-        <p className="text-title">{copy.brand}</p>
+    <main className="mx-auto grid w-full max-w-[400px] gap-6">
+      <header className="grid gap-2">
+        <span className="eyebrow text-primary">{t.eyebrow}</span>
         <h1 className="text-page">{t.title}</h1>
-        <p className="text-ink-muted">{t.sub}</p>
+        <p className="text-sm text-ink-muted">{t.sub}</p>
       </header>
-      <section className="rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-        <SignInForm email={typeof email === "string" ? email : ""} />
-      </section>
-      <p className="text-sm text-ink-muted">
-        {t.newHere} <Link href={routes.signup} className="font-semibold text-primary underline">{t.createAccount}</Link>
+      <SignInForm email={typeof email === "string" ? email : ""} />
+      <p className="text-center text-sm text-ink-muted">
+        {t.newHere} <Link href={routes.signup} className="font-semibold text-primary hover:underline">{t.createAccount}</Link>
       </p>
     </main>
   );

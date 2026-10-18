@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"strings"
@@ -22,12 +23,15 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 var (
 	ErrNotFound          = errors.New("not found")
 	ErrFacilityNotFound  = errors.New("facility not found")
 	ErrFacilitySuspended = errors.New("facility suspended")
+	ErrFacilityPending   = errors.New("facility pending approval")
+	ErrLicenceExpired    = errors.New("facility licence expired")
 	ErrTemplateNotFound  = errors.New("template not found")
 	ErrKindMismatch      = errors.New("facility kind mismatch")
 	ErrUnitMismatch      = errors.New("unit mismatch")
@@ -102,24 +106,62 @@ type Event struct {
 }
 
 type Handover struct {
-	ID           string     `json:"id"`
-	PassportID   string     `json:"passport_id"`
-	FromOrg      string     `json:"from_org"`
-	ToOrg        string     `json:"to_org"`
-	Stage        string     `json:"stage"` // the template stage the lot enters
-	Quantity     int64      `json:"quantity"`
-	Note         string     `json:"note"`
-	DataHash     string     `json:"data_hash"`
-	Deadline     time.Time  `json:"deadline"`
-	Status       string     `json:"status"`
-	SignedByFrom bool       `json:"signed_by_sender"`
-	SignedByTo   bool       `json:"signed_by_receiver"`
-	RejectReason *string    `json:"reject_reason"`
-	RespondedAt  *time.Time `json:"responded_at"`
-	TxHash       *string    `json:"tx_hash"`
-	AnchoredAt   *time.Time `json:"anchored_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID           string    `json:"id"`
+	PassportID   string    `json:"passport_id"`
+	FromOrg      string    `json:"from_org"`
+	ToOrg        string    `json:"to_org"`
+	Stage        string    `json:"stage"` // the template stage the lot enters
+	Quantity     int64     `json:"quantity"`
+	Note         string    `json:"note"`
+	DataHash     string    `json:"data_hash"`
+	Deadline     time.Time `json:"deadline"`
+	Status       string    `json:"status"`
+	SignedByFrom bool      `json:"signed_by_sender"`
+	SignedByTo   bool      `json:"signed_by_receiver"`
+	RejectReason *string   `json:"reject_reason"` // the receiver's note
+	// RejectReasons are why the receiver refused, from RejectReasons.
+	RejectReasons []string   `json:"reject_reasons"`
+	RespondedAt   *time.Time `json:"responded_at"`
+	TxHash        *string    `json:"tx_hash"`
+	AnchoredAt    *time.Time `json:"anchored_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	// SplitFrom is set when part of a lot was handed over: the passport it was
+	// cut from. PassportID (and ChildPassportID) is then the new passport.
+	SplitFrom       *string `json:"split_from_passport_id"`
+	ChildPassportID *string `json:"child_passport_id"`
+	// Location is where the sender handed the goods over.
+	Location *Location `json:"location"`
+	// ReceivedQuantity is what the receiver weighed on arrival, and where.
+	ReceivedQuantity *int64    `json:"received_quantity"`
+	ReceiverLocation *Location `json:"receiver_location"`
+	Photos           []Photo   `json:"photos"`
+	// TemplateVersion is the version of the commodity's template it was judged by.
+	TemplateVersion *int `json:"template_version"`
+}
+
+type Location struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
+
+func location(lat, lon *float64) *Location {
+	if lat == nil || lon == nil {
+		return nil
+	}
+	return &Location{*lat, *lon}
+}
+
+// Photo is a picture taken at a handover by its sender or its receiver.
+type Photo struct {
+	ID          string    `json:"id"`
+	Side        string    `json:"side"` // PhotoBySender or PhotoByReceiver
+	FileName    string    `json:"file_name"`
+	ContentType string    `json:"content_type"`
+	SizeBytes   int64     `json:"size_bytes"`
+	SHA256      string    `json:"sha256"`
+	StorageKey  string    `json:"-"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // What each list endpoint lets callers search and sort by.
@@ -145,8 +187,9 @@ const (
 	handoverColumnsFmt = `h.id::text, h.passport_id::text, h.from_org::text, h.to_org::text, h.stage, h.quantity, h.note,
 	           h.data_hash, h.deadline,
 	           CASE WHEN h.status = $%[1]d AND h.deadline < now() THEN $%[2]d ELSE h.status END,
-	           true, h.sig_to IS NOT NULL, h.reject_reason, h.responded_at, h.tx_hash, h.anchored_at,
-	           h.created_at, h.updated_at`
+	           true, h.sig_to IS NOT NULL, h.reject_reason, h.reject_reasons, h.responded_at, h.tx_hash, h.anchored_at,
+	           h.created_at, h.updated_at, h.split_from::text, h.lat, h.lon, h.received_quantity,
+	           h.receiver_lat, h.receiver_lon, h.template_version`
 
 	// visibleFmt: who may see a passport. Its holder, anyone it passed through,
 	// and the receiver of a handover still awaiting an answer (they must be
@@ -170,10 +213,19 @@ func scan(row pgx.CollectableRow) (Passport, error) {
 }
 
 func scanHandover(row pgx.CollectableRow) (Handover, error) {
-	var h Handover
+	var (
+		h                                  Handover
+		lat, lon, receiverLat, receiverLon *float64
+	)
 	err := row.Scan(&h.ID, &h.PassportID, &h.FromOrg, &h.ToOrg, &h.Stage, &h.Quantity, &h.Note, &h.DataHash,
-		&h.Deadline, &h.Status, &h.SignedByFrom, &h.SignedByTo, &h.RejectReason, &h.RespondedAt,
-		&h.TxHash, &h.AnchoredAt, &h.CreatedAt, &h.UpdatedAt)
+		&h.Deadline, &h.Status, &h.SignedByFrom, &h.SignedByTo, &h.RejectReason, &h.RejectReasons, &h.RespondedAt,
+		&h.TxHash, &h.AnchoredAt, &h.CreatedAt, &h.UpdatedAt, &h.SplitFrom, &lat, &lon, &h.ReceivedQuantity,
+		&receiverLat, &receiverLon, &h.TemplateVersion)
+	if h.SplitFrom != nil {
+		h.ChildPassportID = &h.PassportID
+	}
+	h.Location, h.ReceiverLocation = location(lat, lon), location(receiverLat, receiverLon)
+	h.Photos = []Photo{}
 	return h, err
 }
 
@@ -237,18 +289,25 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 	// cannot both fit into the last of the capacity.
 	var fKind, fStatus, fUnit, fPeriod string
 	var capacity int64
+	var licenceValidTo *time.Time
 	err = tx.QueryRow(ctx,
-		`SELECT kind, status, capacity, capacity_unit, capacity_period FROM facilities
+		`SELECT kind, status, capacity, capacity_unit, capacity_period, licence_valid_to FROM facilities
 		 WHERE id = $1::uuid AND organisation_id = $2::uuid AND NOT is_deleted FOR UPDATE`,
-		in.FacilityID, orgID).Scan(&fKind, &fStatus, &capacity, &fUnit, &fPeriod)
+		in.FacilityID, orgID).Scan(&fKind, &fStatus, &capacity, &fUnit, &fPeriod, &licenceValidTo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Passport{}, ErrFacilityNotFound
 	}
 	if err != nil {
 		return Passport{}, err
 	}
-	if fStatus != facility.StatusActive {
+	switch {
+	case fStatus == facility.StatusPending:
+		return Passport{}, ErrFacilityPending
+	case fStatus != facility.StatusActive:
 		return Passport{}, ErrFacilitySuspended
+	// The licence is valid through its last day.
+	case licenceValidTo != nil && now.UTC().Format(facility.DateLayout) > licenceValidTo.Format(facility.DateLayout):
+		return Passport{}, ErrLicenceExpired
 	}
 
 	var commodity, unit, originKind, stagesJSON string
@@ -366,6 +425,11 @@ type handoverRecord struct {
 	Note       string `json:"note"`
 	// Stage is left out when empty, so handovers made before stages keep their hash.
 	Stage string `json:"stage,omitempty"`
+	// Where the goods were handed over, and the SHA-256 of each sender photo:
+	// left out when absent, so older handovers keep their hash.
+	Lat    *float64 `json:"lat,omitempty"`
+	Lon    *float64 `json:"lon,omitempty"`
+	Photos []string `json:"photos,omitempty"`
 }
 
 // message builds the typed message both organisations sign for a handover.
@@ -419,7 +483,14 @@ func (s Store) signAs(ctx context.Context, tx pgx.Tx, orgID string, digest [32]b
 // StartHandover is the sender's half: it checks the rules, signs the
 // handover with the holder's key and leaves it awaiting the receiver.
 // The holder does not change yet.
-func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID string, in HandoverInput, now time.Time) (Handover, error) {
+//
+// Handing over less than the passport holds first cuts that part into its own
+// passport (a split at yield 1, in this transaction), and that passport is
+// handed over; the rest stays on the original. If the handover is then
+// rejected, cancelled or lapses, the new passport simply stays with the sender.
+func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID string, in HandoverInput,
+	photos []upload.File, now time.Time) (Handover, error) {
+
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Handover{}, err
@@ -427,11 +498,11 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	defer tx.Rollback(ctx)
 
 	// Lock the passport: only one handover can be started at a time.
-	var holder, status, commodity string
+	var holder, status, commodity, unit string
 	var remaining, count int64
 	err = tx.QueryRow(ctx,
-		`SELECT organisation_id::text, status, commodity, remaining, handover_count FROM passports
-		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, passportID).Scan(&holder, &status, &commodity, &remaining, &count)
+		`SELECT organisation_id::text, status, commodity, unit, remaining, handover_count FROM passports
+		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, passportID).Scan(&holder, &status, &commodity, &unit, &remaining, &count)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && holder != fromOrg) {
 		return Handover{}, ErrNotHolder
 	}
@@ -443,6 +514,13 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	}
 	if err := noOpenHandover(ctx, tx, passportID); err != nil {
 		return Handover{}, err
+	}
+	quantity := remaining
+	if in.Quantity != nil {
+		if *in.Quantity > remaining {
+			return Handover{}, InsufficientError{PassportID: passportID, Requested: *in.Quantity, Remaining: remaining, Unit: unit}
+		}
+		quantity = *in.Quantity
 	}
 
 	// The stage the lot enters must take handovers, and its evidence must be on the passport.
@@ -472,17 +550,37 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 		return Handover{}, ErrReceiverInvalid
 	}
 
+	// Part of the lot: cut it into its own passport, which is what moves.
+	handed, nonce := passportID, count
+	var splitFrom *string
+	if quantity < remaining {
+		t, err := transformTx(ctx, tx, fromOrg, userID, TransformInput{
+			Stage:   template.StageSplit,
+			Inputs:  []TransformSource{{PassportID: passportID, Quantity: quantity}},
+			Outputs: []TransformOutput{{Quantity: quantity}},
+		}, now, true)
+		if err != nil {
+			return Handover{}, err
+		}
+		handed, nonce, splitFrom = t.Outputs[0].ID, 0, &passportID
+	}
+
 	id, err := newID(ctx, tx)
 	if err != nil {
 		return Handover{}, err
 	}
-	hash, err := chain.DataHash(handoverRecord{id, passportID, fromOrg, in.ToOrganisationID, remaining, in.Note, in.Stage})
+	shas := make([]string, len(photos))
+	for i, f := range photos {
+		shas[i] = f.SHA256
+	}
+	hash, err := chain.DataHash(handoverRecord{ID: id, PassportID: handed, FromOrg: fromOrg, ToOrg: in.ToOrganisationID,
+		Quantity: quantity, Note: in.Note, Stage: in.Stage, Lat: in.Lat, Lon: in.Lon, Photos: shas})
 	if err != nil {
 		return Handover{}, err
 	}
 	dataHash, deadline := chain.Hex(hash), now.Add(HandoverTTL).Truncate(time.Second)
 
-	msg, err := message(id, passportID, fromOrg, in.ToOrganisationID, remaining, dataHash, count, deadline)
+	msg, err := message(id, handed, fromOrg, in.ToOrganisationID, quantity, dataHash, nonce, deadline)
 	if err != nil {
 		return Handover{}, err
 	}
@@ -493,18 +591,79 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 
 	h, err := oneHandover(tx.Query(ctx,
 		`INSERT INTO handovers AS h (id, passport_id, from_org, to_org, quantity, note, data_hash, nonce,
-		                             deadline, sig_from, status, created_by, stage)
-		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14)
+		                             deadline, sig_from, status, created_by, stage, split_from, lat, lon)
+		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14, $15::uuid, $16, $17)
 		 RETURNING `+handoverColumns(1, 2),
-		HandoverAwaiting, HandoverExpired, id, passportID, fromOrg, in.ToOrganisationID, remaining, in.Note,
-		dataHash, count, deadline, sigFrom, userID, in.Stage))
+		HandoverAwaiting, HandoverExpired, id, handed, fromOrg, in.ToOrganisationID, quantity, in.Note,
+		dataHash, nonce, deadline, sigFrom, userID, in.Stage, splitFrom, in.Lat, in.Lon))
 	if err != nil {
+		return Handover{}, err
+	}
+	if h.Photos, err = addPhotos(ctx, tx, id, PhotoBySender, userID, photos); err != nil {
 		return Handover{}, err
 	}
 	if err := notify.Add(ctx, tx, in.ToOrganisationID, notify.KindHandoverStarted, id, MsgNotifyHandoverStarted); err != nil {
 		return Handover{}, err
 	}
 	return h, tx.Commit(ctx)
+}
+
+// addPhotos records photos already stored in the bucket against a handover.
+func addPhotos(ctx context.Context, tx pgx.Tx, handoverID, side, userID string, photos []upload.File) ([]Photo, error) {
+	out := []Photo{}
+	for _, f := range photos {
+		p := Photo{Side: side, FileName: f.Name, ContentType: f.ContentType, SizeBytes: f.Size, SHA256: f.SHA256, StorageKey: f.Key}
+		err := tx.QueryRow(ctx,
+			`INSERT INTO handover_photos (handover_id, side, file_name, content_type, size_bytes, sha256, storage_key, uploaded_by)
+			 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::uuid) RETURNING id::text, created_at`,
+			handoverID, side, f.Name, f.ContentType, f.Size, f.SHA256, f.Key, userID).Scan(&p.ID, &p.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// querier is a pool or a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// attachPhotos fills in the photos of each handover.
+func attachPhotos(ctx context.Context, q querier, hs []Handover) error {
+	if len(hs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(hs))
+	for i, h := range hs {
+		ids[i] = h.ID
+	}
+	by := map[string][]Photo{}
+	rows, err := q.Query(ctx,
+		`SELECT handover_id::text, id::text, side, file_name, content_type, size_bytes, sha256, storage_key, created_at
+		 FROM handover_photos WHERE handover_id = ANY($1::uuid[]) AND NOT is_deleted ORDER BY created_at, id`, ids)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var hid string
+		var p Photo
+		if err := rows.Scan(&hid, &p.ID, &p.Side, &p.FileName, &p.ContentType, &p.SizeBytes, &p.SHA256, &p.StorageKey, &p.CreatedAt); err != nil {
+			rows.Close()
+			return err
+		}
+		by[hid] = append(by[hid], p)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range hs {
+		if p := by[hs[i].ID]; p != nil {
+			hs[i].Photos = p
+		}
+	}
+	return nil
 }
 
 // lockAwaiting locks a handover the acting organisation may answer and
@@ -540,10 +699,55 @@ const (
 	sideSender   = "from_org"
 )
 
-// Accept is the receiver's half. It signs the same message, and only now,
-// with both signatures, does the passport change holder. The change and the
-// queued chain transaction are saved together.
-func (s Store) Accept(ctx context.Context, id, toOrg, userID string) (Handover, error) {
+// ToleranceError says the weight a receiver recorded differs from what was
+// sent by more than the stage allows.
+type ToleranceError struct {
+	Sent, Received int64
+	Unit           string
+	Tolerance      float64 // percent
+}
+
+// Difference is how far, in percent of what was sent, the two weights differ.
+func (e ToleranceError) Difference() float64 {
+	return math.Abs(float64(e.Sent-e.Received)) * 100 / float64(e.Sent)
+}
+
+func (e ToleranceError) Error() string {
+	return fmt.Sprintf("received %d %s but %d %s was sent: %.1f%% off, and this stage accepts at most %.1f%%. Reject the handover, or raise a flag",
+		e.Received, e.Unit, e.Sent, e.Unit, e.Difference(), e.Tolerance)
+}
+
+// tolerance is the weight difference, in percent, the handover's stage accepts.
+func tolerance(ctx context.Context, tx pgx.Tx, handoverID string) (pct float64, unit string, err error) {
+	var stage, commodity string
+	err = tx.QueryRow(ctx,
+		`SELECT h.stage, p.commodity, p.unit FROM handovers h JOIN passports p ON p.id = h.passport_id
+		 WHERE h.id = $1::uuid`, handoverID).Scan(&stage, &commodity, &unit)
+	if err != nil {
+		return 0, "", err
+	}
+	_, stages, err := liveStages(ctx, tx, commodity)
+	if err != nil {
+		return 0, "", err
+	}
+	for _, st := range stages {
+		if st.Key == stage {
+			return st.Tolerance(), unit, nil
+		}
+	}
+	return template.DefaultHandoverTolerance, unit, nil // a handover from before stages
+}
+
+// Accept is the receiver's half. They record what they weighed; within the
+// stage's tolerance they sign the same message, and only now, with both
+// signatures, does the passport change holder. The change and the queued
+// chain transaction are saved together. Their own photos and location are
+// kept with the handover, outside the signed record (the sender signed first).
+//
+// A difference above RuleFlagShare of the tolerance is accepted, but the
+// rules raise a flag about it in the same transaction.
+func (s Store) Accept(ctx context.Context, id, toOrg, userID string, in AcceptInput, photos []upload.File,
+	raise RaiseFlag) (Handover, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Handover{}, err
@@ -553,6 +757,20 @@ func (s Store) Accept(ctx context.Context, id, toOrg, userID string) (Handover, 
 	h, nonce, sigFrom, err := lockAwaiting(ctx, tx, id, sideReceiver, toOrg)
 	if err != nil {
 		return Handover{}, err
+	}
+	pct, unit, err := tolerance(ctx, tx, id)
+	if err != nil {
+		return Handover{}, err
+	}
+	off := ToleranceError{Sent: h.Quantity, Received: *in.ReceivedQuantity, Unit: unit, Tolerance: pct}
+	if off.Difference() > pct {
+		return Handover{}, off
+	}
+	if raise != nil && off.Difference() > pct*RuleFlagShare {
+		reason := fmt.Sprintf(MsgRuleToleranceFmt, off.Difference(), pct)
+		if err := raise(ctx, tx, toOrg, userID, toOrg, h.PassportID, reason, SourceRules); err != nil {
+			return Handover{}, err
+		}
 	}
 
 	// The passport must be exactly as it was when the sender signed.
@@ -578,9 +796,10 @@ func (s Store) Accept(ctx context.Context, id, toOrg, userID string) (Handover, 
 	}
 
 	out, err := oneHandover(tx.Query(ctx,
-		`UPDATE handovers AS h SET status = $3, sig_to = $4, responded_by = $5::uuid, responded_at = now()
+		`UPDATE handovers AS h SET status = $3, sig_to = $4, responded_by = $5::uuid, responded_at = now(),
+		        received_quantity = $7, receiver_lat = $8, receiver_lon = $9
 		 WHERE h.id = $6::uuid RETURNING `+handoverColumns(1, 2),
-		HandoverAwaiting, HandoverExpired, HandoverCompleted, sigTo, userID, id))
+		HandoverAwaiting, HandoverExpired, HandoverCompleted, sigTo, userID, id, *in.ReceivedQuantity, in.Lat, in.Lon))
 	if err != nil {
 		return Handover{}, err
 	}
@@ -603,14 +822,29 @@ func (s Store) Accept(ctx context.Context, id, toOrg, userID string) (Handover, 
 	if err != nil {
 		return Handover{}, err
 	}
+	if _, err := addPhotos(ctx, tx, id, PhotoByReceiver, userID, photos); err != nil {
+		return Handover{}, err
+	}
 	if err := notify.Add(ctx, tx, h.FromOrg, notify.KindHandoverAccepted, id, MsgNotifyHandoverAccepted); err != nil {
 		return Handover{}, err
 	}
-	return out, tx.Commit(ctx)
+	hs := []Handover{out}
+	if err := attachPhotos(ctx, tx, hs); err != nil {
+		return Handover{}, err
+	}
+	return hs[0], tx.Commit(ctx)
 }
 
-// close ends an awaiting handover without moving the passport.
-func (s Store) close(ctx context.Context, id, side, orgID, userID, status, reason string) (Handover, error) {
+// RaiseFlag raises a flag about a passport in the caller's transaction
+// (flag.RaiseFlag, passed in: the flag package builds on this one). source
+// says who raised it: a person, or the rules (see flag.Sources).
+type RaiseFlag func(ctx context.Context, tx pgx.Tx, orgID, userID, holder, passportID, reason, source string) error
+
+// close ends an awaiting handover without moving the passport. after, if
+// set, runs in the same transaction with the closed handover.
+func (s Store) close(ctx context.Context, id, side, orgID, userID, status, note string, reasons []string,
+	after func(pgx.Tx, Handover) error) (Handover, error) {
+
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Handover{}, err
@@ -620,10 +854,14 @@ func (s Store) close(ctx context.Context, id, side, orgID, userID, status, reaso
 	if _, _, _, err := lockAwaiting(ctx, tx, id, side, orgID); err != nil {
 		return Handover{}, err
 	}
+	if reasons == nil {
+		reasons = []string{}
+	}
 	h, err := oneHandover(tx.Query(ctx,
-		`UPDATE handovers AS h SET status = $3, reject_reason = NULLIF($4, ''), responded_by = $5::uuid, responded_at = now()
+		`UPDATE handovers AS h SET status = $3, reject_reason = NULLIF($4, ''), reject_reasons = $7,
+		        responded_by = $5::uuid, responded_at = now()
 		 WHERE h.id = $6::uuid RETURNING `+handoverColumns(1, 2),
-		HandoverAwaiting, HandoverExpired, status, reason, userID, id))
+		HandoverAwaiting, HandoverExpired, status, note, userID, id, reasons))
 	if err != nil {
 		return Handover{}, err
 	}
@@ -632,31 +870,78 @@ func (s Store) close(ctx context.Context, id, side, orgID, userID, status, reaso
 			return Handover{}, err
 		}
 	}
-	return h, tx.Commit(ctx)
+	if after != nil {
+		if err := after(tx, h); err != nil {
+			return Handover{}, err
+		}
+	}
+	hs := []Handover{h}
+	if err := attachPhotos(ctx, tx, hs); err != nil {
+		return Handover{}, err
+	}
+	return hs[0], tx.Commit(ctx)
 }
 
-// Reject is the receiver refusing the goods. The holder does not change.
-func (s Store) Reject(ctx context.Context, id, toOrg, userID, reason string) (Handover, error) {
-	return s.close(ctx, id, sideReceiver, toOrg, userID, HandoverRejected, reason)
+// Reject is the receiver refusing the goods, saying why. The holder does not
+// change. With AlsoFlag, a flag about the passport is raised in the same
+// transaction, so the regulator looks into it.
+func (s Store) Reject(ctx context.Context, id, toOrg, userID string, in RejectInput, raise RaiseFlag) (Handover, error) {
+	var after func(pgx.Tx, Handover) error
+	if in.AlsoFlag {
+		after = func(tx pgx.Tx, h Handover) error {
+			reason := MsgFlagFromReject + ": " + strings.Join(in.Reasons, ", ")
+			if in.Note != "" {
+				reason += ". " + in.Note
+			}
+			return raise(ctx, tx, toOrg, userID, h.FromOrg, h.PassportID, reason, SourceUser)
+		}
+	}
+	return s.close(ctx, id, sideReceiver, toOrg, userID, HandoverRejected, in.Note, in.Reasons, after)
 }
 
 // Cancel is the sender withdrawing a handover before it is answered.
 func (s Store) Cancel(ctx context.Context, id, fromOrg, userID string) (Handover, error) {
-	return s.close(ctx, id, sideSender, fromOrg, userID, HandoverCancelled, "")
+	return s.close(ctx, id, sideSender, fromOrg, userID, HandoverCancelled, "", nil, nil)
 }
 
 // FindHandovers returns handovers the gate's organisation sent or is to receive.
 func (s Store) FindHandovers(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Handover], error) {
 	// The status filter is applied to the status as read, so "expired" works.
 	const shown = `CASE WHEN h.status = $1 AND h.deadline < now() THEN $2 ELSE h.status END`
-	return listq.Fetch(ctx, s.Pool, q, HandoverList, "SELECT "+handoverColumns(1, 2), "FROM handovers h",
+	page, err := listq.Fetch(ctx, s.Pool, q, HandoverList, "SELECT "+handoverColumns(1, 2), "FROM handovers h",
 		[]string{party(3), `($4 = '' OR ` + shown + ` = $4)`},
 		[]any{HandoverAwaiting, HandoverExpired, gate, status}, scanHandover)
+	if err == nil {
+		err = attachPhotos(ctx, s.Pool, page.Data)
+	}
+	return page, err
 }
 
 func (s Store) GetHandover(ctx context.Context, id, gate string) (Handover, error) {
-	return oneHandover(s.Pool.Query(ctx,
+	h, err := oneHandover(s.Pool.Query(ctx,
 		`SELECT `+handoverColumns(1, 2)+` FROM handovers h
 		 WHERE h.id = $3::uuid AND NOT h.is_deleted AND `+party(4),
 		HandoverAwaiting, HandoverExpired, id, gate))
+	if err != nil {
+		return Handover{}, err
+	}
+	hs := []Handover{h}
+	if err := attachPhotos(ctx, s.Pool, hs); err != nil {
+		return Handover{}, err
+	}
+	return hs[0], nil
+}
+
+// HandoverPhoto returns one photo of a handover the gate's organisation is a party to.
+func (s Store) HandoverPhoto(ctx context.Context, handoverID, photoID, gate string) (Photo, error) {
+	var p Photo
+	err := s.Pool.QueryRow(ctx,
+		`SELECT ph.id::text, ph.side, ph.file_name, ph.content_type, ph.size_bytes, ph.sha256, ph.storage_key, ph.created_at
+		 FROM handover_photos ph JOIN handovers h ON h.id = ph.handover_id
+		 WHERE ph.id = $1::uuid AND ph.handover_id = $2::uuid AND NOT ph.is_deleted AND NOT h.is_deleted AND `+party(3),
+		photoID, handoverID, gate).Scan(&p.ID, &p.Side, &p.FileName, &p.ContentType, &p.SizeBytes, &p.SHA256, &p.StorageKey, &p.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Photo{}, ErrNotFound
+	}
+	return p, err
 }

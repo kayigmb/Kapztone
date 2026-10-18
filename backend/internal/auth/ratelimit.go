@@ -28,6 +28,9 @@ var (
 	VerifyRate = Rate{Name: "verify", Max: 60, Window: time.Minute}
 	// PINRate counts wrong signing PINs per user; a 6-digit PIN must not be guessable.
 	PINRate = Rate{Name: "pin", Max: 5, Window: 15 * time.Minute}
+	// ForgotRate counts password-reset requests per address, so the form
+	// can't be used to flood someone's inbox.
+	ForgotRate = Rate{Name: "forgot", Max: 5, Window: time.Hour}
 )
 
 // Limiter counts events in the cache. If the cache is unreachable it allows
@@ -63,6 +66,14 @@ func clientIP(r *http.Request) string {
 
 func (l *Limiter) blocked(ctx context.Context, rt Rate, parts ...string) bool {
 	return l != nil && l.Cache.Count(ctx, rt.key(parts...)) >= rt.Max
+}
+
+// left is how many more events rt allows before it blocks; rt.Max without a limiter.
+func (l *Limiter) left(ctx context.Context, rt Rate, parts ...string) int64 {
+	if l == nil {
+		return rt.Max
+	}
+	return max(0, rt.Max-l.Cache.Count(ctx, rt.key(parts...)))
 }
 
 func (l *Limiter) record(ctx context.Context, rt Rate, parts ...string) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,18 +26,18 @@ func notFound(err error) error {
 func (s PgStore) UserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled
+		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled, token_version
 		 FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`, email, UserActive,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled, &u.TokenVersion)
 	return u, notFound(err)
 }
 
 func (s PgStore) ActiveUser(ctx context.Context, id string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id::text, email::text, name
+		`SELECT id::text, email::text, name, token_version
 		 FROM users WHERE id = $1::uuid AND status = $2 AND NOT is_deleted`, id, UserActive,
-	).Scan(&u.ID, &u.Email, &u.Name)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.TokenVersion)
 	return u, notFound(err)
 }
 
@@ -101,6 +102,96 @@ func (s PgStore) PINHash(ctx context.Context, userID string) (string, error) {
 
 func (s PgStore) SetPIN(ctx context.Context, userID, hash string) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE users SET pin_hash = $2 WHERE id = $1::uuid AND NOT is_deleted`, userID, hash)
+	return err
+}
+
+// ---- AccountStore ----
+
+func (s PgStore) UserByID(ctx context.Context, userID string) (User, error) {
+	var u User
+	err := s.Pool.QueryRow(ctx,
+		`SELECT id::text, email::text, name, password_hash, token_version
+		 FROM users WHERE id = $1::uuid AND NOT is_deleted`, userID,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TokenVersion)
+	return u, notFound(err)
+}
+
+func (s PgStore) RecentPasswordHashes(ctx context.Context, userID string, n int) ([]string, error) {
+	rows, err := s.Pool.Query(ctx,
+		`(SELECT password_hash FROM users WHERE id = $1::uuid AND NOT is_deleted)
+		 UNION ALL
+		 (SELECT password_hash FROM password_history WHERE user_id = $1::uuid AND NOT is_deleted
+		  ORDER BY created_at DESC LIMIT $2)`, userID, max(n-1, 0))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+func (s PgStore) SetPassword(ctx context.Context, userID, hash string) (int, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+	// The password being replaced goes into the history; the current one is
+	// always compared too (see RecentPasswordHashes).
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO password_history (user_id, password_hash)
+		 SELECT id, password_hash FROM users WHERE id = $1::uuid AND NOT is_deleted`, userID); err != nil {
+		return 0, err
+	}
+	var ver int
+	err = tx.QueryRow(ctx,
+		`UPDATE users SET password_hash = $2, token_version = token_version + 1
+		 WHERE id = $1::uuid AND NOT is_deleted RETURNING token_version`, userID, hash).Scan(&ver)
+	if err != nil {
+		return 0, notFound(err)
+	}
+	return ver, tx.Commit(ctx)
+}
+
+func (s PgStore) BumpTokenVersion(ctx context.Context, userID string) (int, error) {
+	var ver int
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE users SET token_version = token_version + 1
+		 WHERE id = $1::uuid AND NOT is_deleted RETURNING token_version`, userID).Scan(&ver)
+	return ver, notFound(err)
+}
+
+func (s PgStore) AddLink(ctx context.Context, userID, kind, tokenHash string, expires time.Time) error {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO password_resets (user_id, kind, token_hash, expires_at) VALUES ($1::uuid, $2, $3, $4)`,
+		userID, kind, tokenHash, expires)
+	return err
+}
+
+func (s PgStore) LinkUser(ctx context.Context, kind, tokenHash string, now time.Time) (string, error) {
+	var userID string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT user_id::text FROM password_resets
+		 WHERE kind = $1 AND token_hash = $2 AND used_at IS NULL AND expires_at > $3 AND NOT is_deleted`,
+		kind, tokenHash, now).Scan(&userID)
+	return userID, notFound(err)
+}
+
+// UseLink spends the link in one statement, so two requests cannot both use it.
+func (s PgStore) UseLink(ctx context.Context, kind, tokenHash string, now time.Time) (string, error) {
+	var userID string
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE password_resets SET used_at = $3
+		 WHERE kind = $1 AND token_hash = $2 AND used_at IS NULL AND expires_at > $3 AND NOT is_deleted
+		 RETURNING user_id::text`, kind, tokenHash, now).Scan(&userID)
+	return userID, notFound(err)
+}
+
+func (s PgStore) Lock(ctx context.Context, userID string) error {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE users SET status = $2, token_version = token_version + 1
+		 WHERE id = $1::uuid AND NOT is_deleted`, userID, UserDisabled)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
 	return err
 }
 

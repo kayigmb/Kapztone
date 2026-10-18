@@ -16,8 +16,27 @@ const FormatCSV = "csv"
 
 // File names of CSV downloads.
 const (
-	FileAudit  = "audit.csv"
-	FileVolume = "volume.csv"
+	FileAudit   = "audit.csv"
+	FileVolume  = "volume.csv"
+	FileBlocked = "blocked.csv"
+)
+
+// Rules whose refusals are counted (rule_events.rule), declared once.
+const (
+	RuleCapacity         = "capacity"     // more issued than a facility may originate
+	RuleMassBalance      = "mass_balance" // a transform's output above input × max yield
+	RuleEvidence         = "evidence"     // a stage's required certificate missing
+	RuleTolerance        = "tolerance"    // received weight outside the handover tolerance
+	RuleHandoverRejected = "handover_rejected"
+)
+
+var Rules = []string{RuleCapacity, RuleMassBalance, RuleEvidence, RuleTolerance, RuleHandoverRejected}
+
+// handoverRejected is the passport package's rejected handover status. Not
+// imported: passport records rule events here, so audit cannot import it.
+const (
+	handoverRejected  = "rejected"
+	handoverCompleted = "completed"
 )
 
 // Messages shown to callers.
@@ -32,6 +51,7 @@ const chainLock = 7203115
 
 // CSV column headings.
 var (
-	AuditColumns  = []string{"seq", "created_at", "actor_user_id", "actor_email", "organisation_id", "method", "route", "subject_id", "status", "hash"}
-	VolumeColumns = []string{"month", "commodity", "unit", "quantity"}
+	AuditColumns   = []string{"seq", "created_at", "actor_user_id", "actor_email", "organisation_id", "method", "route", "subject_id", "status", "hash"}
+	VolumeColumns  = []string{"month", "commodity", "unit", "quantity", "exported"}
+	BlockedColumns = []string{"rule", "count"}
 )

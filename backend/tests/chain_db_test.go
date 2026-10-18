@@ -182,6 +182,12 @@ func post(e *env, token, path string, body any) *httptest.ResponseRecorder {
 	return do(e.h, http.MethodPost, path, token, string(b))
 }
 
+// received is the receiver's answer that it weighed exactly what was sent.
+func received(h passport.Handover) passport.AcceptInput {
+	q := h.Quantity
+	return passport.AcceptInput{ReceivedQuantity: &q}
+}
+
 // accredit replaces an organisation's accreditations with grants.
 func accredit(e *env, token, path string, grants ...org.AccreditationInput) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(append([]org.AccreditationInput{}, grants...))
@@ -267,13 +273,11 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	acmeSlug, rivalSlug, pendingSlug := e.slug(tAcme), e.slug(tRival), e.slug(tStaff)
 
 	// A facility, and a commodity in the facility's unit.
-	rec := post(e, admin, as(acmeSlug, "/facilities"), facilityInput(plotGeo))
-	want(t, "create facility", rec, http.StatusCreated)
-	plot := decodeTo[facility.Facility](t, rec)
+	plot := e.approvedFacility(admin, acmeSlug, root, facilityInput(newPlot()))
 
 	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec = post(e, root, "/templates", tplIn)
+	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
 
@@ -385,7 +389,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 
 	hPath := "/handovers/" + h.ID
 	want(t, "organisation not party to it", do(e.h, http.MethodGet, as(pendingSlug, hPath), pendingAdmin, ""), http.StatusNotFound)
-	want(t, "sender accepts its own handover", post(e, admin, as(acmeSlug, hPath+"/accept"), nil), http.StatusNotFound)
+	want(t, "sender accepts its own handover", post(e, admin, as(acmeSlug, hPath+"/accept"), received(h)), http.StatusNotFound)
 	want(t, "receiver cancels", post(e, rivalAdmin, as(rivalSlug, hPath+"/cancel"), nil), http.StatusNotFound)
 	incoming := do(e.h, http.MethodGet, as(rivalSlug, "/handovers?"+passport.ParamStatus+"="+passport.HandoverAwaiting), rivalAdmin, "")
 	want(t, "receiver lists handovers", incoming, http.StatusOK)
@@ -394,12 +398,12 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	}
 
 	// ---- Receiver's half: both signatures, holder changes at once.
-	rec = post(e, rivalAdmin, as(rivalSlug, hPath+"/accept"), nil)
+	rec = post(e, rivalAdmin, as(rivalSlug, hPath+"/accept"), received(h))
 	want(t, "accept", rec, http.StatusOK)
 	if done := decodeTo[passport.Handover](t, rec); done.Status != passport.HandoverCompleted || !done.SignedByTo || done.TxHash != nil {
 		t.Fatalf("accepted handover: %+v", done)
 	}
-	want(t, "accept twice", post(e, rivalAdmin, as(rivalSlug, hPath+"/accept"), nil), http.StatusConflict)
+	want(t, "accept twice", post(e, rivalAdmin, as(rivalSlug, hPath+"/accept"), received(h)), http.StatusConflict)
 	held := decodeTo[passport.Passport](t, do(e.h, http.MethodGet, as(rivalSlug, "/passports/"+p.ID), rivalAdmin, ""))
 	if held.OrganisationID != rival.ID || held.HandoverCount != 1 || len(held.Events) != 2 {
 		t.Fatalf("after acceptance: %+v", held)
@@ -442,12 +446,12 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 
 	r1 := "/handovers/" + back().ID
 	want(t, "reject without a reason", post(e, admin, as(acmeSlug, r1+"/reject"), passport.RejectInput{}), http.StatusBadRequest)
-	rec = post(e, admin, as(acmeSlug, r1+"/reject"), passport.RejectInput{Reason: "Bags were wet"})
+	rec = post(e, admin, as(acmeSlug, r1+"/reject"), passport.RejectInput{Reasons: []string{passport.RejectDamaged}, Note: "Bags were wet"})
 	want(t, "reject", rec, http.StatusOK)
 	if got := decodeTo[passport.Handover](t, rec); got.Status != passport.HandoverRejected || got.RejectReason == nil || got.SignedByTo {
 		t.Fatalf("rejected handover: %+v", got)
 	}
-	want(t, "accept after rejecting", post(e, admin, as(acmeSlug, r1+"/accept"), nil), http.StatusConflict)
+	want(t, "accept after rejecting", post(e, admin, as(acmeSlug, r1+"/accept"), received(h)), http.StatusConflict)
 
 	r2 := "/handovers/" + back().ID
 	rec = post(e, rivalAdmin, as(rivalSlug, r2+"/cancel"), nil)
@@ -459,7 +463,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	r3 := "/handovers/" + back().ID
 	// The receiver answers too late: move the deadline into the past.
 	e.exec(`UPDATE handovers SET deadline = now() - interval '1 minute' WHERE id = $1::uuid`, strings.TrimPrefix(r3, "/handovers/"))
-	want(t, "accept after the deadline", post(e, admin, as(acmeSlug, r3+"/accept"), nil), http.StatusConflict)
+	want(t, "accept after the deadline", post(e, admin, as(acmeSlug, r3+"/accept"), received(h)), http.StatusConflict)
 	if got := decodeTo[passport.Handover](t, do(e.h, http.MethodGet, as(acmeSlug, r3), admin, "")); got.Status != passport.HandoverExpired {
 		t.Fatalf("lapsed handover reads as %s", got.Status)
 	}

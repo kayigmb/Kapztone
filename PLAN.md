@@ -203,31 +203,35 @@ Events: `PassportIssued`, `CustodyTransferred`, `LotTransformed`, `AttestationIs
 No `/admin/...` endpoints. Every endpoint is a regular resource endpoint gated by one permission, and what a caller sees is gated by the organisation they act for (subdomain, or `pslug` in dev): users see only their own organisation's data, the superadmin sees all. The full route table with each route's permission lives in `backend/internal/server/server.go`.
 
 ```
-POST   /auth/login                     GET  /me
+POST   /auth/login {remember, trust_device}   GET/PUT /me   GET /me/organisations
+POST   /auth/password                  POST /auth/password/forgot | /reset   POST /auth/lock
+POST   /auth/sessions/revoke
 POST   /orgs (public registration)     GET  /orgs            GET /orgs/{id}
 POST   /orgs/{id}/verify               GET/POST /orgs/{id}/documents
 GET    /documents/{id}/file
 POST   /auth/2fa/setup | /enable | /disable
 POST   /facilities                     GET  /facilities?bbox=&status=    GET/DELETE /facilities/{id}
-POST   /facilities/{id}/status
-POST   /templates                      GET  /templates       GET/PUT/DELETE /templates/{id}
+POST   /facilities/{id}/status | /approve   GET/POST /facilities/{id}/licence
+POST   /templates                      GET  /templates       GET/PUT/DELETE /templates/{id}   (PUT saves a draft)
+POST   /templates/{id}/publish
 POST   /passports                      GET  /passports       GET /passports/{id} (with journey)
 GET    /passports/{id}/genealogy?direction=ancestors|descendants
-POST   /passports/{id}/handovers       GET  /handovers       GET /handovers/{id}
-POST   /handovers/{id}/accept | /reject | /cancel
+POST   /passports/{id}/handovers       GET  /handovers       GET /handovers/{id}   (JSON or multipart with photos)
+POST   /handovers/{id}/accept | /reject | /cancel   GET /handovers/{id}/photos/{photoId}
 POST   /transforms                     (process, split or merge: inputs, outputs, stage)
 GET/PUT /orgs/{id}/accreditations     (per certificate type: [{type, valid_from, valid_to}], full set)
 POST   /attestations (multipart)       GET  /attestations?subject_id=&status=    GET /attestations/{id}
 GET    /attestations/{id}/file         POST /attestations/{id}/revoke
 POST   /flags                          GET  /flags           GET /flags/{id}
 POST   /flags/{id}/resolve             (confirmed = revoke the passport and its descendants)
+PUT    /flags/{id}/assignee
 GET    /notifications?unread=true      POST /notifications/{id}/read
 GET    /verify/{passportId}            (public, no auth, cached)
 POST   /passports/{id}/retire          GET  /orgs/directory
 GET    /users                          POST /invites    POST /invites/{token}/accept
 PUT    /users/{id}/role                POST /users/{id}/suspend | /reinstate
 POST   /auth/pin                       POST /auth/2fa/recovery
-GET    /reports/volume                 GET  /audit   GET /audit/verify   (?format=csv)
+GET    /reports/volume | /blocked      GET  /audit   GET /audit/verify   (?format=csv)
 ```
 
 ---

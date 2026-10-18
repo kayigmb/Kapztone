@@ -22,6 +22,7 @@ export type ApiEvent = {
 
 export type ApiPassport = {
   id: string;
+  code?: string; // the readable lot code (ACME-2026-0412); older answers lack it
   organisation_id: string;
   facility_id: string | null;
   transform_id: string | null;
@@ -70,9 +71,13 @@ export type View = {
   summary: string;
   reasons: { result: Result; text: string }[];
   meta: string;
+  checkedAt: string; // when this check ran, CAT
+  records: string; // "5 records", what the check compared
   product: {
     name: string;
     lotCode: string;
+    status: string; // the passport's own status key (active, consumed, retired, revoked)
+    holder: string;
     origin: boolean; // issued at a facility, as opposed to made from other lots
     facts: { label: string; value: string; mono?: boolean; wide?: boolean }[];
     issued: string;
@@ -88,7 +93,8 @@ export type View = {
     signedByBoth: boolean;
     state: "done" | "current" | "warning" | "failed";
   }[];
-  madeFrom: { lotCode: string; description: string; quantity: string; origin: boolean; revoked: boolean }[];
+  // `via`: how it went into the lot it feeds, e.g. "Washing station · 400 kg used".
+  madeFrom: { lotCode: string; description: string; quantity: string; origin: boolean; revoked: boolean; via?: string }[];
   certificates: {
     id: string;
     type: string;
@@ -198,6 +204,8 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     verdict: api.verdict,
     summary: summary(api, product),
     reasons: topReasons(api),
+    checkedAt: formatDateTime(now),
+    records: t.meta.records(api.genealogy.nodes.length + api.certificates.length),
     meta: [
       t.meta.checked(formatDateTime(now)),
       t.meta.records(api.genealogy.nodes.length + api.certificates.length),
@@ -205,7 +213,9 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     ].join(" · "),
     product: {
       name: product,
-      lotCode: p.id,
+      lotCode: p.code ?? p.id,
+      status: p.status,
+      holder: name(p.organisation_id) ?? "",
       origin: p.facility_id !== null,
       facts: [
         { label: t.facts.commodity, value: product },
@@ -225,13 +235,17 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     journey,
     madeFrom: api.genealogy.nodes
       .filter((n) => n.id !== p.id)
-      .map((n) => ({
-        lotCode: n.id,
-        description: humanize(n.commodity),
-        quantity: formatQuantity(n.quantity, n.unit),
-        origin: n.facility_id !== null,
-        revoked: n.status === "revoked",
-      })),
+      .map((n) => {
+        const edge = api.genealogy.edges.find((e) => e.parent_id === n.id);
+        return {
+          lotCode: n.code ?? n.id,
+          description: humanize(n.commodity),
+          quantity: formatQuantity(n.quantity, n.unit),
+          origin: n.facility_id !== null,
+          revoked: n.status === "revoked",
+          via: edge ? t.via(humanize(edge.stage), formatQuantity(edge.quantity_used, n.unit)) : undefined,
+        };
+      }),
     certificates: api.certificates.map((c) => {
       const state = certificateState(c, now);
       return {

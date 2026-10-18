@@ -14,6 +14,17 @@ type Stage struct {
 	Events           []string `json:"events"`
 	MaxYield         *float64 `json:"maxYield,omitempty"` // output ≤ input × MaxYield on TRANSFORM
 	RequiredEvidence []string `json:"requiredEvidence,omitempty"`
+	// HandoverTolerance is how far, in percent, the weight a receiver records
+	// may differ from what was sent; unset means DefaultHandoverTolerance.
+	HandoverTolerance *float64 `json:"handoverTolerance,omitempty"`
+}
+
+// Tolerance is the weight difference, in percent, accepted at this stage.
+func (st Stage) Tolerance() float64 {
+	if st.HandoverTolerance != nil {
+		return *st.HandoverTolerance
+	}
+	return DefaultHandoverTolerance
 }
 
 type CapacityRule struct {
@@ -70,6 +81,12 @@ func (in *Input) Validate() string {
 			return at + "key must be " + keyRule
 		case seen[st.Key]:
 			return at + "key is used twice"
+		case st.Key == StageSplit:
+			return at + "key " + StageSplit + " is reserved for splitting a lot at a handover"
+		case st.HandoverTolerance != nil && !slices.Contains(st.Events, EventHandover):
+			return at + "handoverTolerance only applies to a stage that allows " + EventHandover
+		case st.HandoverTolerance != nil && (*st.HandoverTolerance < 0 || *st.HandoverTolerance > 100):
+			return at + "handoverTolerance must be a percentage from 0 to 100"
 		case len(st.Events) == 0:
 			return at + "needs at least one event"
 		case i > 0 && slices.Contains(st.Events, EventIssue):

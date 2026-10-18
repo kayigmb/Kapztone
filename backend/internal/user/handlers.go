@@ -74,7 +74,18 @@ func (h *Handlers) fail(w http.ResponseWriter, what string, err error) {
 	}
 }
 
+// List answers GET /users: the acting organisation's members, or for the
+// platform every user with all their memberships.
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
+	if gate, ok := auth.CurrentScope(r.Context()).Gate(); ok && gate == "" {
+		accounts, err := h.Store.All(r.Context())
+		if err != nil {
+			httpx.ServerError(w, "list users", err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, accounts)
+		return
+	}
 	o, ok := actingOrg(w, r)
 	if !ok {
 		return

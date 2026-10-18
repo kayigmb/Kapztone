@@ -140,11 +140,9 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	}
 
 	// ---- Origin: a facility, a template with a lossy stage and a yield-1 stage, two passports.
-	fIn := facilityInput(plotGeo)
+	fIn := facilityInput(newPlot())
 	fIn.Kind = facilityKind
-	rec := post(e, prodTok, as(prodSlug, "/facilities"), fIn)
-	want(t, "create facility", rec, http.StatusCreated)
-	site := decodeTo[facility.Facility](t, rec)
+	site := e.approvedFacility(prodTok, prodSlug, root, fIn)
 
 	whole := 1.0
 	tplIn := template.Input{
@@ -157,7 +155,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 			{Key: "export", Events: []string{template.EventHandover, template.EventExport}, RequiredEvidence: []string{"export_permit"}},
 		},
 	}
-	rec = post(e, root, "/templates", tplIn)
+	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
 
@@ -172,7 +170,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		rec := post(e, prodTok, as(prodSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: processor.ID, Stage: stageProcess})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
-		want(t, "accept handover", post(e, procTok, as(procSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
+		want(t, "accept handover", post(e, procTok, as(procSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
 	}
 	const qtyA, qtyB, usedB = 600_000, 400_000, 100_000
 	a, b := issue(qtyA), issue(qtyB)
@@ -233,6 +231,13 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	if child1.OrganisationID != processor.ID || child1.FacilityID != nil || child1.Period != nil ||
 		child1.TransformID == nil || *child1.TransformID != tr.ID || child1.Quantity != maxOut-small || child1.Status != passport.StatusActive {
 		t.Fatalf("output passport: %+v", child1)
+	}
+	// At the very limit the transform is allowed, but the rules flag its first output.
+	var ruleFlags int
+	e.pool.QueryRow(ctx, `SELECT count(*) FROM flags WHERE passport_id = $1::uuid AND source = $2`,
+		child1.ID, flag.SourceRules).Scan(&ruleFlags)
+	if ruleFlags != 1 {
+		t.Fatalf("rules raised %d flags about a transform at its yield limit, want 1", ruleFlags)
 	}
 	if got := passportOf(a.ID); got.Remaining != 0 || got.Status != passport.StatusConsumed {
 		t.Fatalf("an input used up is not consumed: %+v", got)
@@ -651,13 +656,11 @@ func TestTemplateInUse(t *testing.T) {
 	e.verifiedOrg(tAcme, org.KindProducer, root)
 	admin, slug := e.login(tAcme), e.slug(tAcme)
 
-	rec := post(e, admin, as(slug, "/facilities"), facilityInput(plotGeo))
-	want(t, "create facility", rec, http.StatusCreated)
-	plot := decodeTo[facility.Facility](t, rec)
+	plot := e.approvedFacility(admin, slug, root, facilityInput(newPlot()))
 
 	in := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
 	in.Name, in.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec = post(e, root, "/templates", in)
+	rec := post(e, root, "/templates", in)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
 	put := func(in template.Input) *httptest.ResponseRecorder {
@@ -665,11 +668,31 @@ func TestTemplateInUse(t *testing.T) {
 		return do(e.h, http.MethodPut, "/templates/"+tpl.ID, root, string(body))
 	}
 
-	// Not in use yet: the unit may change.
+	publish := func() template.Template {
+		t.Helper()
+		rec := post(e, root, "/templates/"+tpl.ID+"/publish", nil)
+		want(t, "publish", rec, http.StatusOK)
+		return decodeTo[template.Template](t, rec)
+	}
+	if tpl.Version != 1 || tpl.Draft != nil {
+		t.Fatalf("new template: version %d, draft %v", tpl.Version, tpl.Draft)
+	}
+	want(t, "publish without a draft", post(e, root, "/templates/"+tpl.ID+"/publish", nil), http.StatusConflict)
+	want(t, "member publishes", post(e, admin, as(slug, "/templates/"+tpl.ID+"/publish"), nil), http.StatusForbidden)
+
+	// Not in use yet: the unit may change. An edit waits as a draft until published.
 	changed := in
 	changed.Unit = "kg"
-	want(t, "change unit before use", put(changed), http.StatusOK)
+	rec = put(changed)
+	want(t, "change unit before use", rec, http.StatusOK)
+	if got := decodeTo[template.Template](t, rec); got.Unit != in.Unit || got.Draft == nil || got.Draft.Unit != "kg" || got.Version != 1 {
+		t.Fatalf("saved draft: %s", rec.Body)
+	}
+	if got := publish(); got.Unit != "kg" || got.Draft != nil || got.Version != 2 {
+		t.Fatalf("published: %+v", got)
+	}
 	want(t, "change it back", put(in), http.StatusOK)
+	publish()
 
 	want(t, "issue", post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1}), http.StatusCreated)
 	want(t, "change unit once in use", put(changed), http.StatusConflict)
@@ -682,15 +705,21 @@ func TestTemplateInUse(t *testing.T) {
 	stricter.Stages = slices.Clone(in.Stages)
 	stricter.Stages[1].MaxYield = &lower
 	want(t, "change a yield once in use", put(stricter), http.StatusOK)
+	// Issuing still works by the published version while the draft waits.
+	want(t, "issue with a draft waiting", post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1}), http.StatusCreated)
+	if got := publish(); got.Version != 4 || *got.Stages[1].MaxYield != lower {
+		t.Fatalf("published the stricter yield: %+v", got)
+	}
 
-	// One yield per save: create, two changes of unit, and the stricter yield.
+	// Each publish (and the create) queues the stage's yield and the split stage's yield of 1.
 	statuses, _ := e.outbox(tpl.ID)
-	if len(statuses) != 4 {
-		t.Fatalf("queued %d yields for the template, want 4", len(statuses))
+	if len(statuses) != 8 {
+		t.Fatalf("queued %d yields for the template, want 8", len(statuses))
 	}
 	var ppm int64
 	e.pool.QueryRow(t.Context(),
-		`SELECT (payload->>'parts_per_million')::bigint FROM chain_outbox WHERE subject_id = $1::uuid ORDER BY seq DESC LIMIT 1`, tpl.ID).Scan(&ppm)
+		`SELECT (payload->>'parts_per_million')::bigint FROM chain_outbox WHERE subject_id = $1::uuid
+		 AND payload->>'stage' <> $2 ORDER BY seq DESC LIMIT 1`, tpl.ID, template.StageSplit).Scan(&ppm)
 	if ppm != template.YieldPPM(lower) {
 		t.Fatalf("last queued yield = %d, want %d", ppm, template.YieldPPM(lower))
 	}

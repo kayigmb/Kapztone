@@ -24,14 +24,14 @@ export function VerdictStatus({ verdict, children }: { verdict: Verdict; childre
   return <Status tone={verdictTone[verdict]} icon={verdictIcon[verdict]}>{children}</Status>;
 }
 
-/** Pill for where a record stands: "Signed by both parties", "Expired". */
+/** Pill for where a record stands: "Signed by both parties", "Expired" (Figma .status-chip). */
 export function StatusChip({ tone: t, icon: Icon, children }: { tone: Tone; icon: LucideIcon; children: React.ReactNode }) {
   return (
     <span className={cn(
-      "inline-flex min-h-[26px] items-center gap-1 rounded-full border py-[3px] pr-2.5 pl-2 text-small font-semibold whitespace-nowrap",
+      "inline-flex min-h-[26px] w-fit items-center gap-1 rounded-full border py-[3px] pr-2.5 pl-2 text-xs font-bold whitespace-nowrap",
       tone[t].soft, tone[t].chip,
     )}>
-      <Icon className="size-4 shrink-0" aria-hidden />
+      <Icon className="size-3.5 shrink-0" aria-hidden />
       {children}
     </span>
   );

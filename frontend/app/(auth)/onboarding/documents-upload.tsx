@@ -59,7 +59,7 @@ export function DocumentsUpload({ orgId, documents }: { orgId: string; documents
             </h3>
             {received.map((doc) => (
               <div key={doc.id} className="grid grid-cols-[40px_1fr_auto] items-center gap-3 rounded-md border border-border p-3">
-                <span className="grid size-10 place-items-center rounded-sm bg-surface-sunken font-mono text-[11px] font-semibold text-ink-muted">
+                <span className="grid size-10 place-items-center rounded-sm bg-surface-sunken font-mono text-xs font-semibold text-ink-muted">
                   {extension(doc.file_name)}
                 </span>
                 <div className="min-w-0">

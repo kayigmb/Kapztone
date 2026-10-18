@@ -22,17 +22,23 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
-	ErrResolved = errors.New("already resolved")
+	ErrNotFound    = errors.New("not found")
+	ErrResolved    = errors.New("already resolved")
+	ErrBadAssignee = errors.New("not an investigator")
 )
 
 type Flag struct {
-	ID             string     `json:"id"`
-	PassportID     string     `json:"passport_id"`
-	OrganisationID string     `json:"organisation_id"` // who raised it
-	Reason         string     `json:"reason"`
-	DataHash       string     `json:"data_hash"`
-	Status         string     `json:"status"`
+	ID             string `json:"id"`
+	PassportID     string `json:"passport_id"`
+	OrganisationID string `json:"organisation_id"` // who raised it
+	Reason         string `json:"reason"`
+	DataHash       string `json:"data_hash"`
+	Status         string `json:"status"`
+	// RaisedBy is where it came from: SourceUser, SourceRules or SourcePublic.
+	RaisedBy string `json:"raised_by"`
+	// Who is looking into it; null until an investigator assigns someone.
+	AssigneeUserID *string    `json:"assignee_user_id"`
+	AssigneeName   *string    `json:"assignee_name"`
 	ResolutionNote *string    `json:"resolution_note"`
 	ResolvedAt     *time.Time `json:"resolved_at"`
 	TxHash         *string    `json:"tx_hash"`
@@ -52,6 +58,7 @@ var List = listq.Config{
 
 const (
 	columns = `f.id::text, f.passport_id::text, f.organisation_id::text, f.reason, f.data_hash, f.status,
+	           f.source, f.assignee_user_id::text, (SELECT u.name FROM users u WHERE u.id = f.assignee_user_id),
 	           f.resolution_note, f.resolved_at, f.tx_hash, f.anchored_at, f.created_at, f.updated_at`
 	gateColumn = "f.organisation_id"
 )
@@ -59,7 +66,7 @@ const (
 func scan(row pgx.CollectableRow) (Flag, error) {
 	var f Flag
 	err := row.Scan(&f.ID, &f.PassportID, &f.OrganisationID, &f.Reason, &f.DataHash, &f.Status,
-		&f.ResolutionNote, &f.ResolvedAt, &f.TxHash, &f.AnchoredAt, &f.CreatedAt, &f.UpdatedAt)
+		&f.RaisedBy, &f.AssigneeUserID, &f.AssigneeName, &f.ResolutionNote, &f.ResolvedAt, &f.TxHash, &f.AnchoredAt, &f.CreatedAt, &f.UpdatedAt)
 	return f, err
 }
 
@@ -78,6 +85,8 @@ func one(rows pgx.Rows, err error) (Flag, error) {
 type RaiseInput struct {
 	PassportID string `json:"passport_id"`
 	Reason     string `json:"reason"`
+	// Source is set by the code raising it, never by the caller; "" is SourceUser.
+	Source string `json:"-"`
 }
 
 func (in *RaiseInput) Validate() string {
@@ -131,6 +140,16 @@ func (s Store) Raise(ctx context.Context, orgID, userID, holder string, in Raise
 	}
 	defer tx.Rollback(ctx)
 
+	f, err := RaiseTx(ctx, tx, orgID, userID, holder, in)
+	if err != nil {
+		return Flag{}, err
+	}
+	return f, tx.Commit(ctx)
+}
+
+// RaiseTx is Raise inside the caller's transaction, so another change (a
+// rejected handover) and its flag are saved together.
+func RaiseTx(ctx context.Context, tx pgx.Tx, orgID, userID, holder string, in RaiseInput) (Flag, error) {
 	var id string
 	if err := tx.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&id); err != nil {
 		return Flag{}, err
@@ -140,11 +159,14 @@ func (s Store) Raise(ctx context.Context, orgID, userID, holder string, in Raise
 		return Flag{}, err
 	}
 	dataHash := chain.Hex(hash)
+	if in.Source == "" {
+		in.Source = SourceUser
+	}
 
 	f, err := one(tx.Query(ctx,
-		`INSERT INTO flags AS f (id, passport_id, organisation_id, reason, data_hash, status, raised_by)
-		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::uuid) RETURNING `+columns,
-		id, in.PassportID, orgID, in.Reason, dataHash, StatusOpen, userID))
+		`INSERT INTO flags AS f (id, passport_id, organisation_id, reason, data_hash, status, raised_by, source)
+		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::uuid, $8) RETURNING `+columns,
+		id, in.PassportID, orgID, in.Reason, dataHash, StatusOpen, userID, in.Source))
 	if err != nil {
 		return Flag{}, err
 	}
@@ -162,7 +184,18 @@ func (s Store) Raise(ctx context.Context, orgID, userID, holder string, in Raise
 			return Flag{}, err
 		}
 	}
-	return f, tx.Commit(ctx)
+	// The platform resolves flags, so it hears of every new one.
+	if err := notify.Add(ctx, tx, notify.Platform, notify.KindFlagRaised, id, MsgNotifyRaisedPlatform); err != nil {
+		return Flag{}, err
+	}
+	return f, nil
+}
+
+// RaiseFlag is RaiseTx in the shape the passport package takes
+// (passport.RaiseFlag): handover rejections and the rules raise flags with it.
+func RaiseFlag(ctx context.Context, tx pgx.Tx, orgID, userID, holder, passportID, reason, source string) error {
+	_, err := RaiseTx(ctx, tx, orgID, userID, holder, RaiseInput{PassportID: passportID, Reason: reason, Source: source})
+	return err
 }
 
 // Find returns the flags an organisation raised (all of them for the platform).
@@ -174,6 +207,31 @@ func (s Store) Find(ctx context.Context, q listq.Query, gate, status string) (li
 func (s Store) Get(ctx context.Context, id, gate string) (Flag, error) {
 	return one(s.Pool.Query(ctx,
 		`SELECT `+columns+` FROM flags f WHERE f.id = $1::uuid AND NOT f.is_deleted AND `+auth.GateSQL(gateColumn, 2), id, gate))
+}
+
+// Assign names who looks into a flag (nil: nobody). The assignee must be an
+// investigator: an active user with a platform-wide scope, or a member of a
+// verified regulator.
+func (s Store) Assign(ctx context.Context, id string, assignee *string) (Flag, error) {
+	if assignee != nil {
+		var ok bool
+		err := s.Pool.QueryRow(ctx,
+			`SELECT EXISTS (
+			   SELECT 1 FROM users u JOIN userscope us ON us.user_id = u.id AND NOT us.is_deleted
+			   LEFT JOIN organisations o ON o.id = us.organisation_id AND NOT o.is_deleted
+			   WHERE u.id = $1::uuid AND u.status = $2 AND NOT u.is_deleted
+			     AND (us.organisation_id IS NULL OR (o.kind = $3 AND o.status = $4)))`,
+			*assignee, auth.UserActive, org.KindRegulator, auth.OrgVerified).Scan(&ok)
+		if err != nil {
+			return Flag{}, err
+		}
+		if !ok {
+			return Flag{}, ErrBadAssignee
+		}
+	}
+	return one(s.Pool.Query(ctx,
+		`UPDATE flags AS f SET assignee_user_id = $2::uuid WHERE f.id = $1::uuid AND NOT f.is_deleted RETURNING `+columns,
+		id, assignee))
 }
 
 // Resolve closes an open flag. Confirming it revokes the passport and every
@@ -252,6 +310,8 @@ func respond(w http.ResponseWriter, status int, what string, v any, err error) {
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case errors.Is(err, ErrResolved):
 		httpx.Error(w, http.StatusConflict, MsgResolved)
+	case errors.Is(err, ErrBadAssignee):
+		httpx.Error(w, http.StatusBadRequest, MsgAssignee)
 	default:
 		httpx.ServerError(w, what, err)
 	}
@@ -315,6 +375,30 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.Store.Get(r.Context(), id, gate)
 	respond(w, http.StatusOK, "get flag", f, err)
+}
+
+// Assign answers PUT /flags/{id}/assignee {"user_id": "…" | null}: an investigator only.
+func (h *Handlers) Assign(w http.ResponseWriter, r *http.Request) {
+	if !investigator(r) {
+		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
+		return
+	}
+	id, ok := httpx.URLID(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		UserID *string `json:"user_id"`
+	}
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	if in.UserID != nil && !httpx.IsUUID(*in.UserID) {
+		httpx.Error(w, http.StatusBadRequest, MsgAssignee)
+		return
+	}
+	f, err := h.Store.Assign(r.Context(), id, in.UserID)
+	respond(w, http.StatusOK, "assign flag", f, err)
 }
 
 // Resolve clears or confirms a flag: an investigator only, with their signing PIN.

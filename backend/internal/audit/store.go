@@ -12,6 +12,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Entry is one audit row.
@@ -173,31 +174,52 @@ func (s Store) Verify(ctx context.Context) (Check, error) {
 	return c, err
 }
 
-// Volume is the quantity issued at origin in one month, per commodity and unit.
+// Volume is the quantity issued at origin in one month, per commodity and
+// unit, and the quantity exported that month.
 type Volume struct {
 	Month     string `json:"month"` // 2026-03, in UTC
 	Commodity string `json:"commodity"`
 	Unit      string `json:"unit"`
-	Quantity  int64  `json:"quantity"`
+	Quantity  int64  `json:"quantity"` // issued at origin
+	Exported  int64  `json:"exported"` // handed over, accepted, at a stage that allows EXPORT
 }
 
 // Volumes sums origin passports by month. Transform outputs are left out:
 // they are made from lots already counted. Every status counts, revoked
 // included: the report is what was issued.
+//
+// Exported is the quantity of completed handovers at a stage of the
+// commodity's template that allows EXPORT, by the month they were accepted,
+// gated by the sending organisation.
 func (s Store) Volumes(ctx context.Context, gate string, start, end *time.Time) ([]Volume, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT to_char(date_trunc('month', p.created_at AT TIME ZONE 'UTC'), 'YYYY-MM'),
-		        p.commodity, p.unit, sum(p.quantity)::bigint
-		 FROM passports p JOIN facilities f ON f.id = p.facility_id
-		 WHERE p.transform_id IS NULL AND NOT p.is_deleted AND `+auth.GateSQL("f.organisation_id", 1)+`
-		   AND ($2::timestamptz IS NULL OR p.created_at >= $2) AND ($3::timestamptz IS NULL OR p.created_at < $3)
-		 GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, gate, start, end)
+		`WITH issued AS (
+		   SELECT to_char(date_trunc('month', p.created_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
+		          p.commodity, p.unit, sum(p.quantity)::bigint AS quantity
+		   FROM passports p JOIN facilities f ON f.id = p.facility_id
+		   WHERE p.transform_id IS NULL AND NOT p.is_deleted AND `+auth.GateSQL("f.organisation_id", 1)+`
+		     AND ($2::timestamptz IS NULL OR p.created_at >= $2) AND ($3::timestamptz IS NULL OR p.created_at < $3)
+		   GROUP BY 1, 2, 3),
+		 exported AS (
+		   SELECT to_char(date_trunc('month', h.responded_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
+		          p.commodity, p.unit, sum(h.quantity)::bigint AS quantity
+		   FROM handovers h
+		   JOIN passports p ON p.id = h.passport_id
+		   JOIN commodity_templates t ON t.id = p.template_id
+		   WHERE h.status = $4 AND NOT h.is_deleted AND `+auth.GateSQL("h.from_org", 1)+`
+		     AND ($2::timestamptz IS NULL OR h.responded_at >= $2) AND ($3::timestamptz IS NULL OR h.responded_at < $3)
+		     AND EXISTS (SELECT 1 FROM jsonb_array_elements(t.stages) st
+		                 WHERE st->>'key' = h.stage AND st->'events' ? $5)
+		   GROUP BY 1, 2, 3)
+		 SELECT month, commodity, unit, COALESCE(i.quantity, 0), COALESCE(x.quantity, 0)
+		 FROM issued i FULL JOIN exported x USING (month, commodity, unit)
+		 ORDER BY 1, 2, 3`, gate, start, end, handoverCompleted, template.EventExport)
 	if err != nil {
 		return nil, err
 	}
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Volume, error) {
 		var v Volume
-		return v, row.Scan(&v.Month, &v.Commodity, &v.Unit, &v.Quantity)
+		return v, row.Scan(&v.Month, &v.Commodity, &v.Unit, &v.Quantity, &v.Exported)
 	})
 	if out == nil {
 		out = []Volume{}

@@ -99,17 +99,19 @@ func (in *TransformInput) Validate() string {
 
 // Transform is the record of one transform.
 type Transform struct {
-	ID             string     `json:"id"`
-	OrganisationID string     `json:"organisation_id"`
-	Commodity      string     `json:"commodity"`
-	Stage          string     `json:"stage"`
-	MaxYieldPPM    int64      `json:"max_yield_ppm"` // the rule as applied, in parts per million
-	DataHash       string     `json:"data_hash"`
-	TxHash         *string    `json:"tx_hash"`
-	AnchoredAt     *time.Time `json:"anchored_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	Inputs         []Used     `json:"inputs"`
-	Outputs        []Passport `json:"outputs"`
+	ID             string `json:"id"`
+	OrganisationID string `json:"organisation_id"`
+	Commodity      string `json:"commodity"`
+	Stage          string `json:"stage"`
+	MaxYieldPPM    int64  `json:"max_yield_ppm"` // the rule as applied, in parts per million
+	DataHash       string `json:"data_hash"`
+	// TemplateVersion is the version of the commodity's template it was judged by.
+	TemplateVersion *int       `json:"template_version"`
+	TxHash          *string    `json:"tx_hash"`
+	AnchoredAt      *time.Time `json:"anchored_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Inputs          []Used     `json:"inputs"`
+	Outputs         []Passport `json:"outputs"`
 }
 
 // Used is one input of a transform. It is also what the data hash covers.
@@ -165,13 +167,44 @@ func transformStage(ctx context.Context, tx pgx.Tx, commodity, stage string) (te
 // after checking every rule the contract will check again: the inputs are
 // active, held by the acting organisation and of one commodity, none is
 // overdrawn, and the outputs do not exceed inputs × the stage's maximum yield.
-func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput, now time.Time) (Transform, error) {
+//
+// Outputs of at least RuleYieldShare of the maximum are allowed, but at a
+// stage that loses mass the rules raise a flag about the first output in the
+// same transaction.
+func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput, now time.Time, raise RaiseFlag) (Transform, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Transform{}, err
 	}
 	defer tx.Rollback(ctx)
 
+	t, err := transformTx(ctx, tx, orgID, userID, in, now, false)
+	if err != nil {
+		return Transform{}, err
+	}
+	var totalIn, totalOut int64
+	for _, u := range t.Inputs {
+		totalIn += u.QuantityUsed
+	}
+	for _, p := range t.Outputs {
+		totalOut += p.Quantity
+	}
+	// share = out / (in × yield); compared in floats, it only decides a flag.
+	share := float64(totalOut) * chain.YieldScale / (float64(totalIn) * float64(t.MaxYieldPPM))
+	// A stage that keeps all the mass (sorting, splitting) always yields 100%: never flagged.
+	if raise != nil && t.MaxYieldPPM < chain.YieldScale && share >= RuleYieldShare && len(t.Outputs) > 0 {
+		reason := fmt.Sprintf(MsgRuleYieldFmt, share*100, t.Stage)
+		if err := raise(ctx, tx, orgID, userID, orgID, t.Outputs[0].ID, reason, SourceRules); err != nil {
+			return Transform{}, err
+		}
+	}
+	return t, tx.Commit(ctx)
+}
+
+// transformTx is Transform in the caller's transaction. With split, the stage
+// is the platform's own split stage (yield 1, no evidence): a handover of part
+// of a lot cuts that part into its own passport this way first.
+func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in TransformInput, now time.Time, split bool) (Transform, error) {
 	// Lock the inputs, always in id order so two transforms cannot deadlock.
 	ids := make([]string, len(in.Inputs))
 	for i, src := range in.Inputs {
@@ -224,7 +257,22 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 		used[i] = Used{PassportID: id, QuantityUsed: src.Quantity}
 	}
 
-	templateID, stage, err := transformStage(ctx, tx, commodity, in.Stage)
+	var (
+		templateID string
+		stage      template.Stage
+	)
+	if split {
+		if templateID, _, err = liveStages(ctx, tx, commodity); err != nil {
+			return Transform{}, err
+		}
+		whole := 1.0
+		stage = template.Stage{Key: template.StageSplit, MaxYield: &whole}
+		// Publishing a template queues the split yield; one published before
+		// splits existed gets it now, ahead of this transform.
+		err = template.QueueSplitYield(ctx, tx, templateID, commodity)
+	} else {
+		templateID, stage, err = transformStage(ctx, tx, commodity, in.Stage)
+	}
 	if err != nil {
 		return Transform{}, err
 	}
@@ -275,8 +323,8 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 		DataHash: dataHash, Inputs: used}
 	err = tx.QueryRow(ctx,
 		`INSERT INTO transforms (id, organisation_id, commodity, stage, max_yield_ppm, data_hash, created_by)
-		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid) RETURNING created_at`,
-		id, orgID, commodity, in.Stage, ppm, dataHash, userID).Scan(&t.CreatedAt)
+		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid) RETURNING created_at, template_version`,
+		id, orgID, commodity, in.Stage, ppm, dataHash, userID).Scan(&t.CreatedAt, &t.TemplateVersion)
 	if err != nil {
 		return Transform{}, err
 	}
@@ -328,7 +376,7 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 	if err := chain.Enqueue(ctx, tx, chain.KindTransform, id, payload); err != nil {
 		return Transform{}, err
 	}
-	return t, tx.Commit(ctx)
+	return t, nil
 }
 
 // Genealogy is a passport's family tree in one direction.

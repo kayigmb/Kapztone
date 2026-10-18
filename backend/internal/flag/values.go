@@ -19,6 +19,15 @@ var Outcomes = []string{StatusCleared, StatusConfirmed}
 
 const MaxTextLen = 2000
 
+// Where a flag came from (flags.source, shown as raised_by).
+const (
+	SourceUser   = "user"   // a person raised it
+	SourceRules  = "rules"  // the platform's rules raised it (see passport.RaiseFlag)
+	SourcePublic = "public" // from the public verification page
+)
+
+var Sources = []string{SourceUser, SourceRules, SourcePublic}
+
 // URL parameter names.
 const ParamStatus = "status"
 
@@ -26,7 +35,9 @@ const ParamStatus = "status"
 const (
 	MsgReasonNeeded = "say what is wrong with this passport"
 	MsgResolved     = "this flag has already been resolved"
+	MsgAssignee     = "the assignee must be an active platform admin or a member of a verified regulator"
 
-	MsgNotifyRaised   = "A concern was raised about a passport your organisation holds."
-	MsgNotifyResolved = "A concern your organisation raised has been resolved."
+	MsgNotifyRaised         = "A concern was raised about a passport your organisation holds."
+	MsgNotifyResolved       = "A concern your organisation raised has been resolved."
+	MsgNotifyRaisedPlatform = "A concern was raised about a passport and is waiting for review."
 )

@@ -3,22 +3,32 @@ import { Check } from "lucide-react";
 import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
-/** Where someone is in a focused flow. `current` counts from 0; `error` marks the current step red. */
+/**
+ * Where someone is in a focused flow (Figma .flow-stepper): numbered circles
+ * joined by a line. `current` counts from 0; `error` marks the current step red.
+ * On phones only the current step keeps its name.
+ */
 export function Stepper({ steps, current, error }: { steps: string[]; current: number; error?: boolean }) {
   return (
-    <ol className="flex gap-1" aria-label={copy.stepOf(current + 1, steps.length)}>
+    <ol className="flex items-center gap-2" aria-label={copy.stepOf(current + 1, steps.length)}>
       {steps.map((name, i) => {
         const done = i < current;
         const now = i === current;
         return (
-          <li key={name} className="grid flex-1 gap-1.5" aria-current={now ? "step" : undefined}>
-            <span className={cn("h-1 rounded-sm",
-              done ? "bg-verified" : now ? (error ? "bg-danger" : "bg-primary") : "bg-border")} />
-            <span className={cn("flex items-center gap-1 truncate text-xs",
-              done ? "text-ink-muted" : now ? (error ? "font-semibold text-danger" : "font-semibold text-ink") : "text-ink-subtle")}>
-              {done && <Check className="size-3 shrink-0" aria-hidden />}
+          <li key={name} className={cn("flex min-w-0 items-center gap-2", i < steps.length - 1 && "flex-1")}
+            aria-current={now ? "step" : undefined}>
+            <span className={cn("grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold",
+              done ? "border-primary/25 bg-primary-soft text-primary"
+                : now ? (error ? "border-danger bg-danger text-on-danger" : "border-primary bg-primary text-on-primary")
+                  : "border-border bg-surface text-ink-muted")}>
+              {done ? <Check className="size-3.5" aria-hidden /> : i + 1}
+            </span>
+            <span className={cn("truncate text-xs",
+              now ? (error ? "font-semibold text-danger" : "font-semibold text-ink") : "hidden text-ink-muted sm:inline",
+              done && "text-ink-muted")}>
               {name}
             </span>
+            {i < steps.length - 1 && <span className="h-px min-w-3 flex-1 bg-border" aria-hidden />}
           </li>
         );
       })}

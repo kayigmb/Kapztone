@@ -10,7 +10,7 @@ import { endpoints, problemOf } from "@/lib/api";
 import { copy, routes } from "@/lib/consts";
 
 // The page cannot delete the session cookie itself: only the API can clear it.
-export function SignOutButton() {
+export function SignOutButton({ onNavy }: { onNavy?: boolean }) {
   const router = useRouter();
   const client = useQueryClient();
   const signOut = useMutation({
@@ -22,7 +22,8 @@ export function SignOutButton() {
     onError: (err) => toast.error(problemOf(err)),
   });
   return (
-    <Button variant="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+    <Button variant={onNavy ? "ghost" : "secondary"} onClick={() => signOut.mutate()} disabled={signOut.isPending}
+      className={onNavy ? "justify-start text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg" : undefined}>
       <LogOut aria-hidden />
       {copy.signOut}
     </Button>

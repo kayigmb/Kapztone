@@ -5,7 +5,6 @@ import { Building2, FileText, Lock, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { SignOutButton } from "@/app/sign-out-button";
 import { Notice } from "@/components/chaintrack/notice";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
@@ -58,11 +57,9 @@ export function Queue() {
     <main className="grid content-start gap-6 px-4 py-6 lg:px-8 lg:py-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="grid gap-1">
-          <Link href={routes.home} className="text-small font-semibold text-primary underline">{t.back}</Link>
           <h1 className="text-[22px] font-semibold lg:text-page">{t.title}</h1>
           <p className="text-sm text-ink-muted">{t.sub(pending.length, pending[0] && daysSince(pending[0].created_at))}</p>
         </div>
-        <SignOutButton />
       </header>
 
       <Tabs value={tab.value} onValueChange={(v) => router.replace(routes.adminOrg(v as AdminTab))}>

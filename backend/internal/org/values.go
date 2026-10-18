@@ -70,6 +70,9 @@ const (
 	MsgReasonNeeded = "give a reason for rejecting or asking for changes"
 	MsgNotIssuer    = "only a verified certifier or regulator can be accredited"
 
+	MsgNotifyRegistered = "A new organisation registered and is waiting for verification."
+	MsgNotifyDocuments  = "An organisation uploaded documents for review."
+
 	MsgUnknownCertType    = "each type must be evidence that a product template asks for"
 	MsgDuplicateType      = "a type is listed more than once"
 	MsgAccreditationDates = "valid_from and valid_to must be dates (2026-01-31) or RFC 3339 timestamps, with valid_to after valid_from"

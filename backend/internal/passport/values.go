@@ -70,16 +70,71 @@ const (
 	MaxTransformItems = 50
 )
 
+// Why a receiver refuses a handover; at least one is given.
+const (
+	RejectWeightShort  = "weight_short"
+	RejectDamaged      = "damaged"
+	RejectWrongProduct = "wrong_product"
+	RejectSealBroken   = "seal_broken"
+	RejectNotExpected  = "not_expected"
+)
+
+var RejectReasons = []string{RejectWeightShort, RejectDamaged, RejectWrongProduct, RejectSealBroken, RejectNotExpected}
+
+// The rules raise a flag about an action they allow but find close to a limit.
+const (
+	// RuleYieldShare: a transform's outputs at this share of the maximum yield or more.
+	RuleYieldShare = 0.98
+	// RuleFlagShare: an accepted handover whose weight differs by more than this share of the tolerance.
+	RuleFlagShare = 0.5
+)
+
+// Who raised a flag (flag.Sources); the passport package raises through RaiseFlag.
+const (
+	SourceUser  = "user"
+	SourceRules = "rules"
+)
+
+// Who took a handover photo.
+const (
+	PhotoBySender   = "sender"
+	PhotoByReceiver = "receiver"
+)
+
+const (
+	// MaxPhotos is how many photos one side of a handover may attach.
+	MaxPhotos = 6
+	// FormPhotos is the multipart field holding them (repeated).
+	FormPhotos = "photos"
+)
+
+// PhotoTypes are the file types a handover photo may be, decided from its content.
+var PhotoTypes = []string{"image/png", "image/jpeg"}
+
+// Fields of a handover sent as a multipart form (with photos); the same names as in JSON.
+const (
+	FieldToOrg            = "to_org"
+	FieldStage            = "stage"
+	FieldQuantity         = "quantity"
+	FieldNote             = "note"
+	FieldLat              = "lat"
+	FieldLon              = "lon"
+	FieldReceivedQuantity = "received_quantity"
+)
+
 // URL parameter names.
 const (
 	ParamStatus    = "status"
 	ParamDirection = "direction"
+	ParamPhotoID   = "photoId"
 )
 
 // Messages shown to callers.
 const (
 	MsgFacilityNotFound  = "facility not found in your organisation"
 	MsgFacilitySuspended = "this facility is suspended and cannot originate goods"
+	MsgFacilityPending   = "this facility is waiting for approval and cannot originate goods yet"
+	MsgLicenceExpired    = "this facility's licence has expired; upload the renewed licence before issuing"
 	MsgTemplateNotFound  = "commodity template not found"
 	MsgKindMismatch      = "this commodity cannot originate at this kind of facility"
 	MsgUnitMismatch      = "the facility's capacity unit differs from the commodity's unit"
@@ -89,11 +144,21 @@ const (
 	MsgReceiverInvalid   = "the receiving organisation must be a different, verified organisation"
 	MsgHandoverClosed    = "this handover is no longer awaiting an answer"
 	MsgHandoverStale     = "the passport changed since this handover was created; start a new one"
-	MsgReasonNeeded      = "give a reason for rejecting"
 	MsgInputNotHeld      = "your organisation does not hold every input passport"
 	MsgMixedInputs       = "all input passports must be of the same commodity and unit"
 	MsgStageInvalid      = "this commodity has no such stage that allows " + EventTransform + " with a maximum yield"
 	MsgHandoverStage     = "stage must be a stage of this commodity that allows " + EventHandover
+	MsgReasonsNeeded     = "choose at least one reason for rejecting"
+	MsgLocation          = "lat and lon must be given together: lat from -90 to 90, lon from -180 to 180"
+	MsgPhotoType         = "photos must be PNG or JPEG"
+	MsgBadForm           = "send JSON, or a multipart form with the photos"
+	MsgNumbers           = "quantity, received_quantity, lat and lon must be numbers"
+	MsgReceivedNeeded    = "received_quantity is required: the weight you recorded on arrival"
+	// MsgFlagFromReject starts the reason of a flag raised with a rejection.
+	MsgFlagFromReject = "Handover rejected"
+	// Reasons of flags the rules raise.
+	MsgRuleYieldFmt     = "Rules: the outputs are %.1f%% of the most stage %s may yield"
+	MsgRuleToleranceFmt = "Rules: the weight received differs by %.2f%% from what was sent; the stage accepts %.2f%%"
 
 	MsgNotifyHandoverStarted  = "A passport is being handed over to your organisation and awaits your answer."
 	MsgNotifyHandoverAccepted = "The receiving organisation accepted your handover."

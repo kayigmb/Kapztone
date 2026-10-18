@@ -31,7 +31,8 @@ const (
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
 	EnvJWTSecret          = "JWT_SECRET"
-	EnvJWTTTL             = "JWT_TTL" // sign-in lifetime, whole minutes
+	EnvJWTTTL             = "JWT_TTL"          // sign-in lifetime, whole minutes
+	EnvJWTTTLRemember     = "JWT_TTL_REMEMBER" // sign-in lifetime with "keep me signed in", whole minutes
 	EnvEncryptionKey      = "ENCRYPTION_KEY"
 	EnvSuperadminEmail    = "SUPERADMIN_EMAIL"
 	EnvSuperadminPassword = "SUPERADMIN_PASSWORD"
@@ -87,6 +88,7 @@ type Config struct {
 	Storage            upload.Config
 	JWTSecret          []byte
 	TokenTTL           time.Duration
+	RememberTTL        time.Duration
 	Secrets            *secret.Box
 	SuperadminEmail    string
 	SuperadminPassword string
@@ -160,6 +162,13 @@ func Load() (Config, error) {
 		invalid(ttl, EnvJWTTTL, "must be a whole number of minutes above 0, e.g. 90")
 	}
 	c.TokenTTL = time.Duration(minutes) * time.Minute
+
+	remember := get(EnvJWTTTLRemember)
+	rememberMinutes, err := strconv.Atoi(remember)
+	if err != nil || rememberMinutes <= 0 {
+		invalid(remember, EnvJWTTTLRemember, "must be a whole number of minutes above 0, e.g. 43200 (30 days)")
+	}
+	c.RememberTTL = time.Duration(rememberMinutes) * time.Minute
 
 	key := get(EnvEncryptionKey)
 	if c.Secrets, err = secret.New(key); err != nil {

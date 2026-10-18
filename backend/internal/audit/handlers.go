@@ -137,11 +137,45 @@ func (h *Handlers) Volume(w http.ResponseWriter, r *http.Request) {
 	}
 	out := csvDownload(w, FileVolume, VolumeColumns)
 	for _, v := range rows {
-		if err = out.Write(cells(v.Month, v.Commodity, v.Unit, strconv.FormatInt(v.Quantity, 10))); err != nil {
+		if err = out.Write(cells(v.Month, v.Commodity, v.Unit, strconv.FormatInt(v.Quantity, 10), strconv.FormatInt(v.Exported, 10))); err != nil {
 			break
 		}
 	}
 	finish(out, "volume csv", err)
+}
+
+// Blocked counts the actions each rule refused between start_date and end_date
+// (both optional): capacity, mass balance, evidence, tolerance, and rejected handovers.
+func (h *Handlers) Blocked(w http.ResponseWriter, r *http.Request) {
+	g, ok := auth.Gate(w, r)
+	if !ok {
+		return
+	}
+	q, ok := listq.FromRequest(w, r, listq.Config{}) // only its dates are used
+	if !ok {
+		return
+	}
+	format := r.URL.Query().Get(ParamFormat)
+	if format != "" && format != FormatCSV {
+		httpx.Error(w, http.StatusBadRequest, MsgBadFormat)
+		return
+	}
+	rows, err := h.Store.Blocked(r.Context(), g, q.Start, q.End)
+	if err != nil {
+		httpx.ServerError(w, "blocked report", err)
+		return
+	}
+	if format == "" {
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": rows})
+		return
+	}
+	out := csvDownload(w, FileBlocked, BlockedColumns)
+	for _, b := range rows {
+		if err = out.Write(cells(b.Rule, strconv.FormatInt(b.Count, 10))); err != nil {
+			break
+		}
+	}
+	finish(out, "blocked csv", err)
 }
 
 // cells guards a CSV row against spreadsheet formulas: a cell starting with

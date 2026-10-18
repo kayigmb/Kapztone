@@ -28,41 +28,13 @@ const tone = {
 
 ### VerdictBadge
 
-The result of a passport check. Full size once at the top of the public verification page; `compact` in dashboards, scan results and flag queues.
+The stand-alone verdict panel (used in the signed-in app). On the public page the verdict is the navy hero instead (`patterns.md` → Public verification page): a round mark `size-12 lg:size-[58px]` in the verdict's solid tone with an 8 px `ring-hero-line`, the eyebrow "Verification result" in `hero-verified` / `hero-warning` / `hero-danger`, the word `text-[34px] lg:text-[44px] font-semibold`, the summary `text-hero-muted`, and failing or warning reasons as icon + sentence lines. Always `role="status"`.
 
-```ts
-type VerdictBadgeProps = {
-  verdict: Verdict;
-  summary: string;                    // one sentence; for warning/failed it ends with what to do
-  reasons: { result: 'pass' | 'warn' | 'fail'; text: string; detail?: string }[];  // ≤ 4, fails first, then warns, then passes
-  meta?: React.ReactNode;             // "Checked 2 Oct 2026, 09:14 CAT · 15 records · 7 organisations"
-  compact?: boolean;
-};
-```
+Panel: `rounded-lg border p-4 pt-6 md:p-6` on the verdict's soft ground; mark `size-14 rounded-full` solid; kicker `label`; word `text-verdict md:text-verdict-lg`; up to four reasons, failures first.
 
-- Panel: `rounded-lg border p-4 pt-6 md:p-6 md:pt-8` + soft ground of the verdict (`bg-verified-soft border-verified/35`, etc.). `role="status"`.
-- Head row `flex items-center gap-4`: mark = `size-14 md:size-16 rounded-full grid place-items-center` solid fill (`bg-verified text-on-verified`) with `ShieldCheck` / `ShieldAlert` / `ShieldX` at `size-8`. Next to it: kicker `label` in the `-ink` colour ("Product passport check") and the word in `text-verdict md:text-verdict-lg` in the `-ink` colour: **Verified / Warning / Failed**.
-- Summary `mt-4 text-[16px] leading-6 text-ink max-w-[60ch]`.
-- Reasons `mt-4 grid gap-2 md:grid-cols-2 md:gap-x-6`: each `flex gap-2 items-start`; icon `CircleCheck` (`text-verified`), `TriangleAlert` (`text-warning`), `OctagonX` (`text-danger`) at `size-5`. Warn/fail text `font-semibold`; detail under it in `text-small text-ink-muted`.
-- Meta `mt-4 pt-3 border-t border-current/20 text-small text-ink-muted flex flex-wrap gap-x-3 gap-y-1`.
-- Compact: `p-3 px-4`, mark `size-9`, word `text-section`.
+### SignatureChip / StatusChip (Figma `.status-chip`, `.pill`)
 
-### SignatureChip / StatusChip
-
-Where a handover or record stands in the dual-signature flow. Also used for "within limit" chips.
-
-| State | Classes | Icon | Text |
-| --- | --- | --- | --- |
-| signed-both | `bg-verified-soft text-verified-ink border-verified/30` | `CheckCheck` | Signed by both parties |
-| signed-sender | same as signed | `PenLine` | Signed by sender |
-| awaiting-receiver | `bg-pending-soft text-pending-ink border-pending/30` | `Clock` | Awaiting receiver signature |
-| awaiting-you | pending | `PenLine` | Awaiting your signature |
-| discrepancy | `bg-warning-soft text-warning-ink border-warning/35` | `TriangleAlert` | Quantity differs by 40 kg |
-| rejected | `bg-danger-soft text-danger-ink border-danger/35` | `X` | Rejected by receiver |
-| altered | danger | `OctagonX` | Record altered after signing |
-| draft / not trusted | `bg-surface-sunken text-ink-muted border-border` | `PenLine` / `TriangleAlert` | Draft, not yet signed / Not trusted |
-
-Anatomy: `inline-flex items-center gap-1 min-h-[26px] pl-2 pr-2.5 py-[3px] rounded-full border text-small font-semibold whitespace-nowrap`, icon `size-4`. Accept a custom `children` label (e.g. "Yield 20.0% (max 21%)" with `Scale`).
+A pill: `inline-flex min-h-[26px] w-fit items-center gap-1 rounded-full border py-[3px] pl-2 pr-2.5 text-xs font-bold`, tinted by tone (`tone[t].soft` + a 30% border), icon `size-3.5`. Always an icon and a word: "Signed by both parties" (`CheckCheck`, verified), "Awaiting receiver" (`Clock`, pending), "Rejected" (`OctagonX`, danger). A neutral pill (commodity name) is `bg-surface-sunken text-ink-muted` without an icon.
 
 ### Status (inline)
 
@@ -103,27 +75,9 @@ type PassportCardProps = { product: string; lotCode: string; commodityIcon: Luci
 
 `<dl class="grid grid-cols-2 gap-4">`; each `<div>`: `<dt class="label mb-0.5">` + `<dd class="text-body break-words">`. `wide` items `col-span-2`. On desktop inside wide cards: `md:grid-cols-3`.
 
-### JourneyTimeline
+### JourneyTimeline (Figma `.timeline`)
 
-The ordered history of a lot. One row per event, origin first on the public page.
-
-```ts
-type JourneyStep = {
-  event: 'issued' | 'handed-over' | 'processed' | 'exported' | 'imported' | 'delivered' | string; // display label, e.g. "Processed: washed and dried"
-  icon: LucideIcon; date: string; from?: string; to?: string; org?: string; place: string;
-  quantity: string;                       // "6,000 kg cherry → 1,200 kg parchment"
-  chips: React.ReactNode[];               // a SignatureChip for every handover; a yield chip for every process step
-  state?: 'done' | 'current' | 'pending' | 'warning' | 'failed' | 'untrusted';
-  compare?: { signed: string; now: string; note: string };   // only for failed (altered) steps
-};
-```
-
-- `<ol>`; each `<li class="relative grid grid-cols-[40px_1fr] gap-x-3 pb-6 last:pb-0">`. Rail: absolute `left-[19px] top-10 bottom-0 w-0.5 bg-border-strong` (hidden on last).
-- Marker `size-10 rounded-full grid place-items-center border-2 bg-surface relative z-10` with event icon `size-5`:
-  done `border-verified text-verified` · current `bg-primary border-primary text-on-primary` · pending `border-dashed border-pending text-pending` · warning `border-warning text-warning` · failed `bg-danger border-danger text-on-danger` · untrusted `border-dashed border-border-strong text-ink-subtle`.
-- Body: row `flex justify-between flex-wrap gap-x-3`: event `text-title` + date `text-small text-ink-subtle tabular-nums`. Then org line `text-body`: "Sender → **Receiver**" (receiver `font-semibold`). Place `text-small text-ink-muted` with `MapPin size-4`. Meta row `mt-2 flex flex-wrap gap-2`: quantity pill `fig text-sm bg-surface-sunken rounded-sm px-2 py-0.5` + chips.
-- Failed body: wrapped in `bg-danger-soft rounded-md p-3`, event in `text-danger-ink`, plus compare: two boxes side by side (`grid grid-cols-2 gap-2`), "Signed by both" value vs. "Record now says" value (`border-danger`, value `text-danger`), then the note in `text-small text-danger-ink`.
-- Untrusted rows (after a failed record): event and org in `text-ink-muted`, chip "Not trusted: built on the altered record".
+`ol`; each step `grid grid-cols-[32px_1fr] gap-x-3 pb-6`, a 1 px `bg-border` rail between markers. Marker `size-8 rounded-full border` with the event icon `size-4`: done `border-primary/25 bg-primary-soft text-primary`, current `bg-primary text-on-primary`, concern `bg-warning-soft text-warning-ink`, revoked `bg-danger text-on-danger` (and the step's body on `bg-danger-soft`). Body: date eyebrow `text-xs font-semibold uppercase tracking-[0.06em] text-ink-muted`, title `text-[15px] font-semibold`, parties `text-sm text-ink-muted` ("From → **To**"), then the quantity `fig text-sm rounded-sm border bg-bg px-2` and, for a completed handover only, the "Signed by both parties" pill.
 
 ### GenealogyTree
 
@@ -158,11 +112,9 @@ Where a lot travelled between journey steps.
 - Road legs solid `--primary` 2.5 px; sea legs dotted; legs that depend on a failed record dashed `--ink-subtle`.
 - Caption "Schematic, not to navigate" in the card head; list the numbered stops in text under the map (`ol`, number in `font-mono font-semibold text-primary`).
 
-### ChecksList ("What we checked")
+### ChecksList ("What we checked") (Figma `.checks-list`)
 
-One row per rule: `grid grid-cols-[24px_1fr_auto] gap-x-3 py-3 border-t border-border first:border-0 first:pt-0`. Icon (pass/warn/fail colours), rule name `font-semibold`, result Status (Passed / Warning / Failed), then explanation `col-span-2 col-start-2 text-small text-ink-muted` with the real numbers.
-
-Standard rules, in this order: Origin is registered and licensed · Within declared capacity · No forest loss on the plots (agricultural only) · Every handover signed by both parties · Quantities balance · Records unchanged since signing · Certificates valid · Organisations verified.
+Rows `grid grid-cols-[28px_1fr] gap-x-3 border-t py-3`: a solid round icon `size-7` in the result's tone (`CircleCheck` / `TriangleAlert` / `OctagonX`), the rule `text-sm font-semibold` with the result word right (`text-xs font-bold`, tone ink), the explanation `text-xs text-ink-muted`. The card head carries "n of 7 passed" as a pill.
 
 ### TechnicalDetails
 
@@ -211,28 +163,29 @@ The workhorse for queues (handovers, flags, passports) on every screen size.
 - Icon box `size-10 rounded-md` tinted by tone (`bg-pending-soft text-pending`, …). Title `text-[15px] font-semibold truncate`, lot code `font-mono text-xs text-ink-muted`, sub `text-small text-ink-muted`. Right: quantity `fig text-sm` and/or a chip. Extra chips row `col-start-2 col-span-2 flex flex-wrap gap-2`.
 - In a list card: `bg-surface border rounded-lg overflow-hidden` with header `flex justify-between px-4 py-3 border-b` (icon + `text-title`, "All 14" link).
 
-### StatTile
+### StatTile (Figma `.metric-card`)
 
-`bg-surface border border-border rounded-lg px-4 py-3 lg:px-6 lg:py-4 min-h-24 grid gap-0.5`, link. Label `text-small text-ink-muted font-medium` with icon `size-4`; value `text-[28px] leading-[34px] font-semibold tabular-nums`; note `text-xs text-ink-subtle`.
-Attention variant (something for you to do): `bg-pending-soft border-pending/45`, all text `text-pending-ink`. Alert variant (open flags > 0): `bg-danger-soft border-danger`, text `text-danger-ink`. Grid: `grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4`.
+`grid min-h-28 content-start gap-2 rounded-lg border bg-surface p-4 shadow-card lg:p-5`, a link when it leads somewhere (`hover:border-primary`). Top row: label `text-small font-semibold text-ink-muted` and an icon square `size-8 rounded-md bg-primary-soft text-primary`. Value `text-[28px] leading-8 font-semibold tracking-tight tabular-nums`; note `text-xs font-medium text-ink-muted`.
+Attention (something for you to do): border `border-pending/40`, icon square and note in pending. Alert (open flags > 0): `border-danger/40`, value `text-danger`, note `text-danger-ink`. Grid `grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4`.
 
-### Button
+### Button (Figma `.primary-button`, `.outline-button`, `.danger-button`)
 
 | Variant | Classes | Use |
 | --- | --- | --- |
-| primary | `bg-primary text-on-primary border-primary hover:bg-primary-hover` | The one main action on a screen |
-| secondary | `bg-surface text-ink border-border-strong hover:bg-surface-sunken` | Everything else |
+| primary | `bg-primary text-on-primary border-primary shadow-button hover:bg-primary-hover` | The one main action on a screen (teal) |
+| secondary | `bg-surface text-ink border-border hover:border-primary hover:text-primary` | Everything else: outlined |
 | ghost | `bg-transparent text-primary border-transparent hover:bg-primary-soft` | Low-emphasis navigation |
-| danger-outline | `bg-surface text-danger border-danger` | Reject / raise flag |
+| danger-soft | `bg-danger-soft text-danger-ink border-transparent` | Refusals that can be undone: "Reject", "Reject & raise flag" |
+| danger-outline | `bg-surface text-danger border-danger` | A refusal that needs more weight |
 | danger | `bg-danger text-on-danger border-danger` | Irreversible confirmations only |
-| disabled | `bg-surface-sunken text-ink-subtle border-border cursor-not-allowed` | Use `aria-disabled` + a visible reason nearby |
+| disabled | `bg-surface-sunken text-ink-subtle border-border` | Use `aria-disabled` + a visible reason nearby |
 
-Base: `inline-flex items-center justify-center gap-2 min-h-tap px-4 rounded-md border font-semibold text-[15px]`. Size `scan`: `h-tap-scan px-6 text-base`. `block`: `w-full`. Icons `size-5`. Labels are verbs naming the result ("Accept and sign", "Issue passport"), never "Submit"/"OK".
+Base: `inline-flex items-center justify-center gap-2 min-h-tap px-4 rounded-md border text-sm font-semibold`, icons 18 px. Size `scan`: `h-tap-scan px-6 text-base`. `block`: `w-full`. Labels are verbs naming the result ("Accept and sign", "Issue passport"), never "Submit"/"OK".
 
 ### Form fields
 
 - Field `grid gap-1.5`: label `text-sm font-semibold` (`htmlFor`), control, then help `text-small text-ink-subtle` **or** error.
-- Input `w-full min-h-tap px-3 py-2.5 rounded-md border border-border-strong bg-surface text-ink text-base` (16 px stops iOS zoom). Mono inputs (quantities, codes) `font-mono text-[15px]`.
+- Input (Figma `.field-group > input`): `w-full min-h-tap px-3 py-2.5 rounded-md border border-border-strong/60 bg-surface text-ink text-sm`, focus `border-primary ring-3 ring-primary/15`. Mono inputs (quantities, codes) `font-mono text-[15px]`.
 - Unit addon: input `rounded-r-none` + `px-3 grid place-items-center border border-l-0 border-border-strong rounded-r-md bg-surface-sunken text-ink-muted font-mono text-sm` ("kg").
 - Error: input `border-2 border-danger` + `aria-invalid` + `aria-describedby`; message `flex gap-1.5 text-small font-semibold text-danger` with `OctagonX size-4`, saying what's wrong **and** what to enter: "More than the 960 kg this passport holds. Enter 960 kg or less."
 - Select: same box as input with `ChevronDown` right. Date fields show `Calendar` left.
@@ -240,9 +193,9 @@ Base: `inline-flex items-center justify-center gap-2 min-h-tap px-4 rounded-md b
 - Checkbox: `size-[22px] rounded-sm border-2 border-border-strong`; checked `bg-primary border-primary` with white `Check`; "done/attached" (evidence) `bg-verified border-verified`.
 - Segmented control: `inline-flex p-[3px] bg-surface-sunken border rounded-md gap-0.5`; items `min-h-[38px] px-3 rounded-sm text-sm`; active `bg-surface text-ink font-semibold shadow-card`.
 
-### Stepper
+### Stepper (Figma `.flow-stepper`)
 
-`flex gap-1`; each step `flex-1 grid gap-1.5`: bar `h-1 rounded-sm` + name `text-xs truncate`. Done `bg-verified` + `Check` + `text-ink-muted`; current `bg-primary` + `text-ink font-semibold`; error `bg-danger` + `text-danger font-semibold`; upcoming `bg-border` + `text-ink-subtle`. `aria-label="Step 3 of 5"`.
+`ol.flex.items-center.gap-2`; each step a 28 px circle (`size-7 rounded-full border text-xs font-semibold`) and its name `text-xs`, joined by a `h-px flex-1 bg-border` line. Done: `bg-primary-soft text-primary` with `Check`; current: `bg-primary text-on-primary`, name `font-semibold text-ink`; error: `bg-danger text-on-danger`, name `text-danger`; upcoming: `bg-surface text-ink-muted`. On phones only the current step keeps its name. `aria-label="Step 3 of 5"`, `aria-current="step"`.
 
 ### FileUpload
 
@@ -272,9 +225,9 @@ Print layout, always light: white background, `#0f1a2c` ink, 2 px border. Grid `
 - Error: icon in `bg-danger-soft text-danger`; say what failed, whether anything was lost, and what happens next. Offline is common at mines and ports: queue signatures locally and say "Your signature is saved on this phone and will be sent when you're back online. Nothing has been lost." Action: "Try again" (`RefreshCw`).
 - No illustrations, no jokes.
 
-### Notice (inline)
+### Notice (inline) (Figma `.notice`)
 
-`flex gap-3 items-start px-4 py-3 rounded-md text-sm`: info `bg-pending-soft text-pending-ink` (`Info`), success `bg-verified-soft text-verified-ink` (`CircleCheck`), warning `bg-warning-soft text-warning-ink` (`TriangleAlert`), blocking `bg-danger-soft text-danger-ink border border-danger` (`OctagonX`, `role="alert"`). Lead with a bold sentence when blocking.
+`flex gap-3 items-start rounded-md border px-4 py-3 text-sm`, the border in the notice's own tone: info `border-pending/25 bg-pending-soft text-pending-ink` (`Info`), success `border-verified/25 bg-verified-soft text-verified-ink` (`CircleCheck`), warning `border-warning/30 bg-warning-soft text-warning-ink` (`TriangleAlert`), blocking `border-danger bg-danger-soft text-danger-ink` (`OctagonX`, `role="alert"`). Lead with a bold sentence when blocking.
 
 ### Dialog and Sheet
 
@@ -288,12 +241,39 @@ Push notification text: "**Incoming handover** · Kitabi Washing Station sent yo
 
 ---
 
-## App shell
+## App shell (Figma `BusinessApp`)
 
-See `patterns.md` → App shell for layout. Pieces:
+See `patterns.md` → App shell for layout. Built in `components/chaintrack/app-shell.tsx`.
 
-- **Sidebar** (`lg:` and up, 248 px): wordmark "ChainTrack" (`font-bold text-[17px]`), organisation card (avatar square + legal name + "Role · Job title"), nav items `flex items-center gap-3 min-h-10 px-2 rounded-md text-sm font-medium text-ink-muted hover:bg-surface-sunken`, active `bg-primary-soft text-primary font-semibold`; counts on the right `font-mono text-xs bg-surface-sunken rounded-full px-2` (red `bg-danger-soft text-danger-ink` when it needs action); signed-in person at the bottom.
-- **Top bar** (desktop 64 px / phone 56 px): back arrow when nested, title (`text-[17px] font-semibold`), search (desktop only, 360 px), notifications bell with red count badge.
-- **Bottom tab bar** (below `lg`): 5 slots: Home, Passports, **Scan** (raised 60 px round `bg-primary` button in the centre), Handovers, More. Regulators: Home, Flags, Scan, Certificates, More. Active tab `text-primary font-bold`. Sticky, `pb-[env(safe-area-inset-bottom)]`.
-- **Action bar** (focused flows on phones): sticky bottom `bg-surface border-t shadow-overlay px-4 pt-3 pb-4 grid gap-2`, one `h-tap-scan` full-width primary button (or two side by side). On desktop it becomes a right-aligned button row in the page.
-- **Wordmark:** there is no logo yet. Set "ChainTrack" in IBM Plex Sans Bold. Don't draw a mark.
+- **Sidebar** (`lg:`, 256 px, folds to a 76 px rail; navy `bg-sidebar-bg text-sidebar-fg` in both themes) — Figma `.app-sidebar`:
+  - logo row 72 px (`Brand onNavy`: teal square with `Link2` + "ChainTrack") with the fold button;
+  - **organisation card** (`.org-switcher`): `rounded-lg border-sidebar-line bg-sidebar-hover p-2.5`, initials square `size-9 rounded-md bg-primary`, name `text-sm font-semibold`, role `text-xs text-sidebar-label`; the status pill under it; "Switch organisation" (`OrgSwitcher onNavy`) when the person has more than one;
+  - **nav groups** (`.nav-group`): label `text-xs font-bold uppercase tracking-[0.08em] text-sidebar-label`; items `min-h-tap px-3 rounded-md text-sm text-sidebar-muted hover:bg-sidebar-hover`, active `bg-sidebar-active text-hero-ink font-semibold` with the icon in `text-sidebar-accent-fg`; a live count `font-mono text-xs rounded-full bg-sidebar-hover` (red on the folded rail);
+  - **user row** (`.sidebar-user`) at the bottom → `/profile`, then Sign out.
+- **Top bar** (`.app-topbar`, 56 / 64 px, `bg-surface/95 backdrop-blur border-b`): phone brand mark, back arrow when not on Home, eyebrow "Workspace" (desktop) over the page title `text-base font-semibold`; right: bell (red count badge), theme toggle (both `size-tap rounded-md border`), "Scan QR" outline button (desktop).
+- **Phone tab bar** (`.mobile-tabs`, below `lg`): four 56 px tabs: Home, the person's first workspace screen, Scan, More (a navy sheet with everything else). Active `text-primary font-bold`; counts as red badges on their tab. `pb-[env(safe-area-inset-bottom)]`.
+- **Action bar** (focused flows on phones): sticky bottom `bg-surface border-t shadow-overlay px-4 pt-3 pb-4 grid gap-2`, one `h-tap-scan` full-width primary button (or two side by side). On desktop it becomes a right-aligned button row (Figma `.form-actions`).
+- **Brand** (`components/chaintrack/brand.tsx`): the mark and the name. `onNavy` on navy grounds, `small` in footers, `nameHidden` for the phone top bar.
+
+## Figma pieces → ChainTrack components
+
+Each Figma class in `ui/figma-make/styles.css` and the piece that builds it. Build the missing ones when their screen is built, from these specs, at the readable minimums.
+
+| Piece | Figma class | Built as | Spec |
+| --- | --- | --- | --- |
+| Metric card | `.metric-card` | `StatTile` | above |
+| Pill | `.pill`, `.status-chip` | `StatusChip` | above |
+| Sidebar, nav group, org switcher | `.app-sidebar`, `.nav-group`, `.org-switcher` | `AppShell`, `OrgSwitcher` | above |
+| Card + head | `.app-card`, `.app-card-head` | `ListCard` | `rounded-lg border bg-surface shadow-card`; head `min-h-16 px-5 py-3 border-b`, title 15 px semibold, caption `text-xs text-ink-muted`, "View all" link right |
+| Quick action | `.quick-actions button` | dashboard `QuickActions` | `min-h-tap-scan grid-cols-[32px_1fr_16px] rounded-lg border px-3`, teal icon square, `ChevronRight` |
+| Queue list | `.queue-list`, `.inbox-row`, `.facility-row` | to build | rows `min-h-20 grid-cols-[36px_1fr_auto] gap-3 px-4 border-b`; selected `bg-primary-soft shadow-[inset_3px_0_0_var(--primary)]`; title `text-sm font-semibold`, code `code text-xs`, caption `text-xs text-ink-muted` |
+| Split queue | `.split-queue` | to build | `lg:grid-cols-[minmax(275px,0.8fr)_minmax(0,1.5fr)] gap-4`: queue list card left, investigation panel right; one column on phones (list `max-h-72 overflow-y-auto`) |
+| Investigation panel | `.investigation`, `.investigation-head`, `.key-values` | to build | head `px-5 py-4 border-b` (pill, title `text-lg`, code); key values `grid sm:grid-cols-3 gap-px bg-border rounded-md border overflow-hidden`, cells `bg-surface p-3` with `text-xs text-ink-muted` key; decision row `.decision-actions` `flex justify-end gap-2 border-t pt-4` |
+| Weight compare | `.weight-compare` | to build | `grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-lg border bg-bg p-4 text-center`; each side a `text-xs` caption and `fig text-lg` value + unit; "vs" muted; then a Notice with the difference and the tolerance |
+| Balance card | `.balance-card`, `.balance-visual` | to build | `grid lg:grid-cols-[1fr_260px_auto] gap-4 rounded-lg border border-primary-line bg-primary-soft p-5`; failed `border-danger/30 bg-danger-soft`; round icon `size-9 bg-primary text-on-primary` (danger when failed); bar `h-2 rounded-full bg-surface` with a teal / red fill; the sign button right |
+| Upload zone | `.upload-zone`, `.upload-row` | `FileUpload` (onboarding) | dashed `rounded-md border border-dashed bg-bg min-h-24 grid place-items-center gap-1.5 text-primary`; title `text-sm font-semibold text-ink`; limits `text-xs text-ink-muted` |
+| Evidence box, auto checks | `.evidence-box`, `.auto-checks` | to build | `rounded-md border bg-bg p-4`, rows `flex gap-2 text-sm text-ink-muted` with a teal `Check` |
+| Quantity field | `.quantity-field` | `TextField` + unit addon | input `font-mono`, unit addon `bg-bg border-l text-xs text-ink-muted min-w-12` |
+| Detail banner | `.passport-detail-banner` | passport detail | `rounded-lg bg-navy-900 text-hero-ink p-5 grid lg:grid-cols-[1.6fr_0.7fr_1fr_auto]`; captions `text-xs text-hero-subtle uppercase` |
+| Public hero, product card, route art, tree | `.passport-hero`, `.product-card`, `.route-map`, `.tree` | `app/(public)/p/[id]/verification-view.tsx` | see `patterns.md` → Public verification page |
+| Access shell | `.auth-shell`, `.auth-brand` | `app/(auth)/layout.tsx` | see `patterns.md` → Access screens |

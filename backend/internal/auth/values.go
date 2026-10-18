@@ -3,6 +3,7 @@ package auth
 import (
 	"regexp"
 	"slices"
+	"time"
 )
 
 // Every value in this file is declared here once and referenced everywhere
@@ -58,6 +59,27 @@ const (
 	RecoveryCodeCount = 10
 	RecoveryCodeLen   = 10
 	superadminName    = "Platform admin"
+
+	// TrustCookie lets a device skip the 2FA code: HMAC-signed user, token
+	// version and expiry. A token-version bump (password change, sign out
+	// everywhere, lock) voids it.
+	TrustCookie = "ct_trust"
+	// PasswordHistoryLen: a new password may not repeat one of the last this many.
+	PasswordHistoryLen = 5
+
+	// Emailed one-use links (password_resets.kind).
+	LinkReset = "reset"
+	LinkLock  = "lock"
+	// Pages of the frontend those links open: <origin><path><token>.
+	PathReset = "/reset/"
+	PathLock  = "/lock/"
+)
+
+// How long things last.
+const (
+	TrustTTL     = 30 * 24 * time.Hour
+	ResetLinkTTL = 30 * time.Minute
+	LockLinkTTL  = 7 * 24 * time.Hour
 )
 
 // Messages shown to callers.
@@ -74,11 +96,25 @@ const (
 	MsgTwoFactorAlreadyOn  = "two-factor sign-in is already on"
 	MsgTwoFactorNotOn      = "two-factor sign-in is not on"
 	MsgTwoFactorSetupFirst = "set up two-factor sign-in first"
+	MsgPasswordLength      = "new password must be 12 to 72 characters"
 	MsgPINNotSet           = "set a signing PIN first"
 	MsgPINNeeded           = "enter your signing PIN"
 	MsgBadPIN              = "signing PIN is incorrect"
 	MsgPINFormat           = "signing PIN must be exactly 6 digits"
 	MsgPINLocked           = "too many wrong PINs; signing is locked for 15 minutes"
+	MsgLinkInvalid         = "this link has expired or was already used"
+	MsgPasswordReused      = "choose a password you haven't used for your last 5 passwords"
+)
+
+// Emails the account flows send.
+const (
+	MailResetSubject = "Reset your ChainTrack password"
+	MailResetBody    = "Someone asked to reset the password of your ChainTrack account.\r\n\r\n" +
+		"Choose a new password here (the link works once, for 30 minutes):\r\n%s\r\n\r\n" +
+		"If this wasn't you, ignore this email. Your password has not changed."
+	MailChangedSubject = "Your ChainTrack password was changed"
+	MailChangedBody    = "The password of your ChainTrack account was just changed, and every other device was signed out.\r\n\r\n" +
+		"If this wasn't you, lock your account now (the link works once, for 7 days):\r\n%s"
 )
 
 // Cache keys.

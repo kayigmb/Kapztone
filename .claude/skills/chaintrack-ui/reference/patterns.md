@@ -15,15 +15,25 @@ app/
   (admin)/…                                Organisations, issuers, templates, users, reports
 ```
 
-## App shell
+## App shell (Figma `BusinessApp`)
 
-- **≥ lg:** `grid grid-cols-[248px_1fr] min-h-dvh`: sidebar | (top bar 64 px + content). Content `p-8 grid gap-6 content-start`, max `max-w-content` for reading pages; dashboards and queues use full width.
-- **< lg:** top app bar 56 px (title, bell) + content `p-4 grid gap-4` + bottom tab bar with the centre Scan button. No sidebar, no hamburger: More holds the rest.
-- **Focused flows** (issue passport, handover, register facility on phones, onboarding): replace the shell with an app bar (back arrow, title, close ✕), a stepper under it, one question per step as the heading (`text-[22px] font-semibold`), and the sticky action bar. No tab bar. On desktop the same flow renders inside the shell as a two-column page (form left, live preview/check right) with buttons right-aligned at the bottom.
+- **≥ lg:** `grid grid-cols-[256px_1fr] min-h-dvh` (76 px when folded): the **navy sidebar** (brand, organisation card, switcher, nav groups **Workspace / Trust & compliance / Manage** with live counts, the person at the bottom → Profile, Sign out) | top bar 64 px + content. `navItems` in `lib/consts.ts` gives each item its `group`; only built screens are listed.
+- **Content:** `mx-auto w-full max-w-content px-3 py-5 sm:px-4 lg:px-7 lg:py-8 grid content-start gap-4 lg:gap-5`.
+- **Top bar:** eyebrow "Workspace" over the page title on desktop; back arrow when not on Home; bell, theme toggle, "Scan QR" outline button.
+- **< lg:** top bar 56 px (brand mark, back, title, bell, theme) + content + the **four-tab bar** (Home, first workspace screen, Scan, More). More opens a navy sheet with the organisation card, switcher, every nav group, the person and Sign out. No hamburger.
+- **Focused flows** (issue passport, handover, register facility, onboarding): stay in the shell; a page header, then the Stepper, then one card per step (Figma `.narrow-flow` at `max-w-[650px]`, or `.form-layout` form left / live checks right on desktop). Buttons right-aligned in the card's footer row (`.form-actions`: `border-t px-6 py-4 flex justify-end gap-2`); on phones the sticky action bar.
 
-## Page header
+## Page header (Figma `.app-page-header`)
 
-`flex flex-wrap items-end justify-between gap-3`: title `text-[22px] lg:text-page`, subtitle `text-sm text-ink-muted` (often a Status + org name), actions right. Dashboards greet: "Good morning, Jeanne" with "✓ Verified · Rukundo Farmers' Cooperative · verified producer".
+`flex flex-wrap items-start justify-between gap-4`: title `text-[22px] leading-7 font-semibold tracking-tight lg:text-[26px]`, subtitle `text-sm text-ink-muted` (often a status pill + organisation name), the one primary action on the right (on phones a 44 px square with just its icon, the label as `aria-label`). Dashboards greet: "Good morning, Jeanne".
+
+## Split queue (Figma `.split-queue`)
+
+Queues that are read one item at a time (flags, organisation verification, incoming handovers on desktop): a list card on the left (search row on top, rows with an icon square, title, code and caption, the selected row `bg-primary-soft` with a 3 px inset teal edge) and the selected item's investigation panel on the right (`components.md` → Investigation panel), ending in a decision row. Tabs above the split for status ("Organisations 4 · Approved · Rejected"), as the underlined `Tabs`. Phones: the list, then the panel, in one column.
+
+## Flows with a stepper
+
+A flow that takes several decisions (register facility, issue, hand over, receive, onboarding) shows `Stepper` under the page header, names each step by its decision ("Facility · Quantity · Evidence · Sign · Done"), and keeps one primary button per step that names what it does next ("Continue to evidence"). A blocking rule turns the current step red and disables the button with the reason beside it. The last step is signing (`patterns.md` → Signing).
 
 ## Layout grids
 
@@ -99,13 +109,23 @@ Always a dialog (desktop) or sheet (phone) that:
 
 Clearing a flag is non-destructive (secondary button), "Request information" is secondary, "Confirm fraud" is the only danger button.
 
-## Public verification page
+## Public verification page (Figma `PublicVerification`; drafts 1a, 1b, 1c)
 
-Order (phone, single column): Top bar (wordmark, "Public verification" with QR icon) → [Failed only: red alert bar "**Do not accept, pay for or ship this lot.** It is under investigation by …"] → VerdictBadge → PassportCard (product summary) → Origin (facility details + FacilityMap) → Journey (JourneyTimeline) → Route (RouteMap) → Made from (GenealogyTree) → Certificates (CertificateTiles) → What we checked (ChecksList) → Technical details (collapsed; open when Failed) → "Is something wrong with this product? Report a concern · How verification works" → footer "ChainTrack product passport · The page reflects records sealed up to the time of your scan."
+Built in `app/(public)/p/[id]/verification-view.tsx`; `id` is a lot code or a passport id.
 
-Desktop (`md:`) grid, `grid-cols-[1.55fr_1fr]`: verdict | product · origin (full, details left, map right) · journey | route (sticky) · made from (full) · certificates (full, 3 columns) · checks | technical.
+1. **Top bar** (white, 64 px): Brand; theme toggle, "Scan another" (outline, from `sm`), "Business sign in" link (from `md`).
+2. **Navy hero** (`bg-navy-900`, the faint `hero-grid` and a teal glow, both decoration): breadcrumb "Public verification › {lot code}", the verdict (round mark + "Verification result" + Verified / Warning / Failed + summary + failing reasons), and on the right "Checked on" and "Records checked". Failed and Warning use the same layout in their own tone.
+3. **Failed only:** the blocking Notice "Do not accept, pay for or ship this lot." under the hero.
+4. **Two columns** on `lg` (`minmax(0,1.75fr) minmax(300px,0.85fr)`), one on phones:
+   - left: **product card** (product art panel with beans for coffee or the commodity icon, origin-kind tag; commodity pill + passport status pill; name; lot code with copy; quantity, holder, last updated) → **Journey / Genealogy** tabs (timeline beside the route art, which is a drawing that names origin and current holder, never a located map; the tree of earlier lots with "stage · quantity used" on each connector) → **certificates** list;
+   - right: **What we checked** (n of 7 passed) → **origin** card(s) (facility, kind, operator, capacity result) → navy **How verification works** card → **Technical details** (collapsed; open when Failed).
+5. **Footer:** Brand, "Transparent journeys. Trusted goods.", the records note.
 
-Server-render it (fast on weak connections, shareable), cache per lot with revalidation on new records, no client JS except the maps and the disclosure.
+No blockchain words outside Technical details. Not shown until the API has them (`docs/design.md` gaps): country and region, coordinates, harvest period, grade, packaging, a certificate number, a downloadable verification report, report-a-concern.
+
+## Access screens (Figma `AuthFlow`; drafts 2a–2m)
+
+`app/(auth)/layout.tsx`: on `lg` a navy brand panel on the left (`minmax(350px,0.8fr)`: Brand, eyebrow "Trusted trade infrastructure", "Every product has a story. Make it verifiable.", the foot line, rings in the corner) and the form on white on the right (`max-w-[400px]`, or `max-w-[540px]` for sign-up and onboarding); on phones the brand mark above the form, no panel. Each page: eyebrow (teal), `text-page` title, `text-sm` muted line, the form, the switch link centred under it. Sign in has "Keep me signed in" (`remember`).
 
 ## Offline and weak connections
 

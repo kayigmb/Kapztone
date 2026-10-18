@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Input is what a business submits to register a facility.
@@ -17,6 +18,7 @@ type Input struct {
 	Capacity       int64           `json:"capacity"`
 	CapacityUnit   string          `json:"capacity_unit"`
 	CapacityPeriod string          `json:"capacity_period"`
+	LicenceValidTo string          `json:"licence_valid_to"` // 2027-12-31
 }
 
 // Validate normalises the input and returns the first problem as a message
@@ -40,6 +42,10 @@ func (in *Input) Validate() string {
 	case !slices.Contains(Periods, in.CapacityPeriod):
 		return "capacity_period must be one of: " + strings.Join(Periods, ", ")
 	}
+	if _, err := time.Parse(DateLayout, strings.TrimSpace(in.LicenceValidTo)); err != nil {
+		return MsgLicenceDate
+	}
+	in.LicenceValidTo = strings.TrimSpace(in.LicenceValidTo)
 	return validLocation(in.Location)
 }
 
@@ -126,8 +132,8 @@ type StatusInput struct {
 }
 
 func (in StatusInput) Validate() string {
-	if !slices.Contains(Statuses, in.Status) {
-		return "status must be one of: " + strings.Join(Statuses, ", ")
+	if !slices.Contains(SettableStatuses, in.Status) {
+		return "status must be one of: " + strings.Join(SettableStatuses, ", ")
 	}
 	return ""
 }

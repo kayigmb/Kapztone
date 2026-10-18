@@ -1,17 +1,22 @@
 package tests
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
+	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 // geo builds a GeoJSON geometry the way a client would send it.
@@ -31,10 +36,48 @@ var (
 
 const plotBox = "29.99,-2.01,30.01,-1.99"
 
+// Facilities may not overlap any other live one, in any test or in the
+// developer's own data, so tests that store facilities draw each one at a
+// place of its own: a 0.001° square in the empty South Pacific.
+var (
+	plotBase = [2]float64{-125 + rand.Float64()*10, -3 + rand.Float64()*2}
+	plotNext atomic.Int64
+)
+
+// uniquePlot returns a fresh plot's GeoJSON and a map window around it.
+func uniquePlot() (geoJSON, box string) {
+	n := float64(plotNext.Add(1))
+	lon, lat := plotBase[0]+n*0.002, plotBase[1]
+	geoJSON = geo(facility.GeoPolygon, fmt.Sprintf(`[[[%[1]f,%[2]f],[%[3]f,%[2]f],[%[3]f,%[4]f],[%[1]f,%[4]f],[%[1]f,%[2]f]]]`,
+		lon, lat, lon+0.001, lat+0.001))
+	return geoJSON, fmt.Sprintf("%f,%f,%f,%f", lon-0.0005, lat-0.0005, lon+0.0015, lat+0.0015)
+}
+
+// newPin is a point of its own, below the row of plots.
+func newPin() string {
+	n := float64(plotNext.Add(1))
+	return geo(facility.GeoPoint, fmt.Sprintf(`[%f,%f]`, plotBase[0]+n*0.002, plotBase[1]-0.01))
+}
+
+// newPlot is uniquePlot without the window.
+func newPlot() string { g, _ := uniquePlot(); return g }
+
+// approvedFacility registers a facility and has the platform approve it.
+func (e *env) approvedFacility(token, slug, root string, in facility.Input) facility.Facility {
+	e.t.Helper()
+	rec := post(e, token, as(slug, "/facilities"), in)
+	want(e.t, "create facility", rec, http.StatusCreated)
+	f := decodeTo[facility.Facility](e.t, rec)
+	rec = post(e, root, "/facilities/"+f.ID+"/approve", nil)
+	want(e.t, "approve facility", rec, http.StatusOK)
+	return decodeTo[facility.Facility](e.t, rec)
+}
+
 func facilityInput(location string) facility.Input {
 	return facility.Input{
 		Name: "North plot", Kind: facility.KindFarmPlot, Location: json.RawMessage(location),
 		LicenceNumber: "LIC-001", Capacity: 1_200_000, CapacityUnit: "g", CapacityPeriod: facility.PeriodSeason,
+		LicenceValidTo: "2036-12-31",
 	}
 }
 
@@ -128,17 +171,86 @@ func TestFacilityFlow(t *testing.T) {
 		return decodeTo[listq.Page[facility.Facility]](t, rec).Total
 	}
 
+	plotAt, plotWindow := uniquePlot()
+
 	// An organisation that has not passed KYB cannot register facilities.
-	want(t, "pending organisation", create(admin, acmeSlug, plotGeo), http.StatusForbidden)
+	want(t, "pending organisation", create(admin, acmeSlug, plotAt), http.StatusForbidden)
 	e.setOrgStatus(acme.ID, org.StatusVerified)
 	e.setOrgStatus(rival.ID, org.StatusVerified)
 
-	rec := create(admin, acmeSlug, plotGeo)
+	rec := create(admin, acmeSlug, plotAt)
 	want(t, "create plot", rec, http.StatusCreated)
 	plot := decodeTo[facility.Facility](t, rec)
-	if plot.Status != facility.StatusActive || plot.OrganisationID != acme.ID {
+	if plot.Status != facility.StatusPending || plot.OrganisationID != acme.ID || plot.LicenceValidTo == nil ||
+		*plot.LicenceValidTo != "2036-12-31" || plot.ApprovedAt != nil {
 		t.Fatalf("facility recorded wrongly: %+v", plot)
 	}
+	if statuses, _ := e.outbox(plot.ID); len(statuses) != 0 {
+		t.Fatal("a facility waiting for approval was queued for the ledger")
+	}
+
+	// The same land cannot be registered twice: the caller is told which of its
+	// facilities is in the way, another organisation only that one is.
+	rec = create(admin, acmeSlug, plotAt)
+	want(t, "overlapping own facility", rec, http.StatusConflict)
+	if got := decodeTo[struct {
+		Error      string  `json:"error"`
+		FacilityID *string `json:"facility_id"`
+	}](t, rec); got.Error != facility.MsgOverlaps(plot.Name) || got.FacilityID == nil || *got.FacilityID != plot.ID {
+		t.Fatalf("overlap answer: %s", rec.Body)
+	}
+	rec = create(rivalAdmin, rivalSlug, plotAt)
+	want(t, "overlapping another organisation's facility", rec, http.StatusConflict)
+	if strings.Contains(rec.Body.String(), plot.ID) || strings.Contains(rec.Body.String(), plot.Name) {
+		t.Fatalf("overlap names another organisation's facility: %s", rec.Body)
+	}
+
+	// Waiting for approval: its status cannot be set, only the platform approves it.
+	suspend := fmt.Sprintf(`{"status":%q}`, facility.StatusSuspended)
+	one := "/facilities/" + plot.ID
+	want(t, "suspend while pending", do(e.h, http.MethodPost, one+"/status", root, suspend), http.StatusConflict)
+	want(t, "organisation approves its own", post(e, admin, as(acmeSlug, one+"/approve"), nil), http.StatusForbidden)
+	rec = post(e, root, one+"/approve", nil)
+	want(t, "approve", rec, http.StatusOK)
+	if f := decodeTo[facility.Facility](t, rec); f.Status != facility.StatusActive || f.ApprovedAt == nil {
+		t.Fatalf("approved facility: %+v", f)
+	}
+	if statuses, _ := e.outbox(plot.ID); len(statuses) != 1 {
+		t.Fatalf("approval queued %d items for the ledger, want 1", len(statuses))
+	}
+	want(t, "approve twice", post(e, root, one+"/approve", nil), http.StatusConflict)
+	want(t, "approve unknown", post(e, root, "/facilities/"+fakeOrgID+"/approve", nil), http.StatusNotFound)
+
+	// The licence document: stored in the bucket, read back by the owner only.
+	want(t, "no licence yet", do(e.h, http.MethodGet, as(acmeSlug, one+"/licence"), admin, ""), http.StatusNotFound)
+	licence := func(token, slug, validTo string, content []byte) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		if validTo != "" {
+			mw.WriteField(facility.FormLicenceValidTo, validTo)
+		}
+		fw, _ := mw.CreateFormFile(upload.FormFile, "licence.pdf")
+		fw.Write(content)
+		mw.Close()
+		req := httptest.NewRequest(http.MethodPost, as(slug, one+"/licence"), &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		return send(e.h, req, token)
+	}
+	want(t, "licence with a bad date", licence(admin, acmeSlug, "next year", pdfBytes), http.StatusBadRequest)
+	want(t, "licence of another organisation's facility", licence(rivalAdmin, rivalSlug, "", pdfBytes), http.StatusNotFound)
+	rec = licence(admin, acmeSlug, "2037-06-30", pdfBytes)
+	want(t, "upload licence", rec, http.StatusOK)
+	if f := decodeTo[facility.Facility](t, rec); f.LicenceDocument == nil || *f.LicenceValidTo != "2037-06-30" ||
+		f.LicenceDocument.SizeBytes != int64(len(pdfBytes)) || strings.Contains(rec.Body.String(), "storage_key") {
+		t.Fatalf("licence recorded wrongly: %s", rec.Body)
+	}
+	rec = do(e.h, http.MethodGet, as(acmeSlug, one+"/licence"), admin, "")
+	want(t, "download licence", rec, http.StatusOK)
+	if !bytes.Equal(rec.Body.Bytes(), pdfBytes) {
+		t.Fatal("licence downloaded differs from the upload")
+	}
+	want(t, "another organisation downloads the licence", do(e.h, http.MethodGet, as(rivalSlug, one+"/licence"), rivalAdmin, ""), http.StatusNotFound)
+	want(t, "replace licence", licence(admin, acmeSlug, "", pdfBytes), http.StatusOK)
 	// Area comes from the boundary, measured on the globe.
 	if plot.AreaHa < 1.1 || plot.AreaHa > 1.4 {
 		t.Fatalf("area = %.3f ha, want about 1.2", plot.AreaHa)
@@ -150,9 +262,12 @@ func TestFacilityFlow(t *testing.T) {
 
 	want(t, "self-crossing boundary", create(admin, acmeSlug, bowTieGeo), http.StatusBadRequest)
 	want(t, "latitude 120", create(admin, acmeSlug, offMapGeo), http.StatusBadRequest)
-	want(t, "member creates", create(staff, acmeSlug, plotGeo), http.StatusForbidden)
+	want(t, "member creates", create(staff, acmeSlug, newPlot()), http.StatusForbidden)
+	noDate := facilityInput(newPlot())
+	noDate.LicenceValidTo = ""
+	want(t, "no licence end date", post(e, admin, as(acmeSlug, "/facilities"), noDate), http.StatusBadRequest)
 
-	rec = create(admin, acmeSlug, pinGeo)
+	rec = create(admin, acmeSlug, newPin())
 	want(t, "create pin", rec, http.StatusCreated)
 	if pin := decodeTo[facility.Facility](t, rec); pin.AreaHa != 0 {
 		t.Fatalf("a pin has area %.3f", pin.AreaHa)
@@ -166,7 +281,7 @@ func TestFacilityFlow(t *testing.T) {
 	if n := total(staff, list); n != 2 {
 		t.Fatalf("member sees %d facilities, want 2", n)
 	}
-	if n := total(admin, list+"&"+facility.ParamBBox+"="+plotBox); n != 1 {
+	if n := total(admin, list+"&"+facility.ParamBBox+"="+plotWindow); n != 1 {
 		t.Fatalf("map window returned %d facilities, want 1", n)
 	}
 	want(t, "bad map window", do(e.h, http.MethodGet, list+"&"+facility.ParamBBox+"=1,2,3", admin, ""), http.StatusBadRequest)
@@ -174,12 +289,10 @@ func TestFacilityFlow(t *testing.T) {
 	if n := total(rivalAdmin, as(rivalSlug, "/facilities")); n != 0 {
 		t.Fatalf("another organisation sees %d of these facilities", n)
 	}
-	one := "/facilities/" + plot.ID
 	want(t, "own facility", do(e.h, http.MethodGet, as(acmeSlug, one), admin, ""), http.StatusOK)
 	want(t, "another organisation's facility", do(e.h, http.MethodGet, as(rivalSlug, one), rivalAdmin, ""), http.StatusNotFound)
 
 	// Only the platform can suspend; a business cannot change its own status.
-	suspend := fmt.Sprintf(`{"status":%q}`, facility.StatusSuspended)
 	want(t, "organisation suspends itself", do(e.h, http.MethodPost, as(acmeSlug, one+"/status"), admin, suspend), http.StatusForbidden)
 	want(t, "unknown status", do(e.h, http.MethodPost, one+"/status", root, `{"status":"closed"}`), http.StatusBadRequest)
 	rec = do(e.h, http.MethodPost, one+"/status", root, suspend)

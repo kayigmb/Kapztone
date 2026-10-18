@@ -121,7 +121,7 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 	rows, err := tx.Query(ctx,
 		`SELECT n.id::text, n.message,
 		        ARRAY(SELECT u.email::text FROM userscope s JOIN users u ON u.id = s.user_id
-		              WHERE s.organisation_id = n.organisation_id AND NOT s.is_deleted
+		              WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
 		                AND NOT u.is_deleted AND u.status = $3)
 		 FROM notifications n
 		 WHERE n.emailed_at IS NULL AND n.created_at > now() - make_interval(secs => $1) AND NOT n.is_deleted

@@ -50,12 +50,12 @@ export function Onboarding() {
   const waiting = complete && !sentBack;
 
   return (
-    <main className="mx-auto grid w-full max-w-xl gap-6 px-4 py-8">
+    <main className="mx-auto grid w-full max-w-[540px] gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="grid gap-1">
-          <p className="text-title">{copy.brand}</p>
+        <div className="grid gap-2">
+          <span className="eyebrow text-primary">{t.eyebrow}</span>
           <h1 className="text-page">{waiting ? t.pendingTitle : t.uploadTitle}</h1>
-          <p className="text-ink-muted">{waiting ? t.pendingSub(o.name) : t.uploadSub}</p>
+          <p className="text-sm text-ink-muted">{waiting ? t.pendingSub(o.name) : t.uploadSub}</p>
         </div>
         <SignOutButton />
       </header>

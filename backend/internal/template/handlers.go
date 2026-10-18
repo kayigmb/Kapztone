@@ -22,6 +22,8 @@ func respond(w http.ResponseWriter, status int, what string, t Template, err err
 		httpx.Error(w, http.StatusConflict, MsgCommodityTaken)
 	case errors.Is(err, ErrInUse):
 		httpx.Error(w, http.StatusConflict, MsgInUse)
+	case errors.Is(err, ErrNoDraft):
+		httpx.Error(w, http.StatusConflict, MsgNoDraft)
 	case err != nil:
 		httpx.ServerError(w, what, err)
 	default:
@@ -73,7 +75,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, "get template", t, err)
 }
 
-// Update replaces the whole template.
+// Update saves a whole new version of the template as its draft.
 func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.URLID(w, r)
 	if !ok {
@@ -85,6 +87,16 @@ func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.Store.Update(r.Context(), id, in)
 	respond(w, http.StatusOK, "update template", t, err)
+}
+
+// Publish makes the draft the template's rules, as the next version.
+func (h *Handlers) Publish(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.URLID(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.Store.Publish(r.Context(), id)
+	respond(w, http.StatusOK, "publish template", t, err)
 }
 
 func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {

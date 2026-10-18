@@ -16,7 +16,7 @@ import (
 
 type Notification struct {
 	ID             string     `json:"id"`
-	OrganisationID string     `json:"organisation_id"`
+	OrganisationID *string    `json:"organisation_id"` // nil: a platform notification
 	Kind           string     `json:"kind"`
 	SubjectID      string     `json:"subject_id"`
 	Message        string     `json:"message"`
@@ -35,7 +35,9 @@ var List = listq.Config{
 const (
 	columns = `n.id::text, n.organisation_id::text, n.kind, n.subject_id::text, n.message,
 	           n.read_at, n.created_at, n.updated_at`
-	gateColumn = "n.organisation_id"
+	// The platform sees platform notifications (no organisation); an
+	// organisation sees its own. Argument 1 is the gate (auth.Gate).
+	gateWhere = `n.organisation_id IS NOT DISTINCT FROM NULLIF($1, '')::uuid`
 )
 
 func scan(row pgx.CollectableRow) (Notification, error) {
@@ -44,12 +46,12 @@ func scan(row pgx.CollectableRow) (Notification, error) {
 	return n, err
 }
 
-// Add records a notification for an organisation. Like chain.Enqueue it is
-// called with the transaction that makes the change it reports, so an
-// organisation is never told about something that did not happen.
+// Add records a notification for an organisation, or for the platform when
+// orgID is Platform. Like chain.Enqueue it is called with the transaction that
+// makes the change it reports, so nobody is told about something that did not happen.
 func Add(ctx context.Context, tx pgx.Tx, orgID, kind, subjectID, message string) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO notifications (organisation_id, kind, subject_id, message) VALUES ($1::uuid, $2, $3::uuid, $4)`,
+		`INSERT INTO notifications (organisation_id, kind, subject_id, message) VALUES (NULLIF($1, '')::uuid, $2, $3::uuid, $4)`,
 		orgID, kind, subjectID, message)
 	return err
 }
@@ -72,7 +74,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	}
 	unread := r.URL.Query().Get(ParamUnread) == "true"
 	page, err := listq.Fetch(r.Context(), h.Pool, q, List, "SELECT "+columns, "FROM notifications n",
-		[]string{auth.GateSQL(gateColumn, 1), `(NOT $2 OR n.read_at IS NULL)`}, []any{gate, unread}, scan)
+		[]string{gateWhere, `(NOT $2 OR n.read_at IS NULL)`}, []any{gate, unread}, scan)
 	if err != nil {
 		httpx.ServerError(w, "list notifications", err)
 		return
@@ -92,7 +94,7 @@ func (h *Handlers) Read(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.Pool.Query(r.Context(),
 		`UPDATE notifications AS n SET read_at = COALESCE(n.read_at, now())
-		 WHERE n.id = $1::uuid AND NOT n.is_deleted AND `+auth.GateSQL(gateColumn, 2)+` RETURNING `+columns, id, gate)
+		 WHERE n.id = $2::uuid AND NOT n.is_deleted AND `+gateWhere+` RETURNING `+columns, gate, id)
 	if err != nil {
 		httpx.ServerError(w, "read notification", err)
 		return

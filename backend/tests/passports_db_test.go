@@ -55,9 +55,7 @@ func newPassportWorld(t *testing.T) passportWorld {
 	w.prodTok, w.procTok, w.certTok = e.login(tAcme), e.login(tRival), e.login(tStaff)
 	w.prodSlug, w.procSlug, w.certSlug = e.slug(tAcme), e.slug(tRival), e.slug(tStaff)
 
-	rec := post(e, w.prodTok, as(w.prodSlug, "/facilities"), facilityInput(plotGeo))
-	want(t, "create facility", rec, http.StatusCreated)
-	w.plot = decodeTo[facility.Facility](t, rec)
+	w.plot = e.approvedFacility(w.prodTok, w.prodSlug, w.root, facilityInput(newPlot()))
 	return w
 }
 
@@ -139,7 +137,7 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 		if h.Stage != stageWashing {
 			t.Fatalf("handover stage = %q", h.Stage)
 		}
-		want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
+		want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
 	}
 	handover(lots[0].ID)
 	rec = post(e, w.procTok, as(w.procSlug, "/transforms"), passport.TransformInput{Stage: stageWashing,
@@ -251,7 +249,7 @@ func TestRequiredEvidence(t *testing.T) {
 	rec = handover(stageWashing)
 	want(t, "handover with evidence", rec, http.StatusCreated)
 	h := decodeTo[passport.Handover](t, rec)
-	want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/accept"), nil), http.StatusOK)
+	want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
 
 	// Transform: every input needs the stage's evidence. A second lot without it blocks the whole transform.
 	rec = w.issue(tpl, 500)

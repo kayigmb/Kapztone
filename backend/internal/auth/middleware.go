@@ -90,7 +90,7 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			httpx.Error(w, http.StatusForbidden, MsgForeignOrigin)
 			return
 		}
-		userID, err := a.ParseToken(token)
+		userID, ver, err := a.parse(token)
 		if err != nil {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
@@ -102,6 +102,11 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 		}
 		if err != nil {
 			httpx.ServerError(w, "authenticate", err)
+			return
+		}
+		// Issued before a password change, sign-out-everywhere or lock: void.
+		if ver != user.TokenVersion {
+			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
@@ -172,12 +177,16 @@ func Gate(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
 var dummyHash, _ = HashPassword("chaintrack-dummy-password")
 
 // Login exchanges an email and password (and a 2FA code, if the user has
-// 2FA on) for a sign-in token.
+// 2FA on and this device isn't trusted) for a sign-in token. Remember asks
+// for the longer sign-in; TrustDevice, with a valid app code, lets this
+// device skip the code for TrustTTL.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Code     string `json:"code"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		Code        string `json:"code"`
+		Remember    bool   `json:"remember"`
+		TrustDevice bool   `json:"trust_device"`
 	}
 	if !httpx.DecodeJSON(w, r, &in) {
 		return
@@ -191,6 +200,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	fail := func(body map[string]any) {
 		a.Limiter.record(ctx, LoginRate, in.Email, ip)
+		body["attempts_left"] = a.Limiter.left(ctx, LoginRate, in.Email, ip)
 		httpx.WriteJSON(w, http.StatusUnauthorized, body)
 	}
 
@@ -208,8 +218,11 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.TOTPEnabled {
-		valid, err := a.checkCode(ctx, user, in.Code, a.now())
+	now := a.now()
+	setTrust := false
+	if user.TOTPEnabled && !a.trusted(r, user, now) {
+		valid, err := a.checkCode(ctx, user, in.Code, now)
+		setTrust = valid && in.TrustDevice // an app code, not a recovery code
 		if err == nil && !valid && strings.TrimSpace(in.Code) != "" {
 			// A lost phone: a recovery code works once in place of the app code.
 			valid, err = a.Store.UseRecoveryCode(ctx, user.ID, recoveryHash(in.Code))
@@ -229,18 +242,16 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
 
-	token, err := a.IssueToken(user.ID, a.now())
-	if err != nil {
-		httpx.ServerError(w, "issue token", err)
-		return
+	if setTrust {
+		http.SetCookie(w, a.trustCookie(user, now))
+	}
+	ttl := a.TokenTTL
+	if in.Remember && a.RememberTTL > 0 {
+		ttl = a.RememberTTL
 	}
 	// Browsers keep the token in the cookie. It is also returned for callers
 	// that are not browsers.
-	http.SetCookie(w, a.sessionCookie(token, int(a.TokenTTL.Seconds())))
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"token":      token,
-		"expires_in": int(a.TokenTTL.Seconds()),
-	})
+	a.signIn(w, user.ID, user.TokenVersion, ttl)
 }
 
 // Logout clears the session cookie. The page cannot do it: scripts have no
@@ -258,11 +269,16 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "load signing pin", err)
 		return
 	}
+	full, ok := a.freshUser(w, r) // the cached user carries no 2FA state
+	if !ok {
+		return
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"user":         CurrentUser(r.Context()),
+		"user":         map[string]string{"id": full.ID, "email": full.Email, "name": full.Name},
 		"organisation": scope.Organisation,
 		"role":         scope.Role,
 		"permissions":  scope.Permissions,
 		"pin_set":      pin != "",
+		"two_factor":   full.TOTPEnabled,
 	})
 }

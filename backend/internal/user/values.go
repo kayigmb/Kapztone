@@ -46,4 +46,5 @@ const (
 	MsgNotSuspended   = "this person is not suspended"
 	MsgInviteBodyFmt  = "You have been invited to join %s on ChainTrack as %s.\n\nOpen this link within 24 hours to accept:\n%s\n"
 	MsgPasswordFormat = "password must be %d to %d characters"
+	MsgNameLength     = "name must be 1 to 200 characters"
 )

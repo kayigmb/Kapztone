@@ -5,7 +5,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 ## Left
 
 ### Phase 0 (due 15 Nov 2026)
-- [ ] Claude Design screens exported and linked in `docs/design.md` (Export column empty)
+- [x] Claude Design screens exported and linked in `docs/design.md` (drafts in `ui/`, ids per screen)
 - [ ] Three clickable flows: coffee, mineral, fraud moments
 - [ ] Review with at least 3 experts; changes logged (log in `docs/design.md` is empty)
 - [ ] Decision column of the design-versus-backend gap table in `docs/design.md`
@@ -32,8 +32,9 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Real client address behind the web app (see Pending decisions)
 
 ### Sprint 4 frontend
-- [ ] Screens 3–12 and 14: dashboard, facility registry, issue passport, passport detail, handover (sender, receiver), transform, certificates, flags, template builder, reports
-- [ ] Install map, QR and table libraries (MapLibre, qrcode, @zxing/browser, TanStack Table)
+- [x] Built: facility registry + register, issue, passport detail, scan, transform, handover (send, list, accept / reject / cancel), issue / revoke certificate, flags and investigations, certificates list, template builder, organisation verification, reports, users, profile
+- [x] Maps (MapLibre + drawing) for facilities
+- [ ] Public origin / route map (needs facility location in the public verification); tables (TanStack Table)
 - [ ] Playwright happy-path tests
 - [ ] Verification of a 50-ancestor lot in under 5 s
 - [ ] Visual check of built screens at 390 px and 1280 px, light and dark
@@ -54,6 +55,127 @@ What has been built and what is left. Every finished piece of work adds an entry
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-18 — Facility maps, approval, licence (drafts 3a, 3b)
+- `/facilities/new`: location first. Drop pin | Draw boundary on a MapLibre map (OpenFreeMap street style, no key), undo / clear, centre and corner readout, GPS sets the pin. Licence end date and licence document (uploaded right after the facility is created). "Submit for approval".
+- `/facilities`: an overview map of the listed facilities with a legend; the selected facility shows its own map, licence end date and document (open / upload a renewed one).
+- Statuses: Active, Awaiting approval, Suspended, Licence expired (`lib/facility.ts`, tested). The platform approves pending facilities from the detail; suspend / reinstate is hidden while pending.
+- `/issue`: facilities awaiting approval are disabled with the reason.
+- Map colours follow the theme tokens and update when the theme flips.
+- Verified: lint (0 errors), build, 59 node tests; pages load. Not checked: drawing by hand, the map at 390 px in light and dark.
+- Not built: public origin map (the public verification gives no facility location; gap row added), edit boundary, GPS walk, area readout while drawing (the API computes area), dashed outline for expired licences.
+
+### 2026-10-18 — Flags and investigations (draft 3k)
+- `/flags`: a split queue (open / resolved) with the investigation beside it. Shows the lot (code from its public page), who raised it (business, rules engine, public verifier), the assignee and the affected lots (descendants, where readable).
+- Investigators only (platform, or a verified regulator), matching the API: assign to me / unassign; clear with a note, or confirm fraud. Confirming shows the consequences first (lots revoked, public pages turn Failed); both are signed with the PIN. Others see a read-only view.
+- Nav "Flags" with the open count; "Review flags" quick action restored.
+- Verified: lint (0 errors), build, 56 node tests; page loads.
+
+### 2026-10-18 — Issue certificate (draft 3i)
+- `/certificates/new`: find the lot by its code (typed or scanned) through its public verification, since issuers certify other organisations' lots. Attach the certificate to the lot or to one of its origin facilities.
+- Type list = this organisation's accreditations valid today; dates; signed document.
+- Live preview plus "checks before issuing" (lot verdict, accredited type, dates, file). The PIN signs the form as it stands after validation.
+- "Issue certificate" quick action restored. Revoke (3j) was already built on `/certificates`.
+- Verified: lint (0 errors), build, 56 node tests; page loads.
+
+### 2026-10-18 — Handovers: send, list, accept, reject, cancel (drafts 3g, 1f, 3h)
+- `/handover` (3g): pick or scan a lot → all or part of it, the stage it goes into (only stages allowing HANDOVER), where / how, GPS and up to 6 photos → verified receiver search → PIN. Sending part of a lot shows what stays.
+- `/handovers`: incoming / outgoing / done tabs with counts. `/handovers/[id]`:
+  - receiver accepts (1f) after entering the weighed quantity; the template tolerance is checked live and blocks the PIN step when outside;
+  - or rejects (3h) with reasons from the API's list, a note and "also raise a flag";
+  - the sender can cancel while it waits;
+  - photos, location and the split note are shown.
+- Nav "Handovers" with the incoming count; the "Hand over" quick action and buttons work again.
+- New: `lib/handover.ts` (tolerance, handover stages, partial; tested), `components/chaintrack/place-and-photos.tsx`, `handover-status.tsx`. `lib/schemas/handover.ts` rewritten for the current API; its hard-coded 0.5% tolerance removed.
+- Verified: lint (0 errors), build, 56 node tests. Pages load; not clicked through against the API yet (it needs restarting).
+
+### 2026-10-18 — Forgot / reset / lock pages, sign-in extras (drafts 2b–2h)
+- `/forgot` (2d, then 2e "check your email": the same answer for every email), `/reset/[token]` (2f new password with live rules, 2g expired or used link, 2h done) and `/lock/[token]` (a deliberate button, so mail scanners opening the link don't lock anyone).
+- Sign in: "Forgot password?" link, attempts left after a wrong password (from `attempts_left`), a Caps Lock warning, and "Trust this device for 30 days" once the code is asked for.
+- Shared `components/chaintrack/auth-result.tsx` for the outcome screens.
+- Verified: lint (0 errors), build, 54 node tests (new: reset schema). Pages load; the endpoints need the restarted API (`JWT_TTL_REMEMBER` in `.env`).
+
+### 2026-10-18 — Forgot password no longer reveals accounts
+- `POST /auth/password/forgot` answers 202 before looking anything up; the lookup, link and mail run in the background. Known and unknown emails now take the same time, and a failure is logged, never returned. Access tests pass.
+
+### 2026-10-18 — New look from Figma Make
+- **Reference:** `ui/figma-make/App.tsx` and `styles.css` kept as reference only; `ui/ChainTrack Drafts.dc.html` for content and flows.
+- **Tokens and fonts:** the Figma palette under the same token names (teal primary, navy, sidebar and hero sets, light and `data-theme` dark); Inter + DM Mono; radii 8 / 12; the Figma card shadow; readable minimums (text ≥ 12 px, targets ≥ 44 px, 56 px on scan, handover, quick actions and phone tabs).
+- **Primitives and components:** Button (teal primary, outline secondary, `danger-soft`), Input (teal focus ring), Tabs (underlined), StatTile (metric card), StatusChip (pill), Notice, Stepper (numbered circles), ListCard, CapacityMeter, JourneyTimeline, ChecksList, Brand.
+- **Shell:** navy sidebar with brand, organisation card, switcher, nav groups (Workspace / Trust & compliance / Manage) with live counts, the person → Profile; fold rail, back button, bell, theme toggle and "Scan QR" kept; four phone tabs.
+- **Public verification** (`/p/[id]`, lot code or id): navy hero with the verdict, product card with art and copyable lot code, Journey / Genealogy tabs (timeline + route art, tree with stage and quantity used), certificates, What we checked, origin, help card, Technical details.
+- **Access screens:** the AuthFlow layout (navy brand panel, form on white, logo only on phones) for sign in (now with "Keep me signed in"), sign up, onboarding and invite.
+- **Dashboard:** Figma metric cards, quick-action cards, card heads with "View all", passports as table-like rows, capacity panel; still from the per-kind config.
+- **Repairs to earlier draft screens** so lint and build pass: hooks above early returns (reports, templates), zod input / output form types (templates, facilities, issue, transform). `/handover` and `/certificates/new` had no client component: parked as `page.tsx.draft`, and their nav entry and quick actions removed. "Review flags" left the dashboards (no `/flags` screen).
+- **Docs:** `chaintrack-ui` SKILL.md and reference (tokens, components with Figma class map, patterns, screens' draft map, globals.css copy), `frontend/AGENTS.md` design source, `docs/design.md` (visuals linked, draft ids, gap rows).
+- **Verified:** lint (warnings only), build, 53 node tests; no hex outside `globals.css`, no text under 12 px. Not checked: the visuals at 390 / 1280 px in light and dark (the learner's eyes).
+
+### 2026-10-18 — Backend: account safety, custody, business rules
+- **Access** (migration 000016):
+  - `POST /auth/password/forgot` (always 202) and `/reset` (30-minute one-use link, last 5 passwords refused);
+  - "Lock my account" link mailed after every password change (`POST /auth/lock`, 7 days);
+  - `POST /auth/sessions/revoke` signs out other devices, the caller keeps a fresh token;
+  - every token carries the user's token version, so a password change, reset, revoke or lock ends every older session (the earlier "open sessions survive a password change" is fixed);
+  - sign-in takes `remember` (`JWT_TTL_REMEMBER`, new setting) and `trust_device` (`ct_trust` cookie skips 2FA for 30 days); a failed sign-in answers `attempts_left`.
+- **Custody** (migration 000017):
+  - partial handovers: a split (stage `split`, yield 1) cuts the part into its own passport, no contract change;
+  - handover photos (up to 6, in the bucket, hashed into the signed record) and place, on both sides;
+  - `received_quantity` checked against the stage's `handoverTolerance` (409 with the difference);
+  - reject with declared reasons and `also_flag`.
+- **Business rules** (migration 000018):
+  - facilities wait for approval (`POST /facilities/{id}/approve`), need a licence end date, keep a licence document, and may not overlap another live facility;
+  - templates: drafts, `POST /templates/{id}/publish`, versions recorded on transforms and handovers;
+  - flags: `raised_by` (user / rules / public), assignee (`PUT /flags/{id}/assignee`); the rules flag transforms at 98% of the maximum yield and accepted handovers off by more than half the tolerance;
+  - reports: `exported` in `GET /reports/volume`, new `GET /reports/blocked` (JSON / CSV).
+- **Verified:** `make test-db` 82.2% coverage, Go vet and unit tests, 37 contract tests.
+- **Known:**
+  - a child passport from a split starts without the parent's certificates;
+  - nothing produces `raised_by: "public"` yet (no public report form).
+
+### 2026-10-17 — Shell upgrade, platform notifications, profile, users
+- **Shell:**
+  - collapsible sidebar (72 px icon rail, remembered per browser);
+  - back button in the top bar;
+  - light / dark / device theme toggle (next-themes on `data-theme`);
+  - notifications bell in the header (unread count, mark as read);
+  - org switcher, which goes to the other organisation's address, where you sign in again;
+  - live pending count on "Verify organisations";
+  - Users and Profile in the nav.
+- **Platform notifications:**
+  - nullable `notifications.organisation_id` (migration 000015);
+  - the superadmin is told about a new organisation, uploaded documents and raised flags, and sees only platform notices;
+  - they are e-mailed to platform users.
+- **Profile** (`/profile`, everyone):
+  - edit name (`PUT /me`) and change password (`POST /auth/password`);
+  - signing PIN;
+  - 2FA on / off with a QR and recovery codes;
+  - `GET /me` now returns `two_factor`.
+- **Users** (`/users`): the superadmin sees every user with their memberships (`GET /users` from the platform). An org admin sees their own members, and can invite, change roles and suspend.
+- **Invite accept page** at `/invite/[token]`.
+- **Switcher:** `GET /me/organisations`.
+- **Verified:**
+  - DB tests 82.2% (backend agent), Go unit tests, 37 contract tests;
+  - frontend lint, build and 21 node tests.
+  - Not clicked through live (the dev API needs a restart).
+- **Known:**
+  - open sessions survive a password change until they expire;
+  - one `documents_uploaded` notice per file;
+  - with SMTP on, `make test-db` can send real e-mails if the dev API is running.
+
+### 2026-10-17 — App shell, dashboard (screen 3), Scan QR
+- **Shell** (`frontend/app/(app)/layout.tsx`, `components/chaintrack/app-shell.tsx`):
+  - sidebar on desktop; app bar and a bottom tab bar (Home, Scan, More) on phones;
+  - the sign-in and verification guard lives here;
+  - nav lists only built screens (`navItems` in `lib/consts.ts`);
+  - the admin queue now sits inside the shell.
+- **Dashboard:** one page, laid out per kind of organisation (`dashboards` in `lib/consts.ts`): trader, producer, certifier, regulator, platform admin.
+  - Tiles come from list `total`s, each its own query.
+  - Main panels: incoming handovers, passports held, latest certificates, open flags, organisations waiting.
+  - Producers also get capacity meters per facility.
+  - Quick actions: only screens that exist (Scan QR, Review organisations).
+- **Scan QR:** `@zxing/browser` 0.2.1 in a dialog, loaded only when it opens, with a typed lot-code field (the camera needs https or localhost). A label URL `…/p/{code}` or a typed code opens the public passport page.
+- **Cut, with no data behind them:** "Waiting for your signature", lots verified this month, verified volume, certificates expiring in 30 days, flag severity, active users, issuers to accredit. Recorded in the gap table.
+- **Verified:** lint, build, 16 node tests (new: dashboard config, scan parsing). Live: superadmin dashboard calls through the web app all answer 200. Not checked: a producer's dashboard with real data, the camera on a phone, and visuals at 390 / 1280 px in light and dark.
 
 ### 2026-10-17 — Backend finished: 12 items, designed by the learner
 - **Org search:** `GET /orgs/directory` lists verified organisations (id, name, kind, slug), excluding the caller's own; new permission `org:search`.

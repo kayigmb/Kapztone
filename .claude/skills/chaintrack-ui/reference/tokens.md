@@ -1,53 +1,56 @@
 # Tokens
 
-Source of truth for colour, type, spacing, radius and size. All values live in `globals.css`;
-this page says **what each one is for**. Never hard-code a hex value, px size or shadow in a component.
+Source of truth for colour, type, spacing, radius and size. All values live in `globals.css` (a copy is beside this
+file); this page says **what each one is for**. The look comes from the Figma Make app in `ui/figma-make/` (reference
+only). Never hard-code a hex value, px size or shadow in a component.
 
 ## Colour
 
 Utilities follow the token name: `bg-<name>`, `text-<name>`, `border-<name>`, `fill-<name>`, `stroke-<name>`, `ring-<name>`.
-Colours switch between light and dark through CSS variables, so **don't write `dark:` colour variants**.
+Colours switch between light and dark through CSS variables (`data-theme` on `<html>`, or the OS setting), so **don't
+write `dark:` colour variants**. Opacity modifiers (`border-danger/30`) are fine.
 
 | Token | Utility example | Light | Dark | Use for |
 | --- | --- | --- | --- | --- |
-| `bg` | `bg-bg` | `#f4f5f7` | `#0a1120` | Page background behind cards and sections. |
-| `surface` | `bg-surface` | `#ffffff` | `#111b2e` | Cards, panels, table rows, sheets. |
-| `surface-sunken` | `bg-surface-sunken` | `#eceef2` | `#0c1424` | Inset areas: key-value wells, code blocks, table headers, skeletons. |
-| `border` | `bg-border` | `#d6dae1` | `#24314a` | Hairlines between rows and around cards. Decorative only: never the sole edge of a control. |
-| `border-strong` | `bg-border-strong` | `#7f8898` | `#66748d` | Input and control borders, meter tracks' outline, timeline rail. 3:1 on bg and surface in both themes. |
-| `ink` | `bg-ink` | `#0f1a2c` | `#e8edf5` | Primary text on bg, surface, surface-sunken and every *-soft fill. |
-| `ink-muted` | `bg-ink-muted` | `#475367` | `#b0bccd` | Secondary text and labels on bg, surface, surface-sunken and the *-soft fills. |
-| `ink-subtle` | `bg-ink-subtle` | `#5b677a` | `#97a3b7` | Metadata, timestamps, helper text on bg, surface and surface-sunken. Not for anything a person must act on. |
-| `primary` | `bg-primary` | `#15294b` | `#a8c1ec` | Deep navy: primary buttons, active step, selected tab, links on surface. The brand colour. |
-| `primary-hover` | `bg-primary-hover` | `#0d1d38` | `#c3d5f3` | Hover and pressed fill of primary buttons. |
-| `on-primary` | `bg-on-primary` | `#ffffff` | `#0b1426` | Text and icons on a primary fill. |
-| `primary-soft` | `bg-primary-soft` | `#e7ecf5` | `#1b2a47` | Selected row, current timeline step, info wells. Text on it is ink or primary. |
-| `verified` | `bg-verified` | `#0a7266` | `#45c4b1` | Teal: Verified, signed, valid, within limits. Icons and text on surface and bg; fill for the verdict mark. |
-| `on-verified` | `bg-on-verified` | `#ffffff` | `#06201c` | Icon or text on a solid verified fill. |
-| `verified-soft` | `bg-verified-soft` | `#e2f3f0` | `#0f2f2c` | Ground of a Verified verdict, valid certificate tile or signed chip. |
-| `verified-ink` | `bg-verified-ink` | `#075a51` | `#7adccc` | Text on verified-soft. |
-| `warning` | `bg-warning` | `#b45309` | `#f0a43c` | Amber: Warning, expiring, near a limit, awaiting action. Icons and text on surface and bg. |
-| `on-warning` | `bg-on-warning` | `#ffffff` | `#241503` | Icon or text on a solid warning fill. |
-| `warning-soft` | `bg-warning-soft` | `#fcf1df` | `#33240e` | Ground of a Warning verdict, expiring or expired certificate, near-limit meter. |
-| `warning-ink` | `bg-warning-ink` | `#874006` | `#f6c06e` | Text on warning-soft. |
-| `danger` | `bg-danger` | `#b42318` | `#f47b70` | Red: Failed, altered, rejected, revoked, over a limit, blocking errors. Icons and text on surface and bg. |
-| `on-danger` | `bg-on-danger` | `#ffffff` | `#2a0b08` | Icon or text on a solid danger fill. |
-| `danger-soft` | `bg-danger-soft` | `#fdeceb` | `#3b1714` | Ground of a Failed verdict, flagged rows, blocking messages. |
-| `danger-ink` | `bg-danger-ink` | `#8c1c13` | `#f9a39b` | Text on danger-soft. |
-| `pending` | `bg-pending` | `#3a5a8c` | `#8fb0e6` | Slate blue: awaiting a signature, in transit, informational. Icons and text on surface and bg. |
-| `pending-soft` | `bg-pending-soft` | `#e8eef8` | `#182742` | Ground of awaiting chips and info notices. |
-| `pending-ink` | `bg-pending-ink` | `#2c4875` | `#a9c3ef` | Text on pending-soft. |
-| `focus` | `bg-focus` | `#1d5bd6` | `#7aa6ff` | Keyboard focus ring: 2px solid, 2px offset. 3:1 on every surface in both themes. |
-| `map-land` | `bg-map-land` | `#eceee6` | `#1b2a42` | Map base fill. |
-| `map-water` | `bg-map-water` | `#c8dae8` | `#0b1524` | Rivers, lakes and sea on maps. |
-| `map-contour` | `bg-map-contour` | `#cdd4c9` | `#22324a` | Contour lines, graticule and minor roads on maps. Decorative. |
-| `map-road` | `bg-map-road` | `#ffffff` | `#2b3b57` | Roads on facility maps. |
-| `scanner-bg` | `bg-scanner-bg` | `#0b111c` | `#05080f` | Camera viewport behind the QR scanner frame (dark in both themes). |
-| `scanner-ink` | `bg-scanner-ink` | `#f2f5fa` | `#f2f5fa` | Text and corner brackets over scanner-bg. |
+| `bg` | `bg-bg` | `#f5f7f7` | `#081c29` | Page background behind cards. |
+| `surface` | `bg-surface` | `#ffffff` | `#102b3a` | Cards, panels, table rows, the top bar, the form side of access screens. |
+| `surface-sunken` | `bg-surface-sunken` | `#eef2f3` | `#183542` | Insets: key-value wells, table headers, skeletons, neutral pills (Figma `--soft`). |
+| `border` | `border-border` | `#dfe6e8` | `#263f4b` | Hairlines around cards and between rows (Figma `--line`). |
+| `border-strong` | `border-border-strong` | `#7e8d94` | `#5d7782` | Control edges that must read at 3:1; inputs use it at 60%. |
+| `ink` | `text-ink` | `#14242e` | `#e7eff1` | Primary text. |
+| `ink-muted` | `text-ink-muted` | `#5a6971` | `#9caeb5` | Secondary text, labels, captions (Figma `--muted`, darkened to pass 4.5:1). |
+| `ink-subtle` | `text-ink-subtle` | `#63727b` | `#8ea1a9` | Metadata and helper text. Not for anything a person must act on. |
+| `primary` | `bg-primary` | `#087566` | `#5fd0bd` | **Teal**: the brand, primary buttons, active tab, links, selected nav. |
+| `primary-hover` | `bg-primary-hover` | `#065f53` | `#7fdccb` | Hover and pressed fill of primary buttons. |
+| `on-primary` | `text-on-primary` | `#ffffff` | `#04211c` | Text and icons on a primary fill. |
+| `primary-soft` | `bg-primary-soft` | `#eefaf7` | `#113b3c` | Icon squares, selected rows, done steps (Figma `--teal-50`). |
+| `primary-line` | `border-primary-line` | `#d9f3ed` | `#144b49` | Border of a soft teal box (Figma `--teal-100`). |
+| `verified` (+ `on-` `-soft` `-ink`) | `text-verified` | `#087566` | `#5fd0bd` | Verified, signed, valid, within limit. Same teal as primary, so **always with an icon and a word**. |
+| `warning` (+ `on-` `-soft` `-ink`) | `text-warning` | `#b86d07` | `#f0a43c` | Warning, expiring, near a limit. |
+| `danger` (+ `on-` `-soft` `-ink`) | `text-danger` | `#c53737` | `#f47b70` | Failed, altered, rejected, revoked, over a limit, blocking errors. |
+| `pending` (+ `-soft` `-ink`) | `text-pending` | `#4a6476` | `#8fb0c6` | Awaiting a signature, in transit, information. |
+| `focus` | `ring-focus` | `#0a8f7c` | `#5fd0bd` | Keyboard focus ring: 2px solid, 2px offset (base style). |
+| `map-land` `map-water` `map-contour` `map-road` | `fill-map-land` | Figma `.land` / `.route-map` | Figma dark | Map and route art. |
+| `scanner-bg` `scanner-ink` | `bg-scanner-bg` | `#071c2c` | `#05121c` | Camera viewport, dark in both themes. |
+
+### Navy, sidebar and hero (the same in both themes)
+
+| Token | Value | Use for |
+| --- | --- | --- |
+| `navy-950` `navy-900` `navy-800` | `#071c2c` `#0b2639` `#12364c` | The public hero, the access brand panel, the help card, dark banners. |
+| `sidebar-bg` | `#092535` (dark `#061823`) | The signed-in sidebar and the phone "More" sheet. |
+| `sidebar-fg` · `sidebar-muted` · `sidebar-label` | `#dce8eb` · `#a9bec6` · `#8fa7b2` | Text on the sidebar: names, nav items, group labels and captions. |
+| `sidebar-line` · `sidebar-hover` · `sidebar-active` | white 9% · 6% · teal 20% | Dividers, hovered and active nav items. |
+| `sidebar-accent-fg` | `#5bd3c0` | The active nav item's icon, the switcher link. |
+| `hero-ink` · `hero-muted` · `hero-subtle` | `#ffffff` · `#b9cbd1` · `#9fb4bc` | Text on navy. |
+| `hero-accent` | `#7fe0cf` | Eyebrows on navy. |
+| `hero-verified` · `hero-warning` · `hero-danger` | `#7fe0cf` · `#f6c06e` · `#f9a39b` | Status on navy, always with an icon and a word. |
+| `hero-line` · `hero-glow` | white 12% · teal 22% | Lines and rings on navy; the hero's glow. |
+| `art-leaf` `art-leaf-deep` `art-bean` `art-bean-deep` | greens and browns | The product art on the public page only (`product-art`, `bean` utilities). |
 
 ### Status colour sets
 
-Each status has four tokens. Use them together, never mix sets.
+Each status has four tokens. Use them together, never mix sets. `tone` in `components/chaintrack/tone.ts` holds them.
 
 | Meaning | Icon/text on surface | Ground (soft fill) | Text on ground | Text on solid fill |
 | --- | --- | --- | --- | --- |
@@ -57,56 +60,53 @@ Each status has four tokens. Use them together, never mix sets.
 | Awaiting a signature · in transit · info | `pending` | `pending-soft` | `pending-ink` | — |
 | Brand · primary action · selected | `primary` | `primary-soft` | `primary` / `ink` | `on-primary` |
 
-Contrast is checked: `ink`, `ink-muted` and `ink-subtle` pass 4.5:1 on `bg`, `surface` and `surface-sunken` in both themes;
-`ink` and `ink-muted` also pass on every `*-soft` ground. `border-strong` and `focus` pass 3:1. Keep to these pairs.
-
 ## Type
 
-Font: **IBM Plex Sans** (`font-sans`) for UI, **IBM Plex Mono** (`font-mono`) for lot codes, IDs, quantities and hashes.
-Load both with `next/font/google` (see SKILL.md). Each size utility already sets line height, weight and tracking.
+Font: **Inter** (`font-sans`, `--font-inter`) for the interface, **DM Mono** (`font-mono`, `--font-dm-mono`) for lot codes,
+IDs, quantities and hashes. Both load with `next/font/google` in `app/layout.tsx`.
+
+**Minimums:** nothing below **12 px** (`text-xs`). Body text 14 px (`text-sm`); captions and labels 12 px. The Figma file
+uses 7–10 px in places; those become 12 px here.
 
 | Utility | Size / line | Weight | Use for |
 | --- | --- | --- | --- |
-| `text-verdict` (`md:text-verdict-lg`) | 32/38 (40/46) | 600 | The verdict word on the public page. Once per screen. |
-| `text-page` | 24/30 (22/28 on phones: `text-[22px] leading-7 md:text-page`) | 600 | Screen titles |
-| `text-section` | 18/24 | 600 | Card and section headings |
-| `text-title` | 16/22 | 600 | Card titles, product names, timeline events |
-| `text-body` | 15/22 | 400 | Default text, form values (inputs use 16px to stop iOS zoom) |
-| `text-small` | 13/18 | 400 | Metadata, helper text, dense tables |
-| `label` (helper) | 12/16 caps, +0.04em | 600 | Field labels, key-value keys |
-| `code` (helper) | mono 14/20 | 500 | Lot codes `CT-RW-COF-26-004817`, IDs, licence numbers |
+| hero verdict `text-[34px] lg:text-[44px]` | 34 / 44 | 600, −0.03em | The verdict word on the public hero. Once per screen. |
+| `text-page` (phones `text-[22px]`) | 24/30 | 600 | Screen titles; dashboard greeting `lg:text-[26px]` |
+| `text-section` | 18/24 | 600 | Large section headings |
+| `text-title` / `text-[15px] font-semibold` | 16/22 · 15/20 | 600 | Card titles (Figma `.app-card-head h2`) |
+| `text-body` | 15/22 | 400 | Default body (set on `<body>`) |
+| `text-sm` | 14/20 | 400–600 | Form text, rows, buttons |
+| `text-small` | 13/18 | 400 | Metadata in dense lists |
+| `text-xs` | 12/16 | 400–700 | Captions, pills, eyebrows: the floor |
+| `eyebrow` (helper) | 12 caps, +0.1em | 700 | "Verification result", "Workspace", "Welcome back" |
+| `label` (helper) | 12 caps, +0.04em | 600 | Key-value keys |
+| `code` (helper) | mono 14/20 | 500 | Lot codes `ACME-2026-0412`, IDs, licence numbers |
 | `fig` (helper) | mono | 500 | Quantities `1,200 kg`, percentages |
-| `text-hash` + `font-mono` | 12/18 | 400 | Transaction hashes, **only** inside Technical details |
+| `text-hash` + `font-mono` | 12/18 | 400 | Fingerprints, **only** inside Technical details |
 
 ## Spacing (Tailwind's default 4 px scale)
 
-| Design token | Tailwind | px | Use for |
-| --- | --- | --- | --- |
-| space-1 | `1` | 4 | Icon-to-label gap inside chips |
-| space-2 | `2` | 8 | Related items: chip rows, key and value |
-| space-3 | `3` | 12 | Chip and table-cell padding |
-| space-4 | `4` | 16 | Card padding on phones, phone side gutter, gap between cards and fields |
-| space-5 | `6` | 24 | Card padding on desktop, gap between cards on desktop |
-| space-6 | `8` | 32 | Gap between page sections, desktop gutter |
-| space-7 | `12` | 48 | Top and bottom page margin on desktop |
+Phone gutter 12–16 px (`px-3 sm:px-4`), desktop 28 px (`lg:px-7`). Card padding 20 px (`p-5`), 24 px on desktop
+forms. Gaps between cards 16 px (`gap-4`), 20 px on desktop (`lg:gap-5`).
 
 ## Radius
 
-`rounded-sm` (4) chips' inner parts, meter tracks · `rounded-md` (6) buttons, inputs, tiles, tree nodes ·
-`rounded-lg` (10) cards, sheets, maps, the verdict panel · `rounded-full` status chips and avatars only.
+`rounded-sm` (4) chips' inner parts · `rounded-md` (8) buttons, inputs, icon squares · `rounded-lg` (12) cards, sheets,
+maps · `rounded-full` pills, avatars, meters.
 
 ## Size
 
-`min-h-tap` / `h-tap` (44) every button, row and input · `h-tap-scan` (56) buttons on scanning and handover screens and the
-primary action on phones · `size-4` (16) icons in chips and tables · `size-5` (20) icons beside text · `size-7` (28) icons in
-markers · `max-w-content` (1120) page content on desktop.
+`min-h-tap` / `size-tap` (44) every button, row, input and tab · `h-tap-scan` / `min-h-tap-scan` (56) scanning and
+handover actions, quick actions, the phone tab bar and the primary action on phones · `size-8` (32) icon squares ·
+`size-[18px]` icons in buttons and nav · `max-w-content` (1180) page content.
 
 ## Elevation
 
-Separation comes from **borders** (`border border-border`). `shadow-card` is a whisper for cards on `bg`;
-`shadow-overlay` only for sheets, dialogs, menus and sticky action bars. No gradients, glows or blur.
+`shadow-card` (Figma `--shadow`): every card. `shadow-overlay`: sheets, dialogs, menus, the phone tab bar, floating map
+labels. `shadow-button`: the primary button's soft teal shadow (none in dark). The hero glow, grid and product art are
+the only gradients, and only on the public page.
 
 ## Breakpoints
 
-Phone first. `md` (768) = public verification page goes two-column. `lg` (1024) = business app shows the sidebar
-instead of the bottom tab bar. Content max `max-w-content`.
+Phone first (390 px). `sm` (640) two-column bits inside cards. `md` (768) journey + route art side by side. `lg` (1024)
+the sidebar replaces the phone tab bar; the public page and access screens go two-column.

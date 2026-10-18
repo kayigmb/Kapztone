@@ -116,8 +116,13 @@ func TestTemplateCRUD(t *testing.T) {
 	want(t, "member updates", do(e.h, http.MethodPut, as(acmeSlug, one), staff, string(body)), http.StatusForbidden)
 	rec = do(e.h, http.MethodPut, one, root, string(body))
 	want(t, "update", rec, http.StatusOK)
-	if got := decodeTo[template.Template](t, rec); got.Unit != in.Unit || !got.UpdatedAt.After(got.CreatedAt) {
-		t.Fatalf("update not applied: %s", rec.Body)
+	if got := decodeTo[template.Template](t, rec); got.Draft == nil || got.Draft.Unit != in.Unit || !got.UpdatedAt.After(got.CreatedAt) {
+		t.Fatalf("update not saved as a draft: %s", rec.Body)
+	}
+	rec = do(e.h, http.MethodPost, one+"/publish", root, "")
+	want(t, "publish", rec, http.StatusOK)
+	if got := decodeTo[template.Template](t, rec); got.Unit != in.Unit || got.Version != 2 || got.Draft != nil {
+		t.Fatalf("publish not applied: %s", rec.Body)
 	}
 
 	want(t, "member deletes", do(e.h, http.MethodDelete, as(acmeSlug, one), staff, ""), http.StatusForbidden)

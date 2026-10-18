@@ -151,11 +151,15 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM trace_events WHERE from_org IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM commodity_templates WHERE name LIKE $1)`,
-			`DELETE FROM notifications WHERE organisation_id IN ` + orgs,
+			// Platform notifications have no organisation; theirs is the subject (organisation or flag).
+			`DELETE FROM notifications WHERE organisation_id IN ` + orgs + ` OR subject_id IN ` + orgs + `
+			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)`,
 			`DELETE FROM flags WHERE organisation_id IN ` + orgs,
+			`DELETE FROM rule_events WHERE organisation_id IN ` + orgs,
 			`DELETE FROM attestations WHERE issuer_org_id IN ` + orgs,
 			`DELETE FROM accreditations WHERE organisation_id IN ` + orgs,
 			`DELETE FROM trace_events WHERE to_org IN ` + orgs + ` OR from_org IN ` + orgs,
+			`DELETE FROM handover_photos WHERE handover_id IN (SELECT id FROM handovers WHERE from_org IN ` + orgs + `)`,
 			`DELETE FROM handovers WHERE from_org IN ` + orgs,
 			`DELETE FROM transform_inputs WHERE transform_id IN (SELECT id FROM transforms WHERE organisation_id IN ` + orgs + `)`,
 			`DELETE FROM passports WHERE organisation_id IN ` + orgs,
@@ -166,6 +170,8 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			`DELETE FROM commodity_templates WHERE name LIKE $1`,
 			`DELETE FROM invites WHERE organisation_id IN ` + orgs,
 			`DELETE FROM recovery_codes WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
+			`DELETE FROM password_history WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
+			`DELETE FROM password_resets WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM userscope WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM organisations WHERE slug LIKE $1`,
 			`DELETE FROM users WHERE email::text LIKE $1`,
@@ -198,12 +204,14 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 
 	// The signing domain is filled in by tests that deploy a chain (see newChain).
 	pin := func(w http.ResponseWriter, r *http.Request) bool { return e.a.CheckPIN(w, r) }
-	e.passports = &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: testBox(t)}, PIN: pin}
 	files := testBucket(t)
+	e.passports = &passport.Handlers{Store: passport.Store{Pool: pool, Secrets: testBox(t)}, PIN: pin, Files: files,
+		RaiseFlag: flag.RaiseFlag}
 	e.certificates = &attestation.Handlers{Store: attestation.Store{Pool: pool}, Files: files, PIN: pin}
 	e.verify = &verify.Handlers{Pool: pool, Passports: passport.Store{Pool: pool}, Certificates: e.certificates.Store,
 		Files: files}
-	e.a = &auth.Auth{Store: store, Secret: []byte(testSecret), TokenTTL: time.Hour, Dev: true, Secrets: testBox(t)}
+	e.a = &auth.Auth{Store: store, Accounts: auth.PgStore{Pool: pool}, Secret: []byte(testSecret),
+		TokenTTL: time.Hour, RememberTTL: 30 * 24 * time.Hour, Dev: true, Secrets: testBox(t)}
 	e.audit = &audit.Handlers{Store: audit.Store{Pool: pool}}
 	e.h = server.NewRouter(server.Deps{
 		Ping: pool.Ping,
@@ -211,7 +219,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		Org: &org.Handlers{
 			Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: invalidate, Secrets: testBox(t),
 		},
-		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}},
+		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
 		Template:    &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport:    e.passports,
 		Attestation: e.certificates,
