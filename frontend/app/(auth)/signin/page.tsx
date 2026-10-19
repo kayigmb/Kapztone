@@ -11,7 +11,7 @@ export const metadata = { title: copy.meta.signin };
 export default async function Page({ searchParams }: PageProps<"/signin">) {
   const { email } = await searchParams;
   return (
-    <main className="mx-auto grid w-full max-w-[400px] gap-6">
+    <main className="mx-auto grid w-full max-w-100 gap-6">
       <header className="grid gap-2">
         <span className="eyebrow text-primary">{t.eyebrow}</span>
         <h1 className="text-page">{t.title}</h1>
@@ -19,7 +19,13 @@ export default async function Page({ searchParams }: PageProps<"/signin">) {
       </header>
       <SignInForm email={typeof email === "string" ? email : ""} />
       <p className="text-center text-sm text-ink-muted">
-        {t.newHere} <Link href={routes.signup} className="font-semibold text-primary hover:underline">{t.createAccount}</Link>
+        {t.newHere}{" "}
+        <Link
+          href={routes.signup}
+          className="font-semibold text-primary hover:underline"
+        >
+          {t.createAccount}
+        </Link>
       </p>
     </main>
   );

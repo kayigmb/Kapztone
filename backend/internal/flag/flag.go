@@ -201,7 +201,8 @@ func RaiseFlag(ctx context.Context, tx pgx.Tx, orgID, userID, holder, passportID
 // Find returns the flags an organisation raised (all of them for the platform).
 func (s Store) Find(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Flag], error) {
 	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM flags f",
-		[]string{auth.GateSQL(gateColumn, 1), `($2 = '' OR f.status = $2)`}, []any{gate, status}, scan)
+		[]string{auth.GateSQL(gateColumn, 1), `($2 = '' OR f.status = $2 OR ($2 = $3 AND f.status <> $4))`},
+		[]any{gate, status, StatusResolved, StatusOpen}, scan)
 }
 
 func (s Store) Get(ctx context.Context, id, gate string) (Flag, error) {
@@ -302,10 +303,10 @@ func gate(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return auth.Gate(w, r)
 }
 
-func respond(w http.ResponseWriter, status int, what string, v any, err error) {
+func respond(w http.ResponseWriter, status int, message, what string, v any, err error) {
 	switch {
 	case err == nil:
-		httpx.WriteJSON(w, status, v)
+		httpx.OK(w, status, message, v)
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case errors.Is(err, ErrResolved):
@@ -343,7 +344,7 @@ func (h *Handlers) Raise(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Raise(r.Context(), o.ID, auth.CurrentUser(r.Context()).ID, p.OrganisationID, in)
-	respond(w, http.StatusCreated, "raise flag", f, err)
+	respond(w, http.StatusCreated, MsgRaised, "raise flag", f, err)
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
@@ -356,12 +357,12 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := r.URL.Query().Get(ParamStatus)
-	if status != "" && !slices.Contains(Statuses, status) {
-		listq.BadParam(w, ParamStatus, Statuses)
+	if status != "" && status != StatusResolved && !slices.Contains(Statuses, status) {
+		listq.BadParam(w, ParamStatus, append(slices.Clone(Statuses), StatusResolved))
 		return
 	}
 	page, err := h.Store.Find(r.Context(), q, gate, status)
-	respond(w, http.StatusOK, "list flags", page, err)
+	respond(w, http.StatusOK, "", "list flags", page, err)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +375,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Get(r.Context(), id, gate)
-	respond(w, http.StatusOK, "get flag", f, err)
+	respond(w, http.StatusOK, "", "get flag", f, err)
 }
 
 // Assign answers PUT /flags/{id}/assignee {"user_id": "…" | null}: an investigator only.
@@ -398,7 +399,7 @@ func (h *Handlers) Assign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Assign(r.Context(), id, in.UserID)
-	respond(w, http.StatusOK, "assign flag", f, err)
+	respond(w, http.StatusOK, MsgAssigned, "assign flag", f, err)
 }
 
 // Resolve clears or confirms a flag: an investigator only, with their signing PIN.
@@ -423,5 +424,5 @@ func (h *Handlers) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Resolve(r.Context(), id, auth.CurrentUser(r.Context()).ID, in)
-	respond(w, http.StatusOK, "resolve flag", f, err)
+	respond(w, http.StatusOK, resolvedMessage[in.Outcome], "resolve flag", f, err)
 }

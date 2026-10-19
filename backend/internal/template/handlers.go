@@ -14,7 +14,7 @@ type Handlers struct {
 	Store Store
 }
 
-func respond(w http.ResponseWriter, status int, what string, t Template, err error) {
+func respond(w http.ResponseWriter, status int, message, what string, t Template, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
@@ -27,7 +27,7 @@ func respond(w http.ResponseWriter, status int, what string, t Template, err err
 	case err != nil:
 		httpx.ServerError(w, what, err)
 	default:
-		httpx.WriteJSON(w, status, t)
+		httpx.OK(w, status, message, t)
 	}
 }
 
@@ -50,7 +50,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Create(r.Context(), in)
-	respond(w, http.StatusCreated, "create template", t, err)
+	respond(w, http.StatusCreated, MsgCreated, "create template", t, err)
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +63,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list templates", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +72,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Get(r.Context(), id)
-	respond(w, http.StatusOK, "get template", t, err)
+	respond(w, http.StatusOK, "", "get template", t, err)
 }
 
 // Update saves a whole new version of the template as its draft.
@@ -86,7 +86,7 @@ func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Update(r.Context(), id, in)
-	respond(w, http.StatusOK, "update template", t, err)
+	respond(w, http.StatusOK, MsgDraftSaved, "update template", t, err)
 }
 
 // Publish makes the draft the template's rules, as the next version.
@@ -96,7 +96,7 @@ func (h *Handlers) Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Publish(r.Context(), id)
-	respond(w, http.StatusOK, "publish template", t, err)
+	respond(w, http.StatusOK, MsgPublished, "publish template", t, err)
 }
 
 func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
@@ -105,8 +105,8 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Store.Delete(r.Context(), id); err != nil {
-		respond(w, 0, "delete template", Template{}, err)
+		respond(w, 0, "", "delete template", Template{}, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	httpx.OK(w, http.StatusOK, MsgDeleted, nil)
 }

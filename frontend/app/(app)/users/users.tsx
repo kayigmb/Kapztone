@@ -1,158 +1,372 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Lock, OctagonX, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Ban,
+  CircleCheck,
+  Lock,
+  OctagonX,
+  RotateCcw,
+  ShieldCheck,
+  ShieldOff,
+  UserPlus,
+} from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
 
+import { useConfirm } from "@/components/chaintrack/confirm";
+import {
+  ListTable,
+  RowAction,
+  actionsColumn,
+  column,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
+import { ListBar } from "@/components/chaintrack/list-controls";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { endpoints, problemOf, useMe, type MemberRow, type PlatformUserRow } from "@/lib/api";
-import { copy, memberRoles, memberStatus, permissions, queryKeys } from "@/lib/consts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  endpoints,
+  problemOf,
+  useMe,
+  usePaged,
+  type MemberRow,
+  type PlatformUserRow,
+} from "@/lib/api";
+import {
+  copy,
+  memberRoles,
+  memberStatus,
+  permissions,
+  queryKeys,
+  confirmCopy,
+} from "@/lib/consts";
+import { liveValidation } from "@/lib/form";
+import { useListParams, type ListParamsState } from "@/lib/list-params";
 import { inviteSchema, type InviteForm } from "@/lib/schemas/profile";
 import { formatDate, humanize } from "@/lib/verification";
 
 const t = copy.users;
 const roleItems = memberRoles.map((r) => ({ value: r.value, label: r.label }));
-const roleLabel = (role: string) => memberRoles.find((r) => r.value === role)?.label ?? humanize(role);
-const matches = (q: string, u: { name: string; email: string }) =>
-  !q || `${u.name} ${u.email}`.toLowerCase().includes(q.trim().toLowerCase());
+const roleLabel = (role: string) =>
+  memberRoles.find((r) => r.value === role)?.label ?? humanize(role);
 
 export function Users() {
   const me = useMe().data!;
-  const [search, setSearch] = useState("");
+  const list = useListParams("name");
   if (!me.permissions.includes(permissions.userManage)) {
-    return <PageState icon={Lock} title={t.notAllowedTitle}>{t.notAllowedBody}</PageState>;
+    return (
+      <PageState icon={Lock} title={t.notAllowedTitle}>
+        {t.notAllowedBody}
+      </PageState>
+    );
   }
   const platform = !me.organisation;
   return (
-    <main className="grid content-start gap-6 p-4 lg:p-8">
-      <header className="grid gap-1">
-        <h1 className="text-[22px] font-semibold lg:text-page">{t.title}</h1>
-        <p className="text-sm text-ink-muted">{platform ? t.subPlatform : t.subOrg}</p>
-      </header>
+    <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+      <PageHeader title={t.title} sub={platform ? t.subPlatform : t.subOrg} />
       {!platform && <Invite />}
-      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.search} aria-label={t.search} className="max-w-md" />
-      {platform ? <AllUsers search={search} /> : <Members search={search} myId={me.user.id} />}
+      {platform ? (
+        <AllUsers list={list} />
+      ) : (
+        <Members list={list} myId={me.user.id} />
+      )}
     </main>
   );
 }
 
 function StatusOf({ status }: { status: string }) {
-  return status === memberStatus.active
-    ? <StatusChip tone="verified" icon={CircleCheck}>{t.status.active}</StatusChip>
-    : <StatusChip tone="danger" icon={OctagonX}>{t.status[status] ?? humanize(status)}</StatusChip>;
+  return status === memberStatus.active ? (
+    <StatusChip tone="verified" icon={CircleCheck}>
+      {t.status.active}
+    </StatusChip>
+  ) : (
+    <StatusChip tone="danger" icon={OctagonX}>
+      {t.status[status] ?? humanize(status)}
+    </StatusChip>
+  );
 }
 
-function List<T>({ query, rows, render }: {
-  query: { isPending: boolean; isError: boolean; error: unknown }; rows: T[]; render: (row: T) => React.ReactNode;
+function Person({
+  name,
+  email,
+  you,
+}: {
+  name: string;
+  email: string;
+  you?: boolean;
 }) {
-  if (query.isPending) return <Loading />;
-  if (query.isError) return <Notice kind="blocking">{problemOf(query.error)}</Notice>;
-  if (rows.length === 0) return <p className="text-sm text-ink-muted">{t.empty}</p>;
-  return <ul className="grid divide-y divide-border rounded-lg border border-border bg-surface shadow-card">{rows.map(render)}</ul>;
+  return (
+    <span className="grid min-w-0">
+      <span className="truncate font-semibold">
+        {name}
+        {you && <span className="ml-2 text-xs text-ink-muted">({t.you})</span>}
+      </span>
+      <span className="truncate text-xs text-ink-muted">{email}</span>
+    </span>
+  );
 }
 
-function AllUsers({ search }: { search: string }) {
-  const q = useQuery({ queryKey: queryKeys.users, queryFn: endpoints.allUsers });
-  const rows = (q.data ?? []).filter((u) => matches(search, u));
-  return <List query={q} rows={rows} render={(u: PlatformUserRow) => (
-    <li key={u.id} className="grid gap-2 p-4 md:grid-cols-[1fr_auto] md:items-start">
-      <div className="grid min-w-0 gap-0.5">
-        <span className="font-semibold">{u.name}</span>
-        <span className="truncate text-sm text-ink-muted">{u.email}</span>
-        <span className="text-sm">
-          {u.memberships.length === 0 ? t.noMemberships
-            : u.memberships.map((m) => `${m.organisation ?? copy.shell.platform} · ${roleLabel(m.role)}`).join(", ")}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {u.two_factor !== undefined && (u.two_factor
-          ? <StatusChip tone="verified" icon={ShieldCheck}>{t.twoFactorOn}</StatusChip>
-          : <StatusChip tone="neutral" icon={ShieldOff}>{t.twoFactorOff}</StatusChip>)}
-        <StatusOf status={u.status} />
-      </div>
-    </li>
-  )} />;
+const accountColumns: ListColumn<PlatformUserRow>[] = [
+  column(
+    "name",
+    t.columns.person,
+    (u) => <Person name={u.name} email={u.email} />,
+    { sortable: true },
+  ),
+  column("memberships", t.memberships, (u) =>
+    u.memberships.length === 0
+      ? t.noMemberships
+      : u.memberships
+          .map(
+            (m) =>
+              `${m.organisation ?? copy.shell.platform} · ${roleLabel(m.role)}`,
+          )
+          .join(", "),
+  ),
+  column("twoFactor", t.columns.twoFactor, (u) =>
+    u.two_factor ? (
+      <StatusChip tone="verified" icon={ShieldCheck}>
+        {t.twoFactorOn}
+      </StatusChip>
+    ) : (
+      <StatusChip tone="neutral" icon={ShieldOff}>
+        {t.twoFactorOff}
+      </StatusChip>
+    ),
+  ),
+  column("status", t.columns.status, (u) => <StatusOf status={u.status} />, {
+    sortable: true,
+  }),
+];
+
+function AllUsers({ list }: { list: ListParamsState }) {
+  const q = usePaged(queryKeys.users, endpoints.allUsers, list.query());
+  return (
+    <ListTable
+      label={t.title}
+      columns={accountColumns}
+      rows={q.data?.data ?? []}
+      total={q.data?.total ?? 0}
+      list={list}
+      rowKey={(u) => u.id}
+      loading={q.isPending}
+      error={q.isError ? problemOf(q.error) : undefined}
+      empty={list.search ? copy.list.noMatch : t.empty}
+      toolbar={<ListBar list={list} />}
+    />
+  );
 }
 
-function Members({ search, myId }: { search: string; myId: string }) {
+type MemberAction = {
+  id: string;
+  action: "role" | "suspend" | "reinstate";
+  role?: string;
+};
+
+function Members({ list, myId }: { list: ListParamsState; myId: string }) {
   const client = useQueryClient();
-  const q = useQuery({ queryKey: queryKeys.users, queryFn: endpoints.members });
-  const refresh = () => client.invalidateQueries({ queryKey: queryKeys.users });
+  const q = usePaged(queryKeys.users, endpoints.members, list.query());
   const act = useMutation({
-    mutationFn: ({ id, action, role }: { id: string; action: "role" | "suspend" | "reinstate"; role?: string }) =>
-      action === "role" ? endpoints.setRole(id, role!) : action === "suspend" ? endpoints.suspend(id) : endpoints.reinstate(id),
-    onSuccess: (_r, v) => {
-      toast.success(v.action === "role" ? t.roleChanged : v.action === "suspend" ? t.suspended : t.reinstated);
-      refresh();
-    },
-    onError: (err) => toast.error(problemOf(err)), // last admin, yourself: the API says why
+    mutationFn: ({ id, action, role }: MemberAction) =>
+      action === "role"
+        ? endpoints.setRole(id, role!)
+        : action === "suspend"
+          ? endpoints.suspend(id)
+          : endpoints.reinstate(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.users }), // refusals (last admin, yourself): the API says why
   });
-  const rows = (q.data ?? []).filter((u) => matches(search, u));
-
-  return <List query={q} rows={rows} render={(u: MemberRow) => (
-    <li key={u.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
-      <div className="grid min-w-0 gap-0.5">
-        <span className="font-semibold">{u.name}{u.id === myId && <span className="ml-2 text-xs text-ink-muted">({t.you})</span>}</span>
-        <span className="truncate text-sm text-ink-muted">{u.email}</span>
-        <span className="text-xs text-ink-subtle">{t.since(formatDate(u.since))}</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusOf status={u.status} />
-        <Select items={roleItems} value={u.role} disabled={act.isPending || u.status !== memberStatus.active}
-          onValueChange={(role) => role && role !== u.role && act.mutate({ id: u.id, action: "role", role: role as string })}>
-          <SelectTrigger aria-label={t.changeRole} className="min-h-tap w-48"><SelectValue /></SelectTrigger>
-          <SelectContent>{roleItems.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
+  const confirm = useConfirm();
+  const ask = async (
+    c: { title: string; body: string; label: string },
+    a: MemberAction,
+    danger = false,
+  ) => {
+    if (
+      await confirm({
+        title: c.title,
+        body: c.body,
+        confirmLabel: c.label,
+        danger,
+      })
+    )
+      act.mutate(a);
+  };
+  const columns: ListColumn<MemberRow>[] = [
+    column(
+      "name",
+      t.columns.person,
+      (u) => <Person name={u.name} email={u.email} you={u.id === myId} />,
+      { sortable: true },
+    ),
+    column(
+      "role",
+      t.columns.role,
+      (u) => (
+        <Select
+          items={roleItems}
+          value={u.role}
+          disabled={act.isPending || u.status !== memberStatus.active}
+          onValueChange={(role) =>
+            role &&
+            role !== u.role &&
+            ask(confirmCopy.userRole(u.name, roleLabel(role as string)), {
+              id: u.id,
+              action: "role",
+              role: role as string,
+            })
+          }
+        >
+          <SelectTrigger aria-label={t.changeRole} className="h-9 w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {roleItems.map((r) => (
+              <SelectItem key={r.value} value={r.value}>
+                {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
-        {u.status === memberStatus.active ? (
-          <Button variant="danger-outline" disabled={act.isPending} onClick={() => act.mutate({ id: u.id, action: "suspend" })}>{t.suspend}</Button>
-        ) : (
-          <Button variant="secondary" disabled={act.isPending} onClick={() => act.mutate({ id: u.id, action: "reinstate" })}>{t.reinstate}</Button>
-        )}
-      </div>
-    </li>
-  )} />;
+      ),
+      { sortable: true },
+    ),
+    column("status", t.columns.status, (u) => <StatusOf status={u.status} />, {
+      sortable: true,
+    }),
+    column("created_at", t.columns.joined, (u) => formatDate(u.since), {
+      sortable: true,
+    }),
+    actionsColumn((u) =>
+      u.status === memberStatus.active ? (
+        <RowAction
+          label={t.suspend}
+          icon={Ban}
+          danger
+          disabled={act.isPending || u.id === myId}
+          onClick={() =>
+            ask(
+              confirmCopy.userSuspend(u.name),
+              { id: u.id, action: "suspend" },
+              true,
+            )
+          }
+        />
+      ) : (
+        <RowAction
+          label={t.reinstate}
+          icon={RotateCcw}
+          disabled={act.isPending}
+          onClick={() =>
+            ask(confirmCopy.userReinstate(u.name), {
+              id: u.id,
+              action: "reinstate",
+            })
+          }
+        />
+      ),
+    ),
+  ];
+  return (
+    <ListTable
+      label={t.title}
+      columns={columns}
+      rows={q.data?.data ?? []}
+      total={q.data?.total ?? 0}
+      list={list}
+      rowKey={(u) => u.id}
+      loading={q.isPending}
+      error={q.isError ? problemOf(q.error) : undefined}
+      empty={list.search ? copy.list.noMatch : t.empty}
+      toolbar={<ListBar list={list} />}
+    />
+  );
 }
 
 function Invite() {
   const client = useQueryClient();
   const [link, setLink] = useState<string>();
-  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<InviteForm>({
-    resolver: zodResolver(inviteSchema), defaultValues: { email: "", role: "member" },
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<InviteForm>({
+    ...liveValidation,
+    resolver: zodResolver(inviteSchema),
+    defaultValues: { email: "", role: "member" },
   });
   const send = useMutation({
     mutationFn: endpoints.invite,
-    onSuccess: (r) => {
-      toast.success(t.invited(r.invite.email));
-      setLink(r.emailed ? undefined : r.link); // the API returns the link only in development
+    onSuccess: ({ data }) => {
+      setLink(data.emailed ? undefined : data.link); // the API returns the link only in development
       reset();
       client.invalidateQueries({ queryKey: queryKeys.users });
     },
-    onError: (err) => toast.error(problemOf(err)),
   });
   return (
     <section className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-      <h2 className="flex items-center gap-2 text-title"><UserPlus className="size-5 text-ink-muted" aria-hidden />{t.invite}</h2>
-      <form onSubmit={handleSubmit((v) => send.mutate(v))} noValidate className="grid gap-3 md:grid-cols-[1fr_12rem_auto] md:items-end">
-        <TextField label={t.inviteEmail} type="email" inputMode="email" autoComplete="off" error={errors.email?.message} {...register("email")} />
+      <h2 className="flex items-center gap-2 text-title">
+        <UserPlus className="size-5 text-ink-muted" aria-hidden />
+        {t.invite}
+      </h2>
+      <form
+        onSubmit={handleSubmit((v) => send.mutate(v))}
+        noValidate
+        className="grid gap-3 md:grid-cols-[1fr_12rem_auto] md:items-end"
+      >
+        <TextField
+          label={t.inviteEmail}
+          type="email"
+          inputMode="email"
+          autoComplete="off"
+          error={errors.email?.message}
+          {...register("email")}
+        />
         <div className="grid gap-1.5">
           <span className="text-sm font-semibold">{t.inviteRole}</span>
-          <Controller control={control} name="role" render={({ field }) => (
-            <Select items={roleItems} value={field.value} onValueChange={(v) => field.onChange(v)}>
-              <SelectTrigger aria-label={t.inviteRole} className="min-h-tap w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{roleItems.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
-            </Select>
-          )} />
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <Select
+                items={roleItems}
+                value={field.value}
+                onValueChange={(v) => field.onChange(v)}
+              >
+                <SelectTrigger
+                  aria-label={t.inviteRole}
+                  className="min-h-tap w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roleItems.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
-        <Button type="submit" disabled={send.isPending}>{t.sendInvite}</Button>
+        <Button type="submit" disabled={send.isPending}>
+          {t.sendInvite}
+        </Button>
       </form>
       {link && (
         <Notice kind="info">

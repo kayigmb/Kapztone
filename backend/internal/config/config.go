@@ -27,6 +27,8 @@ import (
 // Names of the environment variables. `.env.example` documents each one.
 const (
 	EnvPort               = "PORT"
+	EnvLogFormat          = "LOG_FORMAT" // json (default) or text
+	EnvLogLevel           = "LOG_LEVEL"  // debug, info (default), warn, error
 	EnvAppEnv             = "APP_ENV"
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
@@ -106,6 +108,19 @@ type Config struct {
 // Domain is the signing domain for handovers on the configured chain.
 func (c Config) Domain() chain.Domain {
 	return chain.Domain{ChainID: c.ChainID, Contract: c.Contracts.Custody}
+}
+
+// Logging is the log format and level, read before anything else so start-up
+// problems are logged the same way. Both are optional.
+func Logging() (format, level string) {
+	format, level = strings.TrimSpace(os.Getenv(EnvLogFormat)), strings.TrimSpace(os.Getenv(EnvLogLevel))
+	if format == "" {
+		format = "json"
+	}
+	if level == "" {
+		level = "info"
+	}
+	return format, level
 }
 
 // Load reads and checks every setting. The error lists all problems at once.

@@ -1,32 +1,44 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeftRight, Building2, Check } from "lucide-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { endpoints, type Me } from "@/lib/api";
-import { orgAddress } from "@/lib/address";
-import { copy, queryKeys, routes } from "@/lib/consts";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { endpoints, switchOrganisation, type Me } from "@/lib/api";
+import { copy, queryKeys } from "@/lib/consts";
 import { humanize } from "@/lib/verification";
 
 const t = copy.shell;
 
 /**
  * The organisations this person belongs to; picking one opens that
- * organisation's own address. Sessions are one per address, so they sign in there.
+ * organisation's own address with the session carried over (a handoff).
  */
 export function OrgSwitcher({ me, onNavy }: { me: Me; onNavy?: boolean }) {
-  const orgs = useQuery({ queryKey: queryKeys.myOrganisations, queryFn: endpoints.myOrganisations });
+  const orgs = useQuery({
+    queryKey: queryKeys.myOrganisations,
+    queryFn: endpoints.myOrganisations,
+  });
+  const go = useMutation({
+    mutationFn: (slug: string) =>
+      switchOrganisation(slug, me.organisation?.slug),
+  });
   const others = (orgs.data ?? []).filter((o) => o.id !== me.organisation?.id);
   if (others.length === 0) return null;
-  const here = () => window.location;
-  const current = me.organisation?.slug;
 
   return (
     <Popover>
-      <PopoverTrigger className={onNavy
-        ? "flex min-h-tap w-full items-center gap-2 rounded-md px-2 text-sm font-semibold text-sidebar-accent-fg hover:bg-sidebar-hover"
-        : "flex min-h-tap w-full items-center gap-2 rounded-md px-2 text-sm font-semibold text-primary hover:bg-surface-sunken"}>
+      <PopoverTrigger
+        className={
+          onNavy
+            ? "flex min-h-tap w-full items-center gap-2 rounded-md px-2 text-sm font-semibold text-sidebar-accent-fg hover:bg-sidebar-hover"
+            : "flex min-h-tap w-full items-center gap-2 rounded-md px-2 text-sm font-semibold text-primary hover:bg-surface-sunken"
+        }
+      >
         <ArrowLeftRight className="size-4 shrink-0" aria-hidden />
         {t.switchOrg}
       </PopoverTrigger>
@@ -36,18 +48,29 @@ export function OrgSwitcher({ me, onNavy }: { me: Me; onNavy?: boolean }) {
           {me.organisation && (
             <li className="flex min-h-tap items-center gap-2 rounded-md bg-surface-sunken px-2 text-sm">
               <Check className="size-4 shrink-0 text-verified" aria-hidden />
-              <span className="min-w-0 flex-1 truncate font-semibold">{me.organisation.name}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                {me.organisation.name}
+              </span>
               <span className="text-xs text-ink-muted">{t.current}</span>
             </li>
           )}
           {others.map((o) => (
             <li key={o.id}>
-              <a href={orgAddress(o.slug, here(), current, routes.signin)}
-                className="flex min-h-tap items-center gap-2 rounded-md px-2 text-sm hover:bg-surface-sunken">
-                <Building2 className="size-4 shrink-0 text-ink-muted" aria-hidden />
+              <button
+                type="button"
+                onClick={() => go.mutate(o.slug)}
+                disabled={go.isPending}
+                className="flex min-h-tap w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-surface-sunken disabled:opacity-60"
+              >
+                <Building2
+                  className="size-4 shrink-0 text-ink-muted"
+                  aria-hidden
+                />
                 <span className="min-w-0 flex-1 truncate">{o.name}</span>
-                <span className="text-xs text-ink-muted">{humanize(o.role)}</span>
-              </a>
+                <span className="text-xs text-ink-muted">
+                  {humanize(o.role)}
+                </span>
+              </button>
             </li>
           ))}
         </ul>

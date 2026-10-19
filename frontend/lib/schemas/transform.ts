@@ -6,7 +6,10 @@ import { copy, limits } from "../consts.ts";
 
 const v = copy.validation;
 
-const quantity = z.coerce.number({ message: v.quantity }).int(v.quantity).positive(v.quantityPositive);
+const quantity = z.coerce
+  .number({ message: v.quantity })
+  .int(v.quantity)
+  .positive(v.quantityPositive);
 
 export const inputRowSchema = z.object({
   passport_id: z.string().trim().min(1, v.subjectId),
@@ -17,8 +20,14 @@ export const outputRowSchema = z.object({ quantity });
 
 export const transformFormSchema = z.object({
   stage: z.string().trim().min(1, v.stage),
-  inputs: z.array(inputRowSchema).min(1, v.quantity).max(limits.maxItems, v.tooLong(limits.maxItems)),
-  outputs: z.array(outputRowSchema).min(1, v.quantity).max(limits.maxItems, v.tooLong(limits.maxItems)),
+  inputs: z
+    .array(inputRowSchema)
+    .min(1, v.quantity)
+    .max(limits.maxItems, v.tooLong(limits.maxItems)),
+  outputs: z
+    .array(outputRowSchema)
+    .min(1, v.quantity)
+    .max(limits.maxItems, v.tooLong(limits.maxItems)),
 });
 
 export type TransformForm = z.infer<typeof transformFormSchema>;
@@ -30,8 +39,17 @@ export type TransformFormInput = z.input<typeof transformFormSchema>;
  * template's maximum yield, going over is refused by the API — this mirrors
  * that limit so the form can say so before the PIN is asked for.
  */
-export function yieldOf(inputs: number[], outputs: number[], maxPct: number | null | undefined):
-  { totalIn: number; totalOut: number; pct: number; max: number | null; over: boolean } {
+export function yieldOf(
+  inputs: number[],
+  outputs: number[],
+  maxPct: number | null | undefined,
+): {
+  totalIn: number;
+  totalOut: number;
+  pct: number;
+  max: number | null;
+  over: boolean;
+} {
   const totalIn = inputs.reduce((a, b) => a + b, 0);
   const totalOut = outputs.reduce((a, b) => a + b, 0);
   const pct = totalIn === 0 ? 0 : (totalOut / totalIn) * 100;

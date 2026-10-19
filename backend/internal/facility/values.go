@@ -75,6 +75,7 @@ const FormLicenceValidTo = "licence_valid_to"
 // URL parameter names.
 const (
 	ParamStatus = "status"
+	ParamKind   = "kind"
 	ParamBBox   = "bbox" // minLon,minLat,maxLon,maxLat
 )
 
@@ -92,3 +93,21 @@ const (
 
 // MsgOverlaps names the caller's own facility the new one overlaps.
 func MsgOverlaps(name string) string { return "overlaps " + name }
+
+// Confirmations the app shows as they are.
+const (
+	MsgApproved     = "Facility approved. It can issue passports now."
+	MsgLicenceSaved = "Licence uploaded."
+	MsgDeleted      = "Facility deleted. Passports already issued there keep their records."
+)
+
+// statusMessage confirms a status change.
+var statusMessage = map[string]string{
+	StatusSuspended: "Facility suspended. It can't issue passports until it's reinstated.",
+	StatusActive:    "Facility reinstated.",
+}
+
+// MsgRegistered confirms a new facility, which waits for approval.
+func MsgRegistered(name string) string {
+	return name + " is registered. It can issue passports once the platform approves it."
+}

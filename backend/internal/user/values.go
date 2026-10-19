@@ -48,3 +48,16 @@ const (
 	MsgPasswordFormat = "password must be %d to %d characters"
 	MsgNameLength     = "name must be 1 to 200 characters"
 )
+
+// Confirmations the app shows as they are.
+const (
+	MsgNameSaved      = "Name saved."
+	MsgInviteLink     = "Invitation made. E-mail isn't set up, so copy the link and send it."
+	MsgInviteAccepted = "Invitation accepted. Sign in at the organisation's address."
+	MsgRoleChanged    = "Role changed."
+	MsgSuspended      = "Suspended. They can't act for this organisation until reinstated."
+	MsgReinstated     = "Reinstated."
+)
+
+// MsgInviteSent confirms an invitation e-mailed to email.
+func MsgInviteSent(email string) string { return "Invitation sent to " + email + "." }

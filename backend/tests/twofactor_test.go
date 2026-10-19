@@ -203,7 +203,7 @@ func TestRateLimits(t *testing.T) {
 	}
 
 	// With no limiter configured, nothing is limited.
-	open := (&auth.Auth{}).LimitIP(rate, func(w http.ResponseWriter, _ *http.Request) { httpx.WriteJSON(w, http.StatusOK, nil) })
+	open := (&auth.Auth{}).LimitIP(rate, func(w http.ResponseWriter, _ *http.Request) { httpx.OK(w, http.StatusOK, "", nil) })
 	for i := int64(0); i <= rate.Max; i++ {
 		rec := httptest.NewRecorder()
 		open(rec, httptest.NewRequest(http.MethodPost, "/", nil))

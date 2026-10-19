@@ -3,7 +3,6 @@ package passport
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
@@ -68,16 +68,16 @@ var errorStatus = map[error]struct {
 }
 
 // respond writes v, or the right error.
-func respond(w http.ResponseWriter, status int, what string, v any, err error) {
+func respond(w http.ResponseWriter, status int, message, what string, v any, err error) {
 	if err == nil {
-		httpx.WriteJSON(w, status, v)
+		httpx.OK(w, status, message, v)
 		return
 	}
 	// A weight outside tolerance also says by how much, for the form to show.
 	var off ToleranceError
 	if errors.As(err, &off) {
-		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
-			"error": err.Error(), "difference": off.Difference(), "tolerance": off.Tolerance,
+		httpx.ErrorData(w, http.StatusConflict, err.Error(), map[string]any{
+			"difference": off.Difference(), "tolerance": off.Tolerance,
 			"sent": off.Sent, "received": off.Received,
 		})
 		return
@@ -129,7 +129,7 @@ func ruleOf(err error) string {
 func (h *Handlers) countRefusal(r *http.Request, orgID string, err error) {
 	if rule := ruleOf(err); rule != "" {
 		if err := audit.RecordRule(r.Context(), h.Store.Pool, rule, orgID); err != nil {
-			log.Printf("record %s refusal: %v", rule, err)
+			logx.From(r.Context()).Error("record rule refusal failed", "rule", rule, logx.KeyError, err)
 		}
 	}
 }
@@ -169,7 +169,7 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := h.Store.Issue(r.Context(), orgID, userID, in, h.now())
 	h.countRefusal(r, orgID, err)
-	respond(w, http.StatusCreated, "issue passport", p, err)
+	respond(w, http.StatusCreated, MsgIssued, "issue passport", p, err)
 }
 
 // statusFilter reads the optional ?status= and checks it against allowed.
@@ -196,7 +196,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, err := h.Store.Find(r.Context(), q, gate, status)
-	respond(w, http.StatusOK, "list passports", page, err)
+	respond(w, http.StatusOK, "", "list passports", page, err)
 }
 
 // target reads the gate and the {id} a request is about.
@@ -216,11 +216,11 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.Store.Resolve(r.Context(), chi.URLParam(r, httpx.ParamID))
 	if err != nil {
-		respond(w, http.StatusOK, "find passport", nil, err)
+		respond(w, http.StatusOK, "", "find passport", nil, err)
 		return
 	}
 	p, err := h.Store.Get(r.Context(), id, gate)
-	respond(w, http.StatusOK, "get passport", p, err)
+	respond(w, http.StatusOK, "", "get passport", p, err)
 }
 
 // Retire closes a passport the acting organisation holds: the lot reached
@@ -235,7 +235,7 @@ func (h *Handlers) Retire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.Store.Retire(r.Context(), id, orgID)
-	respond(w, http.StatusOK, "retire passport", p, err)
+	respond(w, http.StatusOK, MsgRetired, "retire passport", p, err)
 }
 
 // StartHandover is the sender's half of a handover. It takes JSON, or a
@@ -274,7 +274,7 @@ func (h *Handlers) StartHandover(w http.ResponseWriter, r *http.Request) {
 		h.dropPhotos(r, photos)
 	}
 	h.countRefusal(r, orgID, err)
-	respond(w, http.StatusCreated, "start handover", out, err)
+	respond(w, http.StatusCreated, MsgHandoverStarted, "start handover", out, err)
 }
 
 func parseInt(s string) (int64, error)     { return strconv.ParseInt(s, 10, 64) }
@@ -369,7 +369,7 @@ func (h *Handlers) HandoverPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := h.Store.HandoverPhoto(r.Context(), id, photoID, gate)
 	if err != nil {
-		respond(w, http.StatusOK, "get handover photo", nil, err)
+		respond(w, http.StatusOK, "", "get handover photo", nil, err)
 		return
 	}
 	upload.Serve(w, r, h.Files, p.StorageKey, p.FileName, p.ContentType, p.CreatedAt)
@@ -388,8 +388,13 @@ func (h *Handlers) ListHandovers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, err := h.Store.FindHandovers(r.Context(), q, gate, status)
-	respond(w, http.StatusOK, "list handovers", page, err)
+	box := r.URL.Query().Get(ParamBox)
+	if box != "" && !slices.Contains(Boxes, box) {
+		listq.BadParam(w, ParamBox, Boxes)
+		return
+	}
+	page, err := h.Store.FindHandovers(r.Context(), q, gate, status, box)
+	respond(w, http.StatusOK, "", "list handovers", page, err)
 }
 
 func (h *Handlers) GetHandover(w http.ResponseWriter, r *http.Request) {
@@ -398,12 +403,12 @@ func (h *Handlers) GetHandover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.Store.GetHandover(r.Context(), id, gate)
-	respond(w, http.StatusOK, "get handover", out, err)
+	respond(w, http.StatusOK, "", "get handover", out, err)
 }
 
 // answer runs one of the three ways an awaiting handover ends. Accepting and
 // rejecting are signed by the receiver; cancelling is not a signature.
-func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, what string, signed bool,
+func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, message, what string, signed bool,
 	do func(id, orgID, userID string) (Handover, error)) {
 
 	orgID, userID, ok := acting(w, r)
@@ -418,7 +423,7 @@ func (h *Handlers) answer(w http.ResponseWriter, r *http.Request, what string, s
 		return
 	}
 	out, err := do(id, orgID, userID)
-	respond(w, http.StatusOK, what, out, err)
+	respond(w, http.StatusOK, message, what, out, err)
 }
 
 // Accept is the receiver's half: they record what they weighed, sign, and the
@@ -456,7 +461,7 @@ func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 		h.dropPhotos(r, photos)
 	}
 	h.countRefusal(r, orgID, err)
-	respond(w, http.StatusOK, "accept handover", out, err)
+	respond(w, http.StatusOK, MsgHandoverAccepted, "accept handover", out, err)
 }
 
 // Reject is the receiver refusing the goods, saying why (and maybe flagging the passport).
@@ -469,14 +474,14 @@ func (h *Handlers) Reject(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	h.answer(w, r, "reject handover", true, func(id, orgID, userID string) (Handover, error) {
+	h.answer(w, r, MsgHandoverRejected, "reject handover", true, func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Reject(r.Context(), id, orgID, userID, in, h.RaiseFlag)
 	})
 }
 
 // Cancel is the sender withdrawing a handover nobody has answered yet.
 func (h *Handlers) Cancel(w http.ResponseWriter, r *http.Request) {
-	h.answer(w, r, "cancel handover", false, func(id, orgID, userID string) (Handover, error) {
+	h.answer(w, r, MsgHandoverCancelled, "cancel handover", false, func(id, orgID, userID string) (Handover, error) {
 		return h.Store.Cancel(r.Context(), id, orgID, userID)
 	})
 }
@@ -497,7 +502,7 @@ func (h *Handlers) Transform(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.Store.Transform(r.Context(), orgID, userID, in, h.now(), h.RaiseFlag)
 	h.countRefusal(r, orgID, err)
-	respond(w, http.StatusCreated, "transform", t, err)
+	respond(w, http.StatusCreated, MsgTransformed, "transform", t, err)
 }
 
 // Genealogy returns a passport's ancestors (the default) or descendants.
@@ -515,5 +520,5 @@ func (h *Handlers) Genealogy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g, err := h.Store.Genealogy(r.Context(), id, gate, direction)
-	respond(w, http.StatusOK, "genealogy", g, err)
+	respond(w, http.StatusOK, "", "genealogy", g, err)
 }

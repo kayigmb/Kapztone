@@ -76,7 +76,7 @@ func certificateFields(subjectType, subjectID string) map[string]string {
 
 func errorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
-	return decodeTo[struct{ Error string }](t, rec).Error
+	return envelopeOf(t, rec).Message
 }
 
 // TestCommodityChainsEndToEnd is the Sprint 3 goal: a coffee chain and a
@@ -409,6 +409,32 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	if lapsed.IPFSCID != nil || lapsed.Status != attestation.StatusExpired {
 		t.Fatalf("certificate past its validity, issued with IPFS down: %+v", lapsed)
 	}
+
+	// The failed copy is retried once due: still down doubles the wait, then it pins.
+	clock := time.Now()
+	retrier := &attestation.Retrier{Store: e.certificates.Store, Files: e.certificates.Files, Pin: e.certificates.Pin, Now: func() time.Time { return clock }}
+	if n, err := retrier.RetryDue(ctx); err != nil || n != 0 {
+		t.Fatalf("retried before it was due: %d, %v", n, err)
+	}
+	clock = clock.Add(attestation.Backoff(1) + time.Second)
+	if n, err := retrier.RetryDue(ctx); err != nil || n != 1 {
+		t.Fatalf("due retry: %d, %v", n, err)
+	}
+	var attempts int
+	if err := e.pool.QueryRow(ctx, `SELECT ipfs_attempts FROM attestations WHERE id = $1::uuid`, lapsed.ID).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts after a second failure = %d, want 2", attempts)
+	}
+	retrier.Pin = func(context.Context, string, io.Reader) (string, error) { return "bafy-retried", nil }
+	clock = clock.Add(attestation.Backoff(2) + time.Second)
+	if n, err := retrier.RetryDue(ctx); err != nil || n != 1 {
+		t.Fatalf("retry that pins: %d, %v", n, err)
+	}
+	if got := decodeTo[attestation.Attestation](t, get(certTok, certSlug, "/attestations/"+lapsed.ID)); got.IPFSCID == nil || *got.IPFSCID != "bafy-retried" {
+		t.Fatalf("retried certificate not pinned: %+v", got)
+	}
 	e.certificates.Pin = nil
 
 	certs := func(query string) listq.Page[attestation.Attestation] {
@@ -426,6 +452,36 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	}
 	want(t, "bad status filter", get(procTok, procSlug, "/attestations?"+attestation.ParamStatus+"=bogus"), http.StatusBadRequest)
 	want(t, "bad subject filter", get(procTok, procSlug, "/attestations?"+attestation.ParamSubjectID+"=123"), http.StatusBadRequest)
+	if pg := certs(aboutG1 + "&" + attestation.ParamIssuerID + "=" + certifier.ID); pg.Total != 2 {
+		t.Fatalf("certificates issued by the certifier = %d, want 2", pg.Total)
+	}
+	if pg := certs(attestation.ParamIssuerID + "=" + fakeOrgID); pg.Total != 0 {
+		t.Fatalf("certificates issued by nobody = %d", pg.Total)
+	}
+	want(t, "bad issuer filter", get(procTok, procSlug, "/attestations?"+attestation.ParamIssuerID+"=123"), http.StatusBadRequest)
+
+	// Who sees which certificates: the holder sees those about its lot, the
+	// issuer those it issued, an unrelated organisation none, the platform all.
+	listAs := func(token, slug, query string) int {
+		t.Helper()
+		rec := get(token, slug, "/attestations?"+aboutG1+query)
+		want(t, "scoped certificates", rec, http.StatusOK)
+		return decodeTo[listq.Page[attestation.Attestation]](t, rec).Total
+	}
+	scope := "&" + attestation.ParamScope + "="
+	if listAs(procTok, procSlug, scope+attestation.ScopeAbout) != 2 || listAs(procTok, procSlug, scope+attestation.ScopeIssued) != 0 {
+		t.Fatal("the holder's about / issued split is wrong")
+	}
+	if listAs(certTok, certSlug, scope+attestation.ScopeIssued) != 2 || listAs(certTok, certSlug, scope+attestation.ScopeAbout) != 0 {
+		t.Fatal("the issuer's issued / about split is wrong")
+	}
+	if listAs(prodTok, prodSlug, "") != 0 {
+		t.Fatal("an organisation sees certificates it neither issued nor holds")
+	}
+	if rec := do(e.h, http.MethodGet, "/attestations?"+aboutG1, root, ""); decodeTo[listq.Page[attestation.Attestation]](t, rec).Total != 2 {
+		t.Fatal("the platform doesn't see every certificate")
+	}
+	want(t, "bad scope", get(procTok, procSlug, "/attestations?"+attestation.ParamScope+"=mine"), http.StatusBadRequest)
 	want(t, "get certificate", get(procTok, procSlug, "/attestations/"+cert.ID), http.StatusOK)
 	want(t, "unknown certificate", get(procTok, procSlug, "/attestations/"+fakeOrgID), http.StatusNotFound)
 	file := get(procTok, procSlug, "/attestations/"+cert.ID+"/file")
@@ -491,6 +547,11 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	}
 	if flags(prodTok, prodSlug, "") != 1 || flags(procTok, procSlug, "") != 0 || flags(prodTok, prodSlug, "&"+flag.ParamStatus+"="+flag.StatusCleared) != 0 {
 		t.Fatal("flag list is not limited to the organisation that raised them, or ignores the status filter")
+	}
+	// Open and resolved (cleared or confirmed) together make every flag.
+	if open, resolved := flags(prodTok, prodSlug, "&"+flag.ParamStatus+"="+flag.StatusOpen),
+		flags(prodTok, prodSlug, "&"+flag.ParamStatus+"="+flag.StatusResolved); open+resolved != 1 {
+		t.Fatalf("open %d + resolved %d, want 1", open, resolved)
 	}
 	want(t, "bad flag filter", get(prodTok, prodSlug, "/flags?"+flag.ParamStatus+"=bogus"), http.StatusBadRequest)
 	want(t, "another organisation's flag", get(procTok, procSlug, "/flags/"+upheld.ID), http.StatusNotFound)
@@ -629,13 +690,17 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		e.pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE organisation_id = $1::uuid AND emailed_at IS NULL`, processor.ID).Scan(&n)
 		return n
 	}
-	for i := 0; waiting() > 0; i++ {
-		if i > 50 {
+	// The mailer takes the oldest pending notifications of every organisation,
+	// a batch at a time, skipping rows another mailer holds (the dev API's,
+	// when the tests share its database): keep sending until ours are out.
+	for deadline := time.Now().Add(30 * time.Second); waiting() > 0; {
+		if time.Now().After(deadline) {
 			t.Fatal("notifications are still waiting to be e-mailed")
 		}
 		if err := mailer.SendPending(ctx); err != nil {
 			t.Fatal(err)
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if sent[e.email(tRival)] != procNotes.Total {
 		t.Fatalf("processor's user was sent %d e-mails, want %d", sent[e.email(tRival)], procNotes.Total)

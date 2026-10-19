@@ -50,6 +50,9 @@ func (rt Rate) key(parts ...string) string {
 // peer address.
 // ponytail: last entry only; with nginx in front of the web app, the web app
 // must pass on nginx's visitor address instead of its own peer.
+// ClientIP is the visitor address the rate limits and the access log use.
+func ClientIP(r *http.Request) string { return clientIP(r) }
+
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get(HeaderForwardedFor); xff != "" {
 		parts := strings.Split(xff, ",")

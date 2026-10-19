@@ -8,12 +8,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 // The account flows: change, forget and reset a password, sign out every
@@ -32,14 +33,14 @@ func (a *Auth) invalidate(ctx context.Context, userID string) {
 
 // signIn issues a token at the user's current version, sets the session
 // cookie, and writes the token for callers that are not browsers.
-func (a *Auth) signIn(w http.ResponseWriter, userID string, ver int, ttl time.Duration) {
+func (a *Auth) signIn(w http.ResponseWriter, userID string, ver int, ttl time.Duration, message string) {
 	token, err := a.issue(userID, ver, ttl, a.now())
 	if err != nil {
 		httpx.ServerError(w, "issue token", err)
 		return
 	}
 	http.SetCookie(w, a.sessionCookie(token, int(ttl.Seconds())))
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"token": token, "expires_in": int(ttl.Seconds())})
+	httpx.OK(w, http.StatusOK, message, map[string]any{"token": token, "expires_in": int(ttl.Seconds())})
 }
 
 // passwordProblem says what is wrong with a new password, or "" if nothing is.
@@ -87,14 +88,14 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 	}
 	link := FrontendOf(ctx).Origin + path + token
 	if a.Dev {
-		log.Printf("dev: %s link for %s: %s", kind, u.Email, link)
+		logx.From(ctx).Info("dev: link not e-mailed", "kind", kind, "user_id", u.ID, "link", link)
 	}
 	if a.Mail != nil {
 		// Sent in the background so a slow mail server doesn't make an existing
 		// account answer more slowly than an unknown email.
 		go func() {
 			if err := a.Mail(u.Email, subject, fmt.Sprintf(bodyFmt, link)); err != nil {
-				log.Printf("mail %s link: %v", kind, err)
+				logx.From(ctx).Error("mail link failed", "kind", kind, logx.KeyUser, u.ID, logx.KeyError, err)
 			}
 		}()
 	}
@@ -104,7 +105,7 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 // passwordChanged tells the user, with a link to lock the account if it wasn't them.
 func (a *Auth) passwordChanged(ctx context.Context, u User) {
 	if err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody); err != nil {
-		log.Printf("password changed notice: %v", err)
+		logx.From(ctx).Error("password changed notice failed", logx.KeyUser, u.ID, logx.KeyError, err)
 	}
 }
 
@@ -140,7 +141,7 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Limiter.reset(ctx, LoginRate, u.Email, ip)
 	a.passwordChanged(ctx, u)
-	a.signIn(w, u.ID, ver, a.TokenTTL)
+	a.signIn(w, u.ID, ver, a.TokenTTL, MsgPasswordChanged)
 }
 
 // setPassword checks and stores a new password, bumping the token version.
@@ -182,14 +183,14 @@ func (a *Auth) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	// email take the same time and get the same answer, failures included.
 	// WithoutCancel keeps the request's values (the site address for the link).
 	ctx, email := context.WithoutCancel(r.Context()), strings.ToLower(strings.TrimSpace(in.Email))
-	w.WriteHeader(http.StatusAccepted)
+	httpx.OK(w, http.StatusAccepted, MsgResetSent, nil)
 	go func() {
 		u, err := a.Store.UserByEmail(ctx, email)
 		if err == nil {
 			err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody)
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
-			log.Printf("reset link: %v", err)
+			logx.From(ctx).Error("reset link failed", logx.KeyError, err)
 		}
 	}()
 }
@@ -243,7 +244,7 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.passwordChanged(ctx, u)
-	w.WriteHeader(http.StatusNoContent)
+	httpx.OK(w, http.StatusOK, MsgPasswordReset, nil)
 }
 
 // LockAccount answers POST /auth/lock (public), the link in the "password
@@ -270,7 +271,7 @@ func (a *Auth) LockAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidate(ctx, userID)
-	w.WriteHeader(http.StatusNoContent)
+	httpx.OK(w, http.StatusOK, MsgAccountLocked, nil)
 }
 
 // RevokeSessions answers POST /auth/sessions/revoke: every other device is
@@ -283,5 +284,5 @@ func (a *Auth) RevokeSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidate(ctx, userID)
-	a.signIn(w, userID, ver, a.TokenTTL)
+	a.signIn(w, userID, ver, a.TokenTTL, MsgSessionsRevoked)
 }

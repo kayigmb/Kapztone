@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { orgAddress } from "@/lib/address";
 import { ApiError, endpoints, problemOf } from "@/lib/api";
 import { copy, routes } from "@/lib/consts";
+import { liveValidation } from "@/lib/form";
 import { acceptSchema, type AcceptForm as Values } from "@/lib/schemas/profile";
 
 const t = copy.invite;
@@ -19,20 +20,29 @@ const t = copy.invite;
 export function AcceptForm({ token }: { token: string }) {
   const [problem, setProblem] = useState<string>();
   const [joined, setJoined] = useState<string>(); // the organisation's address (slug)
-  const { register, handleSubmit, setError, formState: { errors } } = useForm<Values>({
-    resolver: zodResolver(acceptSchema), defaultValues: { name: "", password: "" },
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors },
+  } = useForm<Values>({
+    ...liveValidation,
+    resolver: zodResolver(acceptSchema),
+    defaultValues: { name: "", password: "" },
   });
   const accept = useMutation({
     mutationFn: (v: Values) => endpoints.acceptInvite(token, v),
     onMutate: () => setProblem(undefined),
-    onSuccess: (r) => setJoined(r.organisation),
+    meta: { inPlace: true },
+    onSuccess: (r) => setJoined(r.data.organisation),
     onError: (err) => {
       const status = err instanceof ApiError ? err.status : 0;
-      if (status === 404) return setProblem(t.problems.gone);
-      if (status === 403) return setError("password", { message: t.problems.wrongPassword });
-      if (status === 409) return setProblem(t.problems.already);
+      if (status === 403) return setError("password", { message: err.message });
       // 400: the name or password is the problem; the API says which.
-      if (status === 400 && err instanceof ApiError) return setError(/name/i.test(err.message) ? "name" : "password", { message: err.message });
+      if (status === 400 && err instanceof ApiError)
+        return setError(/name/i.test(err.message) ? "name" : "password", {
+          message: err.message,
+        });
       setProblem(problemOf(err));
     },
   });
@@ -42,19 +52,42 @@ export function AcceptForm({ token }: { token: string }) {
     const signIn = orgAddress(joined, window.location, joined, routes.signin);
     return (
       <div className="grid gap-4">
-        <p className="flex items-center gap-2 text-title text-verified"><CircleCheck className="size-6" aria-hidden />{t.done}</p>
-        <a href={signIn} className={buttonVariants({ block: true })}>{t.signInAt}</a>
+        <p className="flex items-center gap-2 text-title text-verified">
+          <CircleCheck className="size-6" aria-hidden />
+          {t.done}
+        </p>
+        <a href={signIn} className={buttonVariants({ block: true })}>
+          {t.signInAt}
+        </a>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit((v) => accept.mutate(v))} noValidate className="grid gap-4">
+    <form
+      onSubmit={handleSubmit((v) => accept.mutate(v))}
+      noValidate
+      className="grid gap-4"
+    >
       {problem && <Notice kind="blocking">{problem}</Notice>}
-      <TextField label={t.name} help={t.nameHelp} autoComplete="name" error={errors.name?.message} {...register("name")} />
-      <TextField label={t.password} help={t.passwordHelp} type="password" autoComplete="new-password"
-        error={errors.password?.message} {...register("password")} />
-      <Button type="submit" block disabled={accept.isPending}>{accept.isPending ? t.submitting : t.submit}</Button>
+      <TextField
+        label={t.name}
+        help={t.nameHelp}
+        autoComplete="name"
+        error={errors.name?.message}
+        {...register("name")}
+      />
+      <TextField
+        label={t.password}
+        help={t.passwordHelp}
+        type="password"
+        autoComplete="new-password"
+        error={errors.password?.message}
+        {...register("password")}
+      />
+      <Button type="submit" block disabled={accept.isPending}>
+        {accept.isPending ? t.submitting : t.submit}
+      </Button>
     </form>
   );
 }

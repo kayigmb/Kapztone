@@ -1,24 +1,42 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Lock, Plus, WifiOff } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Lock, Plus, WifiOff, Eye } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
-import { toast } from "sonner";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
+import {
+  ListTable,
+  RowAction,
+  actionsColumn,
+  column,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
+import { ListBar } from "@/components/chaintrack/list-controls";
+import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
-import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { endpoints, problemOf, useMeGuard, type Template } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  endpoints,
+  problemOf,
+  useMeGuard,
+  usePaged,
+  type Template,
+} from "@/lib/api";
 import {
   capacityRuleTypes,
   copy,
@@ -26,44 +44,20 @@ import {
   permissions,
   queryKeys,
   routes,
+  templateEvent,
   templateEvents,
+  screenCopy,
 } from "@/lib/consts";
-import { templateFormSchema, type TemplateForm, type TemplateFormInput } from "@/lib/schemas/template";
+import { liveValidation } from "@/lib/form";
+import { useListParams } from "@/lib/list-params";
+import {
+  templateFormSchema,
+  type TemplateForm,
+  type TemplateFormInput,
+} from "@/lib/schemas/template";
 import { formatDate, humanize } from "@/lib/verification";
 
-const t = {
-  title: "Product templates",
-  sub: "Define how a commodity moves: stages, events, evidence and capacity rule.",
-  new: "New template",
-  name: "Name",
-  commodity: "Commodity",
-  unit: "Unit",
-  originFacilityKind: "Origin facility kind",
-  any: "Any",
-  capacityRule: "Capacity rule",
-  none: "None",
-  perArea: "Per area (yield per hectare per season)",
-  facilityCapacity: "Facility capacity",
-  kgPerHaPerSeason: "Kg per ha per season",
-  stages: "Stages",
-  addStage: "Add stage",
-  stageKey: "Stage key",
-  events: "Events",
-  maxYield: "Max yield (%)",
-  requiredEvidence: "Required evidence (comma separated)",
-  removeStage: "Remove",
-  atLeastOneEvent: "At least one event",
-  listName: "Name",
-  listCommodity: "Commodity",
-  listUnit: "Unit",
-  listOrigin: "Origin facility",
-  listStageCount: "Stage count",
-  listUpdated: "Updated",
-  noTemplates: "No templates yet.",
-  notAllowedTitle: "You can't manage templates.",
-  notAllowedBody: "Only the platform admin can manage product templates.",
-  created: "Template created",
-};
+const t = screenCopy.templates;
 
 const originOptions = [
   { value: "", label: t.any },
@@ -82,27 +76,34 @@ export function Templates() {
   const [showForm, setShowForm] = useState(false);
 
   const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed = me.ready && me.data!.permissions.includes(permissions.templateRead);
+  const allowed =
+    me.ready && me.data!.permissions.includes(permissions.templateRead);
 
-  const templates = useQuery({
-    queryKey: queryKeys.templates,
-    queryFn: endpoints.templatesList,
-    enabled: allowed,
-  });
+  const list = useListParams("name");
+  const templates = usePaged(
+    queryKeys.templates,
+    endpoints.templatesPage,
+    list.query(),
+  );
 
   const create = useMutation({
-    mutationFn: (body: TemplateForm) => endpoints.createTemplate(toApiBody(body)),
-    onSuccess: (tpl) => {
-      toast.success(t.created);
+    mutationFn: (body: TemplateForm) =>
+      endpoints.createTemplate(toApiBody(body)),
+    meta: { inPlace: true },
+    onSuccess: ({ data }) => {
       client.invalidateQueries({ queryKey: queryKeys.templates });
-      router.push(routes.adminTemplate(tpl.id));
+      router.push(routes.adminTemplate(data.id));
     },
-    onError: (err) => toast.error(problemOf(err)),
   });
 
   if (me.isError) {
     return (
-      <PageState icon={WifiOff} tone="danger" title={copy.errors.loadTitle} retry={() => me.refetch()}>
+      <PageState
+        icon={WifiOff}
+        tone="danger"
+        title={copy.errors.loadTitle}
+        retry={() => me.refetch()}
+      >
         {problemOf(me.error)}
       </PageState>
     );
@@ -116,23 +117,18 @@ export function Templates() {
     );
   }
 
-
   return (
-    <main className="grid content-start gap-6 px-4 py-6 lg:px-8 lg:py-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="grid gap-1">
-          <h1 className="text-[22px] font-semibold lg:text-page">{t.title}</h1>
-          <p className="text-sm text-ink-muted">{t.sub}</p>
-        </div>
-        <Button size="scan" onClick={() => setShowForm(!showForm)}>
-          <Plus aria-hidden />
-          {t.new}
-        </Button>
-      </header>
-
-      {templates.isError && (
-        <Notice kind="blocking">{problemOf(templates.error)}</Notice>
-      )}
+    <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+      <PageHeader
+        title={t.title}
+        sub={t.sub}
+        actions={
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus aria-hidden />
+            {t.new}
+          </Button>
+        }
+      />
 
       {showForm && (
         <NewTemplateForm
@@ -143,61 +139,70 @@ export function Templates() {
         />
       )}
 
-      {templates.isPending ? (
-        <Loading />
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-card">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-surface-sunken">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">{t.listName}</th>
-                <th className="px-4 py-3 text-left font-semibold">{t.listCommodity}</th>
-                <th className="px-4 py-3 text-left font-semibold">{t.listUnit}</th>
-                <th className="px-4 py-3 text-left font-semibold">{t.listOrigin}</th>
-                <th className="px-4 py-3 text-left font-semibold">{t.listStageCount}</th>
-                <th className="px-4 py-3 text-left font-semibold">{t.listUpdated}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(templates.data ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-ink-muted">
-                    {t.noTemplates}
-                  </td>
-                </tr>
-              )}
-              {(templates.data ?? []).map((tpl: Template) => (
-                <tr key={tpl.id} className="hover:bg-surface-sunken">
-                  <td className="px-4 py-3">
-                    <Link href={routes.adminTemplate(tpl.id)} className="font-semibold text-primary">
-                      {tpl.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">{humanize(tpl.commodity)}</td>
-                  <td className="px-4 py-3 font-mono">{tpl.unit}</td>
-                  <td className="px-4 py-3">{originLabel(tpl.originFacilityKind ?? "")}</td>
-                  <td className="px-4 py-3">{tpl.stages?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-ink-muted">{formatDate(tpl.updated_at ?? tpl.created_at ?? "")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ListTable
+        label={t.title}
+        columns={columns}
+        rows={templates.data?.data ?? []}
+        total={templates.data?.total ?? 0}
+        list={list}
+        rowKey={(x) => x.id}
+        loading={templates.isPending}
+        error={templates.isError ? problemOf(templates.error) : undefined}
+        empty={list.search ? copy.list.noMatch : t.noTemplates}
+        toolbar={<ListBar list={list} />}
+      />
     </main>
   );
 }
+
+const columns: ListColumn<Template>[] = [
+  column(
+    "name",
+    t.listName,
+    (x) => (
+      <Link
+        href={routes.adminTemplate(x.id)}
+        className="font-semibold text-primary"
+      >
+        {x.name}
+      </Link>
+    ),
+    { sortable: true },
+  ),
+  column("commodity", t.listCommodity, (x) => humanize(x.commodity), {
+    sortable: true,
+  }),
+  column("unit", t.listUnit, (x) => (
+    <span className="font-mono">{x.unit}</span>
+  )),
+  column("origin", t.listOrigin, (x) =>
+    originLabel(x.originFacilityKind ?? ""),
+  ),
+  column("stages", t.listStageCount, (x) => x.stages?.length ?? 0),
+  column(
+    "created_at",
+    t.listUpdated,
+    (x) => formatDate(x.updated_at ?? x.created_at ?? ""),
+    { sortable: true },
+  ),
+  actionsColumn((x) => (
+    <RowAction label={t.open} icon={Eye} href={routes.adminTemplate(x.id)} />
+  )),
+];
 
 function originLabel(v: string) {
   if (!v) return t.any;
   return facilityKinds.find((k) => k.value === v)?.label ?? v;
 }
 
-function toApiBody(v: TemplateForm): object {
+function toApiBody(v: TemplateForm) {
   let rule: object | null = null;
   if (v.capacityRule) {
     if (v.capacityRule.type === "yield_per_area") {
-      rule = { type: capacityRuleTypes.perArea, kgPerHaPerSeason: v.capacityRule.kgPerHaPerSeason };
+      rule = {
+        type: capacityRuleTypes.perArea,
+        kgPerHaPerSeason: v.capacityRule.kgPerHaPerSeason,
+      };
     } else if (v.capacityRule.type === "facility_capacity") {
       rule = { type: capacityRuleTypes.facility, kgPerHaPerSeason: null };
     }
@@ -229,6 +234,7 @@ function NewTemplateForm({
   error?: string;
 }) {
   const form = useForm<TemplateFormInput, unknown, TemplateForm>({
+    ...liveValidation,
     resolver: zodResolver(templateFormSchema),
     defaultValues: {
       commodity: "",
@@ -237,13 +243,30 @@ function NewTemplateForm({
       originFacilityKind: "",
       capacityRule: null,
       stages: [
-        { key: "ISSUE", events: ["ISSUE"], maxYield: undefined, requiredEvidence: ["organic"] },
-        { key: "HANDOVER", events: ["HANDOVER"], maxYield: undefined, requiredEvidence: [] },
+        {
+          key: "origin",
+          events: [templateEvent.issue],
+          maxYield: undefined,
+          requiredEvidence: [],
+        },
+        {
+          key: "transport",
+          events: [templateEvent.handover],
+          maxYield: undefined,
+          requiredEvidence: [],
+        },
       ],
     },
   });
 
-  const { control, register, handleSubmit, watch, setValue, formState: { errors } } = form;
+  const {
+    control,
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "stages" });
   const ruleType = watch("capacityRule")?.type ?? "none";
 
@@ -258,16 +281,32 @@ function NewTemplateForm({
       {error && <Notice kind="blocking">{error}</Notice>}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <TextField label={t.name} error={errors.name?.message} {...register("name")} />
-        <TextField label={t.commodity} error={errors.commodity?.message} {...register("commodity")} />
-        <TextField label={t.unit} error={errors.unit?.message} {...register("unit")} />
+        <TextField
+          label={t.name}
+          error={errors.name?.message}
+          {...register("name")}
+        />
+        <TextField
+          label={t.commodity}
+          error={errors.commodity?.message}
+          {...register("commodity")}
+        />
+        <TextField
+          label={t.unit}
+          error={errors.unit?.message}
+          {...register("unit")}
+        />
         <div className="grid gap-1.5">
           <span className="text-sm font-semibold">{t.originFacilityKind}</span>
           <Controller
             control={control}
             name="originFacilityKind"
             render={({ field }) => (
-              <Select items={originOptions} value={field.value} onValueChange={(v) => field.onChange(v)}>
+              <Select
+                items={originOptions}
+                value={field.value}
+                onValueChange={(v) => field.onChange(v)}
+              >
                 <SelectTrigger className="min-h-tap w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -289,12 +328,23 @@ function NewTemplateForm({
         <ChoiceCards
           legend={t.capacityRule}
           options={ruleOptions}
-          value={ruleType === "yield_per_area" ? "perArea" : ruleType === "facility_capacity" ? "facilityCapacity" : "none"}
+          value={
+            ruleType === "yield_per_area"
+              ? "perArea"
+              : ruleType === "facility_capacity"
+                ? "facilityCapacity"
+                : "none"
+          }
           onChange={(e) => {
             const v = e.target.value;
             if (v === "none") setValue("capacityRule", null);
-            else if (v === "perArea") setValue("capacityRule", { type: "yield_per_area", kgPerHaPerSeason: 0 });
-            else if (v === "facilityCapacity") setValue("capacityRule", { type: "facility_capacity" });
+            else if (v === "perArea")
+              setValue("capacityRule", {
+                type: "yield_per_area",
+                kgPerHaPerSeason: 0,
+              });
+            else if (v === "facilityCapacity")
+              setValue("capacityRule", { type: "facility_capacity" });
           }}
         />
         {ruleType === "yield_per_area" && (
@@ -304,7 +354,9 @@ function NewTemplateForm({
             inputMode="numeric"
             mono
             error={errors.capacityRule?.kgPerHaPerSeason?.message}
-            {...register("capacityRule.kgPerHaPerSeason", { valueAsNumber: true })}
+            {...register("capacityRule.kgPerHaPerSeason", {
+              valueAsNumber: true,
+            })}
           />
         )}
       </div>
@@ -315,7 +367,14 @@ function NewTemplateForm({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => append({ key: "", events: [], maxYield: undefined, requiredEvidence: [] })}
+            onClick={() =>
+              append({
+                key: "",
+                events: [],
+                maxYield: undefined,
+                requiredEvidence: [],
+              })
+            }
             disabled={fields.length >= 10}
           >
             <Plus aria-hidden />
@@ -323,16 +382,23 @@ function NewTemplateForm({
           </Button>
         </div>
         {fields.map((field, i) => (
-          <div key={field.id} className="grid gap-3 rounded-md border border-border p-3">
+          <div
+            key={field.id}
+            className="grid gap-3 rounded-md border border-border p-3"
+          >
             <div className="flex flex-wrap items-end justify-between gap-2">
               <TextField
                 label={t.stageKey}
-                className="flex-1 min-w-[120px]"
+                className="flex-1 min-w-30"
                 error={errors.stages?.[i]?.key?.message}
                 {...register(`stages.${i}.key` as const)}
               />
               {fields.length > 1 && (
-                <Button type="button" variant="danger-outline" onClick={() => remove(i)}>
+                <Button
+                  type="button"
+                  variant="danger-outline"
+                  onClick={() => remove(i)}
+                >
                   {t.removeStage}
                 </Button>
               )}
@@ -341,7 +407,8 @@ function NewTemplateForm({
               <span className="text-sm font-semibold">{t.events}</span>
               <div className="flex flex-wrap gap-3">
                 {templateEvents.map((ev) => {
-                  const checked = watch(`stages.${i}.events`)?.includes(ev.value) ?? false;
+                  const checked =
+                    watch(`stages.${i}.events`)?.includes(ev.value) ?? false;
                   return (
                     <label key={ev.value} className="flex items-center gap-2">
                       <Checkbox
@@ -349,9 +416,15 @@ function NewTemplateForm({
                         onCheckedChange={(c) => {
                           const current = watch(`stages.${i}.events`) ?? [];
                           if (c) {
-                            setValue(`stages.${i}.events`, [...current, ev.value]);
+                            setValue(`stages.${i}.events`, [
+                              ...current,
+                              ev.value,
+                            ]);
                           } else {
-                            setValue(`stages.${i}.events`, current.filter((x) => x !== ev.value));
+                            setValue(
+                              `stages.${i}.events`,
+                              current.filter((x) => x !== ev.value),
+                            );
                           }
                         }}
                       />
@@ -361,7 +434,9 @@ function NewTemplateForm({
                 })}
               </div>
               {errors.stages?.[i]?.events?.message && (
-                <p className="text-small font-semibold text-danger">{errors.stages?.[i]?.events?.message}</p>
+                <p className="text-small font-semibold text-danger">
+                  {errors.stages?.[i]?.events?.message}
+                </p>
               )}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -371,7 +446,9 @@ function NewTemplateForm({
                 inputMode="numeric"
                 mono
                 error={errors.stages?.[i]?.maxYield?.message}
-                {...register(`stages.${i}.maxYield` as const, { valueAsNumber: true })}
+                {...register(`stages.${i}.maxYield` as const, {
+                  valueAsNumber: true,
+                })}
               />
               <TextField
                 label={t.requiredEvidence}
@@ -384,7 +461,12 @@ function NewTemplateForm({
       </div>
 
       <div className="flex flex-wrap justify-end gap-3">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={busy}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={busy}
+        >
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>

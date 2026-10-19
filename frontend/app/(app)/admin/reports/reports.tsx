@@ -1,252 +1,377 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Download, Lock, Search, ShieldX, WifiOff } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  Lock,
+  Search,
+  ShieldX,
+  WifiOff,
+} from "lucide-react";
+import { parseAsString } from "nuqs";
 import { useState } from "react";
 
+import { ListBar } from "@/components/chaintrack/list-controls";
+import {
+  ClientTable,
+  ListTable,
+  column,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
+import { PageHeader } from "@/components/chaintrack/page-header";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { endpoints, problemOf, useMeGuard } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  downloadURL,
+  endpoints,
+  problemOf,
+  useMeGuard,
+  usePaged,
+  type AuditEntry,
+  type VolumeRow,
+} from "@/lib/api";
 import {
   apiPaths,
   copy,
+  exportFormats,
   permissions,
   queryKeys,
+  reportsCopy,
   routes,
 } from "@/lib/consts";
-import { formatDate, formatDateTime } from "@/lib/verification";
+import { useListParams } from "@/lib/list-params";
+import { formatDateTime } from "@/lib/verification";
 
-const t = {
-  title: "Reports and audit",
-  sub: "Volume, audit trail and chain verification.",
-  notAllowedTitle: "You can't view reports.",
-  notAllowedBody: "You don't have permission to view reports or audit logs.",
-  volume: "Volume issued",
-  startDate: "Start date",
-  endDate: "End date",
-  downloadCsv: "Download CSV",
-  month: "Month",
-  commodity: "Commodity",
-  unit: "Unit",
-  quantity: "Quantity",
-  noData: "No data",
-  auditTrail: "Audit trail",
-  route: "Route",
-  allRoutes: "All routes",
-  seq: "Seq",
-  created: "When",
-  actor: "Actor",
-  methodRoute: "Method / Route",
-  subject: "Subject",
-  status: "Status",
-  hash: "Hash",
-  chainCheck: "Chain check",
-  runCheck: "Run chain check",
-  running: "Running…",
-  verified: "Every entry's hash matches",
-  checked: (n: number) => `${n} entries checked`,
-  brokenAt: (n: number | null) => (n ? `Broken at seq ${n}` : "Broken"),
+const t = reportsCopy;
+const c = t.columns;
+
+const ALL_ROUTES = "";
+const routeOptions = [
+  { value: ALL_ROUTES, label: t.allRoutes },
+  ...["/passports", "/handovers", "/flags", "/attestations", "/orgs"].map(
+    (r) => ({ value: r, label: r }),
+  ),
+];
+const auditFilters = {
+  start_date: parseAsString,
+  end_date: parseAsString,
+  route: parseAsString,
 };
 
-const routeOptions = [
-  { value: "", label: t.allRoutes },
-  { value: "/passports", label: "/passports" },
-  { value: "/handovers", label: "/handovers" },
-  { value: "/flags", label: "/flags" },
-  { value: "/attestations", label: "/attestations" },
-  { value: "/orgs", label: "/orgs" },
+const volumeColumns: ListColumn<VolumeRow>[] = [
+  column(
+    "month",
+    c.month,
+    (v) => <span className="font-mono">{v.month}</span>,
+    { value: (v) => v.month },
+  ),
+  column("commodity", c.commodity, (v) => v.commodity, {
+    value: (v) => v.commodity,
+  }),
+  column("unit", c.unit, (v) => <span className="font-mono">{v.unit}</span>),
+  column(
+    "quantity",
+    c.quantity,
+    (v) => <span className="fig">{v.quantity.toLocaleString()}</span>,
+    { value: (v) => v.quantity },
+  ),
+];
+
+const auditColumns: ListColumn<AuditEntry>[] = [
+  column("seq", c.seq, (a) => <span className="font-mono">{a.seq}</span>, {
+    sortable: true,
+  }),
+  column(
+    "created_at",
+    c.created,
+    (a) => (
+      <span className="text-ink-muted">{formatDateTime(a.created_at)}</span>
+    ),
+    { sortable: true },
+  ),
+  column("actor", c.actor, (a) => (
+    <span className="block max-w-48 truncate">
+      {a.actor_email || a.actor_user_id || "–"}
+    </span>
+  )),
+  column(
+    "route",
+    c.action,
+    (a) => (
+      <span className="font-mono text-xs">
+        {a.method} {a.route}
+      </span>
+    ),
+    { sortable: true },
+  ),
+  column("subject", c.subject, (a) => (
+    <span
+      className="block max-w-32 truncate font-mono text-xs"
+      title={a.subject_id ?? ""}
+    >
+      {a.subject_id ?? "–"}
+    </span>
+  )),
+  column("status", c.status, (a) => (
+    <span className="font-mono">{a.status}</span>
+  )),
+  column("hash", c.hash, (a) => (
+    <span
+      className="block max-w-28 truncate font-mono text-xs text-ink-muted"
+      title={a.hash}
+    >
+      {a.hash}
+    </span>
+  )),
 ];
 
 export function Reports() {
   const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed = me.ready && (me.data!.permissions.includes(permissions.auditRead) || me.data!.permissions.includes(permissions.reportRead));
+  const allowed =
+    me.ready &&
+    (me.data!.permissions.includes(permissions.auditRead) ||
+      me.data!.permissions.includes(permissions.reportRead));
 
   const [volumeStart, setVolumeStart] = useState("");
   const [volumeEnd, setVolumeEnd] = useState("");
-  const [auditStart, setAuditStart] = useState("");
-  const [auditEnd, setAuditEnd] = useState("");
-  const [auditRoute, setAuditRoute] = useState("");
-
   const volume = useQuery({
     queryKey: [...queryKeys.volume, volumeStart, volumeEnd],
-    queryFn: () => endpoints.volumeReport({ startDate: volumeStart || undefined, endDate: volumeEnd || undefined }),
+    queryFn: () =>
+      endpoints.volumeReport({
+        startDate: volumeStart || undefined,
+        endDate: volumeEnd || undefined,
+      }),
     enabled: allowed,
   });
 
-  const audit = useQuery({
-    queryKey: [...queryKeys.audit, auditStart, auditEnd, auditRoute],
-    queryFn: () => endpoints.auditList({ startDate: auditStart || undefined, endDate: auditEnd || undefined, route: auditRoute || undefined }),
-    enabled: allowed,
-  });
+  const list = useListParams("-created_at", auditFilters);
+  const f = list.filters;
+  const auditParams = {
+    start_date: f.start_date ?? undefined,
+    end_date: f.end_date ?? undefined,
+    route: f.route ?? undefined,
+  };
+  const audit = usePaged(
+    queryKeys.audit,
+    endpoints.auditPage,
+    list.query(auditParams),
+  );
 
   const chain = useQuery({
-    queryKey: ["audit", "verify"],
-    queryFn: () => endpoints.auditVerify(),
+    queryKey: [...queryKeys.audit, "verify"],
+    queryFn: endpoints.auditVerify,
     enabled: false,
   });
 
   if (me.isError) {
     return (
-      <PageState icon={WifiOff} tone="danger" title={copy.errors.loadTitle} retry={() => me.refetch()}>
+      <PageState
+        icon={WifiOff}
+        tone="danger"
+        title={copy.errors.loadTitle}
+        retry={() => me.refetch()}
+      >
         {problemOf(me.error)}
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="px-4 py-8 lg:px-8" />;
-  if (!allowed) {
+  if (!me.ready) return <Loading className="p-4 lg:p-8" />;
+  if (!allowed)
     return (
       <PageState icon={Lock} title={t.notAllowedTitle}>
         {t.notAllowedBody}
       </PageState>
     );
-  }
-
-
 
   return (
-    <main className="grid content-start gap-6 px-4 py-6 lg:px-8 lg:py-8">
-      <header className="grid gap-1">
-        <h1 className="text-[22px] font-semibold lg:text-page">{t.title}</h1>
-        <p className="text-sm text-ink-muted">{t.sub}</p>
-      </header>
+    <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+      <PageHeader title={t.title} sub={t.sub} />
 
-      <section className="grid gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-        <h2 className="text-section">{t.volume}</h2>
-        <div className="flex flex-wrap gap-3">
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.startDate}</span>
-            <Input type="date" value={volumeStart} onChange={(e) => setVolumeStart(e.target.value)} className="min-h-tap w-48" />
-          </div>
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.endDate}</span>
-            <Input type="date" value={volumeEnd} onChange={(e) => setVolumeEnd(e.target.value)} className="min-h-tap w-48" />
-          </div>
-          <a href={`/api/reports/volume?format=csv${volumeStart ? `&start_date=${volumeStart}` : ""}${volumeEnd ? `&end_date=${volumeEnd}` : ""}`} className="inline-flex min-h-tap items-center gap-2 rounded-md bg-primary px-4 py-2 font-semibold text-on-primary">
-            <Download className="size-4" aria-hidden />
-            {t.downloadCsv}
-          </a>
+      <Section title={t.volume}>
+        <div className="flex flex-wrap items-end gap-3">
+          <DateField
+            label={t.startDate}
+            value={volumeStart}
+            onChange={setVolumeStart}
+          />
+          <DateField
+            label={t.endDate}
+            value={volumeEnd}
+            onChange={setVolumeEnd}
+          />
+          <Downloads
+            path={apiPaths.reportsVolume}
+            params={{ start_date: volumeStart, end_date: volumeEnd }}
+          />
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-surface-sunken">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold">{t.month}</th>
-                <th className="px-3 py-2 text-left font-semibold">{t.commodity}</th>
-                <th className="px-3 py-2 text-left font-semibold">{t.unit}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t.quantity}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {volume.isPending && (
-                <tr><td colSpan={4} className="px-3 py-4"><Loading /></td></tr>
-              )}
-              {volume.isError && (
-                <tr><td colSpan={4} className="px-3 py-4 text-danger-ink">{problemOf(volume.error)}</td></tr>
-              )}
-              {volume.data?.length === 0 && !volume.isPending && (
-                <tr><td colSpan={4} className="px-3 py-4 text-ink-muted">{t.noData}</td></tr>
-              )}
-              {volume.data?.map((row, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-2 font-mono">{row.month}</td>
-                  <td className="px-3 py-2">{row.commodity}</td>
-                  <td className="px-3 py-2 font-mono">{row.unit}</td>
-                  <td className="px-3 py-2 text-right font-mono">{row.quantity.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {volume.isPending ? (
+          <Loading />
+        ) : volume.isError ? (
+          <p role="alert" className="text-sm text-danger-ink">
+            {problemOf(volume.error)}
+          </p>
+        ) : (
+          <ClientTable
+            id="volume"
+            label={t.volume}
+            columns={volumeColumns}
+            rows={volume.data}
+            rowKey={(v) => `${v.month}|${v.commodity}|${v.unit}`}
+            empty={t.noData}
+          />
+        )}
+      </Section>
 
-      <section className="grid gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-        <h2 className="text-section">{t.auditTrail}</h2>
-        <div className="flex flex-wrap gap-3">
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.startDate}</span>
-            <Input type="date" value={auditStart} onChange={(e) => setAuditStart(e.target.value)} className="min-h-tap w-48" />
-          </div>
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.endDate}</span>
-            <Input type="date" value={auditEnd} onChange={(e) => setAuditEnd(e.target.value)} className="min-h-tap w-48" />
-          </div>
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.route}</span>
-            <Select items={routeOptions} value={auditRoute} onValueChange={(v) => setAuditRoute(v ?? "")}>
-              <SelectTrigger className="min-h-tap w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {routeOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-surface-sunken">
-              <tr>
-                <th className="px-2 py-2 text-left font-semibold">{t.seq}</th>
-                <th className="px-2 py-2 text-left font-semibold">{t.created}</th>
-                <th className="px-2 py-2 text-left font-semibold">{t.actor}</th>
-                <th className="px-2 py-2 text-left font-semibold">{t.methodRoute}</th>
-                <th className="px-2 py-2 text-left font-semibold">{t.subject}</th>
-                <th className="px-2 py-2 text-right font-semibold">{t.status}</th>
-                <th className="px-2 py-2 text-left font-semibold">{t.hash}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {audit.isPending && (
-                <tr><td colSpan={7} className="px-2 py-4"><Loading /></td></tr>
-              )}
-              {audit.isError && (
-                <tr><td colSpan={7} className="px-2 py-4 text-danger-ink">{problemOf(audit.error)}</td></tr>
-              )}
-              {(audit.data?.rows ?? []).length === 0 && !audit.isPending && (
-                <tr><td colSpan={7} className="px-2 py-4 text-ink-muted">{t.noData}</td></tr>
-              )}
-              {audit.data?.rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-2 py-2 font-mono">{row.seq}</td>
-                  <td className="px-2 py-2 text-ink-muted">{formatDateTime(row.created_at)}</td>
-                  <td className="px-2 py-2 truncate max-w-[160px]">{row.actor_email || row.actor_user_id || "-"}</td>
-                  <td className="px-2 py-2">{row.method} {row.route}</td>
-                  <td className="px-2 py-2 font-mono truncate max-w-[140px]" title={row.subject_id ?? ""}>{row.subject_id ? row.subject_id.slice(0, 12) + (row.subject_id.length > 12 ? "…" : "") : "-"}</td>
-                  <td className="px-2 py-2 text-right font-mono">{row.status}</td>
-                  <td className="px-2 py-2 font-mono text-ink-muted truncate max-w-[120px]" title={row.hash}>{row.hash.slice(0, 10)}…</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <Section title={t.auditTrail}>
+        <ListTable
+          label={t.auditTrail}
+          columns={auditColumns}
+          rows={audit.data?.data ?? []}
+          total={audit.data?.total ?? 0}
+          list={list}
+          rowKey={(a) => a.id}
+          loading={audit.isPending}
+          error={audit.isError ? problemOf(audit.error) : undefined}
+          empty={t.noData}
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3">
+              <ListBar list={list} />
+              <DateField
+                label={t.startDate}
+                value={f.start_date ?? ""}
+                onChange={(v) => list.setFilters({ start_date: v || null })}
+              />
+              <DateField
+                label={t.endDate}
+                value={f.end_date ?? ""}
+                onChange={(v) => list.setFilters({ end_date: v || null })}
+              />
+              <div className="grid gap-1.5">
+                <span className="text-sm font-semibold">{t.route}</span>
+                <Select
+                  items={routeOptions}
+                  value={f.route ?? ALL_ROUTES}
+                  onValueChange={(v) =>
+                    list.setFilters({ route: (v as string) || null })
+                  }
+                >
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {routeOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Downloads
+                path={apiPaths.audit}
+                params={{
+                  start_date: f.start_date ?? "",
+                  end_date: f.end_date ?? "",
+                  route: f.route ?? "",
+                }}
+              />
+            </div>
+          }
+        />
+      </Section>
 
-      <section className="grid gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-        <h2 className="text-section">{t.chainCheck}</h2>
+      <Section title={t.chainCheck}>
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => chain.refetch()} disabled={chain.isFetching}>
-            <Search className="size-4" aria-hidden />
+            <Search aria-hidden />
             {chain.isFetching ? t.running : t.runCheck}
           </Button>
-          {chain.data && chain.data.ok && (
-            <StatusChip tone="verified" icon={CheckCircle2}>{t.verified} • {t.checked(chain.data.checked)}</StatusChip>
+          {chain.data?.ok && (
+            <StatusChip tone="verified" icon={CheckCircle2}>
+              {t.verified} · {t.checked(chain.data.checked)}
+            </StatusChip>
           )}
           {chain.data && !chain.data.ok && (
-            <StatusChip tone="danger" icon={ShieldX}>{t.brokenAt(chain.data.broken_at)} • {t.checked(chain.data.checked)}</StatusChip>
+            <StatusChip tone="danger" icon={ShieldX}>
+              {t.brokenAt(chain.data.broken_at)} ·{" "}
+              {t.checked(chain.data.checked)}
+            </StatusChip>
           )}
         </div>
-      </section>
+      </Section>
     </main>
   );
 }
 
-function apiBase() {
-  return "";
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid min-w-0 gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
+      <h2 className="text-section">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-sm font-semibold">{label}</span>
+      <Input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-44"
+      />
+    </label>
+  );
+}
+
+/** The same report as a CSV or PDF file (the API's ?format=), with the filters on screen. */
+function Downloads({
+  path,
+  params,
+}: {
+  path: string;
+  params: Record<string, string>;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {exportFormats.map((format, i) => (
+        <a
+          key={format}
+          href={downloadURL(path, format, params)}
+          className={buttonVariants({
+            variant: i === 0 ? "primary" : "secondary",
+          })}
+        >
+          <Download aria-hidden />
+          {i === 0 ? t.downloadCsv : t.downloadPdf}
+        </a>
+      ))}
+    </div>
+  );
 }

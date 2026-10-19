@@ -3,6 +3,8 @@
 // this host alone, with no domain configured anywhere.
 import type { NextRequest } from "next/server";
 
+const requestIdHeader = "x-request-id";
+
 // The API's address as this server reaches it. Required: there is no default.
 function apiURL(): string {
   const url = process.env.API_URL;
@@ -14,8 +16,20 @@ function apiURL(): string {
 
 // Only what the API needs travels on; in particular the browser's Origin,
 // which the API checks before letting a cookie change anything.
-const forwarded = ["cookie", "content-type", "origin", "authorization", "accept", "x-signing-pin"];
-const returned = ["content-type", "content-disposition", "x-content-type-options"];
+const forwarded = [
+  "cookie",
+  "content-type",
+  "origin",
+  "authorization",
+  "accept",
+  "x-signing-pin",
+];
+const returned = [
+  "content-type",
+  "content-disposition",
+  "x-content-type-options",
+  requestIdHeader,
+];
 
 async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
   const { path } = await ctx.params;
@@ -26,6 +40,9 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // One id per request, on the API's log lines and back to the page, so a
+  // reported failure can be found in the logs.
+  headers.set(requestIdHeader, crypto.randomUUID());
   // The site the browser is on: its first label names the organisation.
   headers.set("x-forwarded-host", req.headers.get("host") ?? "");
   headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
@@ -49,7 +66,10 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
     } as RequestInit);
   } catch {
     // The API is down or unreachable: say so, so the page can tell "try again" from a refusal.
-    return Response.json({ error: "" }, { status: 502 });
+    return Response.json(
+      { status: 502, message: "", data: null },
+      { status: 502 },
+    ); // problemOf says "unreachable"
   }
 
   const out = new Headers();
@@ -57,7 +77,8 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
     const value = res.headers.get(name);
     if (value) out.set(name, value);
   }
-  for (const cookie of res.headers.getSetCookie()) out.append("set-cookie", cookie);
+  for (const cookie of res.headers.getSetCookie())
+    out.append("set-cookie", cookie);
   return new Response(res.body, { status: res.status, headers: out });
 }
 

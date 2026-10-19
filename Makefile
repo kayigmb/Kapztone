@@ -13,10 +13,10 @@ PROD     := $(COMPOSE) -p chaintrack-prod $(INFRA) -f infra/compose.prod.yml
 # Puts every value from the env file into the environment of the commands that follow.
 LOAD_ENV := set -a && . $(abspath $(ENV_FILE)) && set +a
 
-.PHONY: infra storage-reset api web relayer chain deploy bindings dev prod down prod-down logs test test-db slither
+.PHONY: infra storage-reset api web relayer chain deploy bindings dev prod down prod-down logs test test-db e2e sim slither
 
 # Targets that cannot run without the env file.
-infra storage-reset api web relayer deploy dev prod down prod-down logs test-db: $(ENV_FILE)
+infra storage-reset api web relayer deploy dev prod down prod-down logs test-db e2e sim: $(ENV_FILE)
 
 $(ENV_FILE):
 	@echo "$(ENV_FILE) not found: copy .env.example to $(ENV_FILE) and fill in every value" && exit 1
@@ -73,6 +73,12 @@ test-db: infra
 	TEST_DATABASE_URL="$$DATABASE_URL" TEST_REDIS_URL="$${REDIS_URL%/*}/1" \
 	go test ./tests/ -count=1 -coverpkg="$$(go list ./internal/... | grep -v /bindings | paste -sd, -)" -coverprofile=coverage.out && \
 	go tool cover -func=coverage.out | tail -1
+
+e2e: ## browser happy path against the running stack (needs `make api` and `make web`)
+	$(LOAD_ENV) && cd frontend && pnpm e2e
+
+sim: ## evaluation dataset + fraud cases against the running stack (needs api, chain, relayer); ARGS="-lots 5 -fraud 1" for a quick run
+	$(LOAD_ENV) && cd tools/sim && go run . $(ARGS)
 
 slither: ## static analysis of the contracts; fails on a high finding (needs uv)
 	cd contracts && uvx --from slither-analyzer slither . --fail-high --filter-paths node_modules

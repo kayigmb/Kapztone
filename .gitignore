@@ -22,3 +22,10 @@ backend/tmp/
 
 # backend local runs
 backend/coverage.out
+
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/
+
+# Simulation output
+tools/sim/sim-results.csv

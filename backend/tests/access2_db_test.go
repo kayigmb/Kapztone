@@ -107,7 +107,7 @@ func TestPasswordResetAndLock(t *testing.T) {
 		t.Fatalf("unknown token = %d", got)
 	}
 	// The refused attempts left the link usable.
-	if got := reset(token, newPassword); got != http.StatusNoContent {
+	if got := reset(token, newPassword); got != http.StatusOK {
 		t.Fatalf("reset = %d", got)
 	}
 	if got := reset(token, "another-good-pass"); got != http.StatusNotFound {
@@ -133,7 +133,7 @@ func TestPasswordResetAndLock(t *testing.T) {
 	// "Lock my account" disables it and signs everyone out.
 	after := decodeTo[struct{ Token string }](t,
 		do(e.h, http.MethodPost, "/auth/login", "", loginBody(e.email(tStaff), newPassword))).Token
-	want(t, "lock", do(e.h, http.MethodPost, "/auth/lock", "", `{"token":"`+lock+`"}`), http.StatusNoContent)
+	want(t, "lock", do(e.h, http.MethodPost, "/auth/lock", "", `{"token":"`+lock+`"}`), http.StatusOK)
 	want(t, "lock twice", do(e.h, http.MethodPost, "/auth/lock", "", `{"token":"`+lock+`"}`), http.StatusNotFound)
 	if got := meCode(e, after); got != http.StatusUnauthorized {
 		t.Fatalf("locked account still signed in: %d", got)

@@ -114,7 +114,7 @@ func TestSessionCookie(t *testing.T) {
 
 	// ---- Signing out: the API takes the cookie back.
 	rec := browser(h, http.MethodPost, "http://"+siteAcme+"/auth/logout", c, nil)
-	want(t, "sign out", rec, http.StatusNoContent)
+	want(t, "sign out", rec, http.StatusOK)
 	if gone := sessionCookie(t, rec); gone.MaxAge >= 0 || gone.Value != "" || !gone.HttpOnly {
 		t.Fatalf("sign-out cookie: %+v", gone)
 	}

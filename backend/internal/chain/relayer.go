@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"strings"
 	"time"
@@ -19,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/chain/bindings"
+
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 // Backend is the chain connection the relayer needs: sending transactions
@@ -97,7 +98,7 @@ func (r *Relayer) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		worked, err := r.ProcessNext(ctx)
 		if err != nil {
-			log.Printf("relayer: %v (will retry)", err)
+			logx.From(ctx).Warn("relayer: will retry", logx.KeyError, err)
 		}
 		if err != nil || !worked {
 			select {
@@ -128,7 +129,7 @@ func (r *Relayer) ProcessNext(ctx context.Context) (worked bool, err error) {
 	var refused errRefused
 	switch {
 	case errors.As(err, &refused):
-		log.Printf("relayer: %s %s %v", it.Kind, it.SubjectID, err)
+		logx.From(ctx).Error("relayer: chain refused item", "outbox_id", it.ID, "kind", it.Kind, "subject_id", it.SubjectID, logx.KeyError, err)
 		_, dbErr := r.Pool.Exec(ctx,
 			`UPDATE chain_outbox SET status = $2, last_error = $3, attempts = attempts + 1 WHERE id = $1::uuid`,
 			it.ID, StatusFailed, refused.reason)
@@ -138,7 +139,11 @@ func (r *Relayer) ProcessNext(ctx context.Context) (worked bool, err error) {
 			it.ID, err.Error())
 		return true, fmt.Errorf("%s %s: %w", it.Kind, it.SubjectID, err)
 	}
-	return true, r.confirm(ctx, it, hash)
+	if err := r.confirm(ctx, it, hash); err != nil {
+		return true, err
+	}
+	logx.From(ctx).Info("sealed", "outbox_id", it.ID, "kind", it.Kind, "subject_id", it.SubjectID, "tx_hash", hash.Hex())
+	return true, nil
 }
 
 // submit sends the item's transaction (unless an earlier attempt already did)

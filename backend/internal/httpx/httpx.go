@@ -3,12 +3,13 @@ package httpx
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 // Messages shown to callers.
@@ -23,19 +24,38 @@ const ParamID = "id"
 
 const maxJSONBody = 64 << 10
 
-func WriteJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+// Envelope is every JSON answer: the HTTP status again, a sentence the app
+// shows as it is (empty for plain reads), and the data.
+type Envelope struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
-func Error(w http.ResponseWriter, status int, msg string) {
-	WriteJSON(w, status, map[string]string{"error": msg})
+func write(w http.ResponseWriter, e Envelope) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(e.Status)
+	json.NewEncoder(w).Encode(e)
+}
+
+// OK answers with data and, for a change, the sentence that confirms it.
+func OK(w http.ResponseWriter, status int, message string, data any) {
+	write(w, Envelope{Status: status, Message: message, Data: data})
+}
+
+// Error refuses with a message safe to show.
+func Error(w http.ResponseWriter, status int, message string) {
+	write(w, Envelope{Status: status, Message: message})
+}
+
+// ErrorData refuses with a message and details the app uses (attempts left, a difference…).
+func ErrorData(w http.ResponseWriter, status int, message string, data any) {
+	write(w, Envelope{Status: status, Message: message, Data: data})
 }
 
 // ServerError logs the real cause and tells the caller nothing about it.
 func ServerError(w http.ResponseWriter, what string, err error) {
-	log.Printf("%s: %v", what, err)
+	logx.RecordError(w, what, err) // reported on the request's access line, with its request id
 	Error(w, http.StatusInternalServerError, MsgServerError)
 }
 

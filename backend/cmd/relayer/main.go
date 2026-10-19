@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,12 +15,17 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/config"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 func main() {
+	format, level := config.Logging()
+	if _, err := logx.Setup(os.Stderr, format, level); err != nil {
+		logx.Fatal("log settings", err)
+	}
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		logx.Fatal("settings", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -28,26 +33,26 @@ func main() {
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("database config: %v", err)
+		logx.Fatal("database config", err)
 	}
 	defer pool.Close()
 
 	// Dial does not need the chain to be up; an unreachable chain only makes items wait.
 	client, err := ethclient.DialContext(ctx, cfg.ChainRPCURL)
 	if err != nil {
-		log.Fatalf("chain config: %v", err)
+		logx.Fatal("chain config", err)
 	}
 	defer client.Close()
 
 	signer, err := bind.NewKeyedTransactorWithChainID(cfg.RelayerKey, cfg.ChainID)
 	if err != nil {
-		log.Fatalf("relayer key: %v", err)
+		logx.Fatal("relayer key", err)
 	}
 	contracts, err := chain.Bind(cfg.Contracts, client)
 	if err != nil {
-		log.Fatalf("contracts: %v", err)
+		logx.Fatal("contracts", err)
 	}
 
-	log.Printf("relayer sending as %s on chain %s", signer.From.Hex(), cfg.ChainID)
+	slog.Info("relayer started", "from", signer.From.Hex(), "chain_id", cfg.ChainID.String())
 	(&chain.Relayer{Pool: pool, Backend: client, Signer: signer, Contracts: contracts}).Run(ctx)
 }

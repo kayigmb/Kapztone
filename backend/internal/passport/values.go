@@ -125,6 +125,7 @@ const (
 // URL parameter names.
 const (
 	ParamStatus    = "status"
+	ParamBox       = "box"
 	ParamDirection = "direction"
 	ParamPhotoID   = "photoId"
 )
@@ -164,4 +165,25 @@ const (
 	MsgNotifyHandoverAccepted = "The receiving organisation accepted your handover."
 	MsgNotifyHandoverRejected = "The receiving organisation rejected your handover."
 	MsgNotifyPassportRevoked  = "A passport your organisation holds was revoked."
+)
+
+// Handover boxes (?box=), as the acting organisation sees them: waiting to be
+// signed by it, waiting on the other side, or finished one way or another.
+const (
+	BoxIncoming = "incoming"
+	BoxOutgoing = "outgoing"
+	BoxDone     = "done"
+)
+
+var Boxes = []string{BoxIncoming, BoxOutgoing, BoxDone}
+
+// Confirmations the app shows as they are.
+const (
+	MsgIssued            = "Passport issued. Print the QR label for the lot."
+	MsgRetired           = "Passport retired. Its history stays verifiable."
+	MsgHandoverStarted   = "Handover sent. The lot stays yours until the receiver signs."
+	MsgHandoverAccepted  = "Handover complete. The lot is yours now."
+	MsgHandoverRejected  = "Handover rejected. The lot stays with the sender."
+	MsgHandoverCancelled = "Handover cancelled. The lot stays with you."
+	MsgTransformed       = "Transform recorded. The new passports are ready."
 )

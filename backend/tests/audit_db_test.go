@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -80,7 +81,7 @@ func TestAuditLog(t *testing.T) {
 		t.Fatalf("filtered by actor and route: %+v", got)
 	}
 	want(t, "bad actor", do(e.h, http.MethodGet, "/audit?actor=nobody", root, ""), http.StatusBadRequest)
-	want(t, "bad format", do(e.h, http.MethodGet, "/audit?format=pdf", root, ""), http.StatusBadRequest)
+	want(t, "bad format", do(e.h, http.MethodGet, "/audit?format=docx", root, ""), http.StatusBadRequest)
 	want(t, "member of no platform scope verifies", do(e.h, http.MethodGet, as(e.slug(tAcme), "/audit/verify"), admin, ""), http.StatusForbidden)
 
 	// CSV: heading, then every matching row; the organisation gate still applies.
@@ -191,4 +192,15 @@ func TestVolumeReport(t *testing.T) {
 	if rec.Body.String() != wantCSV {
 		t.Fatalf("volume csv = %q, want %q", rec.Body.String(), wantCSV)
 	}
+
+	// The same reports as PDF; an unknown format is refused.
+	for _, path := range []string{"/reports/volume", "/reports/blocked", "/audit"} {
+		rec = do(e.h, http.MethodGet, as(e.slug(tAcme), path+"?format="+audit.FormatPDF), admin, "")
+		want(t, path+" pdf", rec, http.StatusOK)
+		if rec.Header().Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) ||
+			!strings.Contains(rec.Header().Get("Content-Disposition"), ".pdf") {
+			t.Fatalf("%s: not a PDF download (%s, %q…)", path, rec.Header().Get("Content-Type"), rec.Body.String()[:min(8, rec.Body.Len())])
+		}
+	}
+	want(t, "unknown format", do(e.h, http.MethodGet, as(e.slug(tAcme), "/reports/volume?format=xlsx"), admin, ""), http.StatusBadRequest)
 }

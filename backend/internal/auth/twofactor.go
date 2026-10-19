@@ -115,7 +115,7 @@ func (a *Auth) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "issue recovery codes", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"recovery_codes": codes})
+	httpx.OK(w, http.StatusOK, MsgRecoveryCodes, map[string]any{"recovery_codes": codes})
 }
 
 // freshUser reloads the signed-in user with their 2FA state.
@@ -160,7 +160,7 @@ func (a *Auth) SetupTwoFactor(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "store 2fa secret", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"secret": key.Secret(), "otpauth_url": key.URL()})
+	httpx.OK(w, http.StatusOK, "", map[string]string{"secret": key.Secret(), "otpauth_url": key.URL()})
 }
 
 // EnableTwoFactor turns 2FA on once the user sends a valid first code.
@@ -223,5 +223,9 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 		httpx.ServerError(w, "remove recovery codes", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	msg := MsgTwoFactorOff
+	if enable {
+		msg = MsgTwoFactorOn
+	}
+	httpx.OK(w, http.StatusOK, msg, out)
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/listq"
 )
 
 // MyOrganisation is one organisation the signed-in person can act for: the
@@ -69,39 +70,38 @@ func (s Store) SetName(ctx context.Context, userID, name string) (auth.User, err
 	return u, err
 }
 
-// All lists every user on the platform with their memberships.
-// ponytail: plain array, not paged; move to listq once the platform has thousands of users.
-func (s Store) All(ctx context.Context) ([]Account, error) {
-	rows, err := s.Pool.Query(ctx,
-		`SELECT u.id::text, u.name, u.email::text, u.status, u.totp_enabled,
-		        COALESCE(json_agg(json_build_object(
-		            'organisation_id', us.organisation_id,
-		            'organisation', COALESCE(o.name, ''),
-		            'role', r.name,
-		            'status', CASE WHEN us.is_deleted THEN $1 ELSE $2 END)
-		          ORDER BY o.name NULLS FIRST) FILTER (WHERE us.id IS NOT NULL), '[]')
-		 FROM users u
-		 LEFT JOIN userscope us ON us.user_id = u.id
-		 LEFT JOIN organisations o ON o.id = us.organisation_id
-		 LEFT JOIN roles r ON r.id = us.role_id
-		 WHERE NOT u.is_deleted
-		 GROUP BY u.id
-		 ORDER BY u.name`, StatusSuspended, StatusActive)
-	if err != nil {
-		return nil, err
-	}
-	accounts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Account, error) {
-		var a Account
-		var memberships []byte
-		if err := row.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.TwoFactor, &memberships); err != nil {
-			return a, err
-		}
-		return a, json.Unmarshal(memberships, &a.Memberships)
-	})
-	if accounts == nil {
-		accounts = []Account{}
-	}
-	return accounts, err
+// AccountList is what GET /users lets the platform search and sort by.
+var AccountList = listq.Config{
+	Alias:  "m",
+	Search: []string{"name", "email"},
+	Sort:   []string{"name", "email", "status", listq.ColCreatedAt},
+}
+
+// All lists one page of every user on the platform with their memberships.
+func (s Store) All(ctx context.Context, q listq.Query) (listq.Page[Account], error) {
+	return listq.Fetch(ctx, s.Pool, q, AccountList,
+		`SELECT m.id::text, m.name, m.email, m.status, m.totp_enabled, m.memberships`,
+		`FROM (SELECT u.id, u.name, u.email::text AS email, u.status, u.totp_enabled, u.created_at, false AS is_deleted,
+		              COALESCE(json_agg(json_build_object(
+		                  'organisation_id', us.organisation_id,
+		                  'organisation', COALESCE(o.name, ''),
+		                  'role', r.name,
+		                  'status', CASE WHEN us.is_deleted THEN $1 ELSE $2 END)
+		                ORDER BY o.name NULLS FIRST) FILTER (WHERE us.id IS NOT NULL), '[]') AS memberships
+		       FROM users u
+		       LEFT JOIN userscope us ON us.user_id = u.id
+		       LEFT JOIN organisations o ON o.id = us.organisation_id
+		       LEFT JOIN roles r ON r.id = us.role_id
+		       WHERE NOT u.is_deleted
+		       GROUP BY u.id) m`,
+		nil, []any{StatusSuspended, StatusActive}, func(row pgx.CollectableRow) (Account, error) {
+			var a Account
+			var memberships []byte
+			if err := row.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.TwoFactor, &memberships); err != nil {
+				return a, err
+			}
+			return a, json.Unmarshal(memberships, &a.Memberships)
+		})
 }
 
 // MyOrganisationsHandler answers GET /me/organisations.
@@ -111,7 +111,7 @@ func (h *Handlers) MyOrganisations(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list my organisations", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, orgs)
+	httpx.OK(w, http.StatusOK, "", orgs)
 }
 
 // SetName answers PUT /me: the signed-in person changes their own name.
@@ -134,5 +134,5 @@ func (h *Handlers) SetName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.InvalidateUser(r.Context(), id) // the cached user carries the name
-	httpx.WriteJSON(w, http.StatusOK, u)
+	httpx.OK(w, http.StatusOK, MsgNameSaved, u)
 }

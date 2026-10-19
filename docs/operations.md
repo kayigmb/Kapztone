@@ -58,6 +58,8 @@ Outside development the API refuses to start if the bucket does not exist. `make
 2. `make deploy` — deploys the five contracts; paste the five printed lines into `.env`.
 3. `make infra`, `make api`, `make relayer` — each in its own terminal.
 
+4. Optional: `make sim` — the evaluation dataset and fraud cases (`tools/README.md`).
+
 Running the API or relayer in containers: a chain on your machine is `http://host.docker.internal:8545` from inside a container, not `127.0.0.1`.
 
 ## Chain: Polygon Amoy
@@ -144,9 +146,17 @@ Every successful change made through the API (any non-GET request answered 2xx) 
 - **Trust this device:** after a 2FA sign-in with an app code, the `ct_trust` cookie (HttpOnly, per address) skips the code for 30 days. It ends early on any token-version bump.
 - Only hashes of the reset and lock tokens are stored, in `password_resets`.
 
+## Modes
+
+`DEV=true` is development: no rate limits at all (sign-in, sign-up, verification, signing PIN), `?pslug=` names the organisation, dev links are logged. Anything else is production, with every limit on. The API's start-up line says `mode=dev|prod rate_limits=false|true`, and `GET /healthz` answers `{"status":"ok","mode":"dev"}` in its `data`.
+
+## Switching organisation (handoff)
+
+Sessions are host-only cookies, one per address. Switching organisation hands the session over instead of asking for the password again: the current address calls `POST /auth/handoff {slug}` (the person must belong to that organisation; `""` is the bare address), gets a code valid for one minute and one use, and opens `<slug>.<host>/handoff?code=…`; that page spends it with `POST /auth/handoff/accept`. Only the hash of code + target slug is stored (in `password_resets`, kind `handoff`), so a code works only at the address it was made for.
+
 ## Sign-in lockout
 
-Five failed sign-ins for one email from one address lock that pair for 15 minutes. A failed sign-in answers with `attempts_left`. To clear it early, delete the key in Redis: `redis-cli --scan --pattern 'auth:rate:login:*'`, then `DEL` the key.
+Production only. Five failed sign-ins for one email from one address lock that pair for 15 minutes. A failed sign-in says how many attempts are left (also `attempts_left` in `data`). To clear it early, delete the key in Redis: `redis-cli --scan --pattern 'auth:rate:login:*'`, then `DEL` the key.
 
 ## Visitor addresses and the API port
 
@@ -161,3 +171,20 @@ Enabling 2FA returns 10 recovery codes, shown once. Each signs in once in place 
 ## Invitations
 
 `POST /invites` e-mails a link valid for 24 hours and usable once. With e-mail off nobody receives it; in dev only, the response and the API log carry the link.
+
+## Logs
+
+The API and the relayer write one line per event to stderr, as JSON (`LOG_FORMAT=json`, the default) or readable text (`LOG_FORMAT=text`, used in `.env.example` for development); `LOG_LEVEL` is `debug`, `info` (default), `warn` or `error`.
+
+- Every request gets an id (`X-Request-ID`): the web app makes it, the API logs it on every line of that request and sends it back. A person who sees "quote reference …" on a server error gives you the id to search for.
+- One access line per request, field names fixed: `request_id`, `method`, `route` (the pattern, e.g. `/passports/{id}/handovers`), `path`, `status`, `bytes`, `duration_ms`, `ip`, `user_id`, `org`, and `error` + `error_at` when the handler failed. 5xx lines are `ERROR`, 4xx `WARN`, the rest `INFO`. A panic logs its stack with the request id.
+- The relayer logs each sealed record (`outbox_id`, `kind`, `subject_id`, `tx_hash`) and each refusal or retry. The mailer, cache and IPFS retries log their failures with the ids involved.
+- Find one request: `jq 'select(.request_id=="…")'`; slow ones: `jq 'select(.duration_ms > 1000)'`; server errors: `jq 'select(.status >= 500)'`.
+
+## IPFS copies of certificates
+
+With `PINATA_JWT` set, each issued certificate's file is also pinned to IPFS. A failed pin doesn't block the certificate (its hash on the chain is the proof); it is retried by the API every minute once due, waiting 1 min, 2, 4… up to 6 h between tries, 10 tries at most (`attestations.ipfs_attempts`, `ipfs_next_at`, `ipfs_last_error`).
+
+## Report downloads
+
+`/reports/volume`, `/reports/blocked` and `/audit` take `format=csv` or `format=pdf` (landscape A4, up to 5,000 rows; past that the PDF says how many were left out and the CSV has them all).

@@ -168,10 +168,12 @@ func uniqueErr(err error) error {
 }
 
 // List returns organisations visible through the gate, optionally by status.
-func (s Store) List(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Organisation], error) {
-	where := []string{auth.GateSQL("o.id", 1), `($2 = '' OR o.status = $2)`}
+func (s Store) List(ctx context.Context, q listq.Query, gate string, statuses, kinds []string) (listq.Page[Organisation], error) {
+	where := []string{auth.GateSQL("o.id", 1),
+		`(cardinality($2::text[]) = 0 OR o.status = ANY($2::text[]))`,
+		`(cardinality($3::text[]) = 0 OR o.kind = ANY($3::text[]))`}
 	return listq.Fetch(ctx, s.Pool, q, OrgList, "SELECT "+orgColumns, "FROM organisations o",
-		where, []any{gate, status}, scanOrg)
+		where, []any{gate, statuses, kinds}, scanOrg)
 }
 
 // Listing is the public face of an organisation in the directory.

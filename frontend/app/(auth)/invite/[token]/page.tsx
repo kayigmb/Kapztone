@@ -9,7 +9,7 @@ export const metadata = { title: copy.meta.invite };
 export default async function Page({ params }: PageProps<"/invite/[token]">) {
   const { token } = await params;
   return (
-    <main className="mx-auto grid w-full max-w-[400px] gap-6">
+    <main className="mx-auto grid w-full max-w-100 gap-6">
       <header className="grid gap-2">
         <span className="eyebrow text-primary">{t.eyebrow}</span>
         <h1 className="text-page">{t.title}</h1>

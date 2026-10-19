@@ -16,8 +16,16 @@ import { KeyValue, type Fact } from "./passport-card";
 const t = copy.signing;
 
 /** Six boxes for the 6-digit signing PIN; typing, arrows and paste all work. */
-export function PinBoxes({ value, onChange, disabled, id = "signing-pin" }: {
-  value: string; onChange: (pin: string) => void; disabled?: boolean; id?: string;
+export function PinBoxes({
+  value,
+  onChange,
+  disabled,
+  id = "signing-pin",
+}: {
+  value: string;
+  onChange: (pin: string) => void;
+  disabled?: boolean;
+  id?: string;
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.padEnd(6, " ").slice(0, 6).split("");
@@ -35,14 +43,16 @@ export function PinBoxes({ value, onChange, disabled, id = "signing-pin" }: {
         <input
           key={i}
           id={i === 0 ? id : undefined}
-          ref={(el) => { refs.current[i] = el; }}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
           value={d.trim()}
           disabled={disabled}
           inputMode="numeric"
           autoComplete={i === 0 ? "one-time-code" : "off"}
           maxLength={1}
           aria-label={`${t.label} ${i + 1}`}
-          className="h-13 w-11 rounded-md border border-border bg-surface text-center font-mono text-[22px] font-semibold tabular-nums outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-surface-sunken"
+          className="h-13 w-11 rounded-md border border-border bg-surface text-center font-mono text-2xl font-semibold tabular-nums outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-surface-sunken"
           onChange={(e) => {
             const char = e.target.value.replace(/\D/g, "").slice(-1);
             if (char) put(i, char);
@@ -59,7 +69,10 @@ export function PinBoxes({ value, onChange, disabled, id = "signing-pin" }: {
           }}
           onPaste={(e) => {
             e.preventDefault();
-            const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+            const pasted = e.clipboardData
+              .getData("text")
+              .replace(/\D/g, "")
+              .slice(0, 6);
             if (pasted) {
               onChange(pasted);
               refs.current[Math.min(pasted.length, 5)]?.focus();
@@ -76,9 +89,24 @@ export function PinBoxes({ value, onChange, disabled, id = "signing-pin" }: {
  * PIN panel and the button that names the result. The panel owns the PIN;
  * the page owns the mutation and passes `busy` and `error` back in.
  */
-export function SigningPanel({ facts, meaning, button, onSign, busy, error, blocked, className }: {
-  facts?: Fact[]; meaning?: string; button: string; onSign: (pin: string) => void;
-  busy?: boolean; error?: string; blocked?: string; className?: string;
+export function SigningPanel({
+  facts,
+  meaning,
+  button,
+  onSign,
+  busy,
+  error,
+  blocked,
+  className,
+}: {
+  facts?: Fact[];
+  meaning?: string;
+  button: string;
+  onSign: (pin: string) => void;
+  busy?: boolean;
+  error?: string;
+  blocked?: string;
+  className?: string;
 }) {
   const [pin, setPin] = useState("");
   const ready = /^\d{6}$/.test(pin);
@@ -97,7 +125,10 @@ export function SigningPanel({ facts, meaning, button, onSign, busy, error, bloc
       {blocked && <Notice kind="blocking">{blocked}</Notice>}
       {error && <Notice kind="blocking">{error}</Notice>}
       <div>
-        <Button size="scan" onClick={() => onSign(pin)} disabled={!ready || busy || !!blocked}>
+        <Button
+          onClick={() => onSign(pin)}
+          disabled={!ready || busy || !!blocked}
+        >
           {busy && <LoaderCircle className="animate-spin" aria-hidden />}
           {busy ? t.signing : button}
         </Button>

@@ -11,16 +11,25 @@ import { toast } from "sonner";
 import { AuthResult } from "@/components/chaintrack/auth-result";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ApiError, endpoints, problemOf } from "@/lib/api";
+import { ApiError, endpoints, problemOf, useMeGuard } from "@/lib/api";
 import { copy, limits, routes } from "@/lib/consts";
+import { liveValidation } from "@/lib/form";
 import { resetSchema, type ResetForm as Form } from "@/lib/schemas/auth";
 import { cn } from "@/lib/utils";
 
 const t = copy.reset;
 
 export function ResetForm({ token }: { token: string }) {
+  useMeGuard((me) => (me ? routes.home : undefined)); // already signed in here
   const [outcome, setOutcome] = useState<"done" | "expired">();
-  const { register, handleSubmit, control, setError, formState: { errors } } = useForm<Form>({
+  const {
+    register,
+    handleSubmit,
+    control,
+    setError,
+    formState: { errors },
+  } = useForm<Form>({
+    ...liveValidation,
     resolver: zodResolver(resetSchema),
     defaultValues: { new: "", confirm: "" },
   });
@@ -32,50 +41,109 @@ export function ResetForm({ token }: { token: string }) {
 
   const save = useMutation({
     mutationFn: (v: Form) => endpoints.resetPassword(token, v.new),
+    meta: { inPlace: true },
     onSuccess: () => setOutcome("done"),
     onError: (err) => {
-      if (err instanceof ApiError && err.status === 404) return setOutcome("expired");
+      if (err instanceof ApiError && err.status === 404)
+        return setOutcome("expired");
       // 400: too short or used recently. The API's message names which.
-      if (err instanceof ApiError && err.status === 400) return setError("new", { message: err.message || t.reused });
+      if (err instanceof ApiError && err.status === 400)
+        return setError("new", { message: err.message });
       toast.error(problemOf(err));
     },
   });
 
   if (outcome === "done") {
     return (
-      <AuthResult icon={CircleCheck} tone="verified" title={t.doneTitle}
-        actions={<Link href={routes.signin} className={buttonVariants({ size: "scan", block: true })}>{t.toSignIn}</Link>}>
+      <AuthResult
+        icon={CircleCheck}
+        tone="verified"
+        title={t.doneTitle}
+        actions={
+          <Link
+            href={routes.signin}
+            className={buttonVariants({ block: true })}
+          >
+            {t.toSignIn}
+          </Link>
+        }
+      >
         <p>{t.done}</p>
       </AuthResult>
     );
   }
   if (outcome === "expired") {
     return (
-      <AuthResult icon={TriangleAlert} tone="warning" title={t.expiredTitle} actions={<>
-        <Link href={routes.forgot} className={buttonVariants({ size: "scan", block: true })}>{t.newLink}</Link>
-        <Link href={routes.signin} className={buttonVariants({ variant: "secondary", block: true })}>{copy.forgot.back}</Link>
-      </>}>
+      <AuthResult
+        icon={TriangleAlert}
+        tone="warning"
+        title={t.expiredTitle}
+        actions={
+          <>
+            <Link
+              href={routes.forgot}
+              className={buttonVariants({ block: true })}
+            >
+              {t.newLink}
+            </Link>
+            <Link
+              href={routes.signin}
+              className={buttonVariants({ variant: "secondary", block: true })}
+            >
+              {copy.forgot.back}
+            </Link>
+          </>
+        }
+      >
         <p>{t.expired}</p>
       </AuthResult>
     );
   }
 
   return (
-    <main className="mx-auto grid w-full max-w-[400px] gap-6">
+    <main className="mx-auto grid w-full max-w-100 gap-6">
       <h1 className="text-page">{t.title}</h1>
-      <form onSubmit={handleSubmit((v) => save.mutate(v))} noValidate className="grid gap-4">
-        <TextField label={t.new} type="password" autoComplete="new-password" error={errors.new?.message} {...register("new")} />
-        <TextField label={t.confirm} type="password" autoComplete="new-password" error={errors.confirm?.message} {...register("confirm")} />
+      <form
+        onSubmit={handleSubmit((v) => save.mutate(v))}
+        noValidate
+        className="grid gap-4"
+      >
+        <TextField
+          label={t.new}
+          type="password"
+          autoComplete="new-password"
+          error={errors.new?.message}
+          {...register("new")}
+        />
+        <TextField
+          label={t.confirm}
+          type="password"
+          autoComplete="new-password"
+          error={errors.confirm?.message}
+          {...register("confirm")}
+        />
         <ul className="grid gap-1.5" aria-live="polite">
           {rules.map((r) => (
-            <li key={r.label} className={cn("flex items-center gap-2 text-sm", r.ok ? "text-verified-ink" : "text-ink-muted")}>
-              {r.ok ? <CircleCheck className="size-4 shrink-0" aria-hidden /> : <Circle className="size-4 shrink-0" aria-hidden />}
+            <li
+              key={r.label}
+              className={cn(
+                "flex items-center gap-2 text-sm",
+                r.ok ? "text-verified-ink" : "text-ink-muted",
+              )}
+            >
+              {r.ok ? (
+                <CircleCheck className="size-4 shrink-0" aria-hidden />
+              ) : (
+                <Circle className="size-4 shrink-0" aria-hidden />
+              )}
               {r.label}
             </li>
           ))}
         </ul>
         <p className="text-small text-ink-muted">{t.signOutNote}</p>
-        <Button type="submit" block size="scan" disabled={save.isPending}>{save.isPending ? t.submitting : t.submit}</Button>
+        <Button type="submit" block disabled={save.isPending}>
+          {save.isPending ? t.submitting : t.submit}
+        </Button>
       </form>
     </main>
   );

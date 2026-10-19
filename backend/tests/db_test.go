@@ -32,6 +32,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
+	"github.com/kayigmb/chaintrack/backend/internal/stats"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
@@ -228,6 +229,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		Verify:      e.verify,
 		User:        e.users,
 		Audit:       e.audit,
+		Stats:       &stats.Handlers{Store: stats.Store{Pool: pool}},
 	})
 	return e, counting, cached
 }
@@ -314,13 +316,37 @@ func (e *env) upload(token, slug, orgID, docType string, content []byte) *httpte
 	return send(e.h, req, token)
 }
 
+// decodeTo reads the envelope's data ({status, message, data}) into T.
 func decodeTo[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	t.Helper()
+	env := envelopeOf(t, rec)
 	var v T
-	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
-		t.Fatalf("decode %s: %v", rec.Body, err)
+	if len(env.Data) == 0 || string(env.Data) == "null" {
+		return v
+	}
+	if err := json.Unmarshal(env.Data, &v); err != nil {
+		t.Fatalf("decode data of %s: %v", rec.Body, err)
 	}
 	return v
+}
+
+type envelope struct {
+	Status  int             `json:"status"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// envelopeOf reads every JSON answer's shape; its status must repeat the HTTP code.
+func envelopeOf(t *testing.T, rec *httptest.ResponseRecorder) envelope {
+	t.Helper()
+	var env envelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("not an envelope: %s: %v", rec.Body, err)
+	}
+	if env.Status != rec.Code {
+		t.Fatalf("envelope status %d, HTTP %d: %s", env.Status, rec.Code, rec.Body)
+	}
+	return env
 }
 
 func want(t *testing.T, what string, rec *httptest.ResponseRecorder, code int) {
@@ -516,6 +542,17 @@ func TestKYBFlow(t *testing.T) {
 	}
 	want(t, "unsortable column", do(e.h, http.MethodGet, "/orgs?"+listq.ParamSort+"=password_hash", root, ""), http.StatusBadRequest)
 	want(t, "unknown status filter", do(e.h, http.MethodGet, "/orgs?"+org.ParamStatus+"=maybe", root, ""), http.StatusBadRequest)
+	// Several statuses and kinds at once, comma-separated.
+	orgsWhere := func(query string) int {
+		rec := do(e.h, http.MethodGet, "/orgs?"+listq.ParamSearch+"="+e.suffix+"&"+query, root, "")
+		want(t, "filtered list", rec, http.StatusOK)
+		return decodeTo[listq.Page[org.Organisation]](t, rec).Total
+	}
+	if orgsWhere(org.ParamStatus+"="+org.StatusPending+","+org.StatusVerified) < 2 ||
+		orgsWhere(org.ParamStatus+"="+org.StatusPending+"&"+org.ParamKind+"="+org.KindRegulator) != 0 {
+		t.Fatal("several statuses or the kind filter don't filter")
+	}
+	want(t, "unknown kind filter", do(e.h, http.MethodGet, "/orgs?"+org.ParamKind+"=pirate", root, ""), http.StatusBadRequest)
 
 	// Review rules.
 	verify := func(token, slug, id, decision, reason string) *httptest.ResponseRecorder {

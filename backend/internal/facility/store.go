@@ -271,11 +271,11 @@ func (s Store) SetLicence(ctx context.Context, id, gate string, l Licence, valid
 }
 
 // Find returns facilities visible through the gate, optionally by status and map window.
-func (s Store) Find(ctx context.Context, q listq.Query, gate, status string, bbox *BBox) (listq.Page[Facility], error) {
-	where := []string{auth.GateSQL(gateColumn, 1), `($2 = '' OR f.status = $2)`}
-	args := []any{gate, status}
+func (s Store) Find(ctx context.Context, q listq.Query, gate, status, kind string, bbox *BBox) (listq.Page[Facility], error) {
+	where := []string{auth.GateSQL(gateColumn, 1), `($2 = '' OR f.status = $2)`, `($3 = '' OR f.kind = $3)`}
+	args := []any{gate, status, kind}
 	if bbox != nil {
-		where = append(where, fmt.Sprintf(`f.geom && ST_MakeEnvelope($3, $4, $5, $6, %d)`, SRID))
+		where = append(where, fmt.Sprintf(`f.geom && ST_MakeEnvelope($4, $5, $6, $7, %d)`, SRID))
 		args = append(args, bbox[0], bbox[1], bbox[2], bbox[3])
 	}
 	page, err := listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM facilities f", where, args, scan)

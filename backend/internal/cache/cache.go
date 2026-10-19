@@ -7,10 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 type Cache struct {
@@ -39,7 +40,7 @@ func (c *Cache) Get(ctx context.Context, key string, dst any) bool {
 	b, err := c.rdb.Get(ctx, key).Bytes()
 	if err != nil {
 		if !errors.Is(err, redis.Nil) {
-			log.Printf("cache get %s: %v", key, err)
+			logx.From(ctx).Warn("cache get failed", "key", key, logx.KeyError, err)
 		}
 		return false
 	}
@@ -52,7 +53,7 @@ func (c *Cache) Set(ctx context.Context, key string, v any) {
 		return
 	}
 	if err := c.rdb.Set(ctx, key, b, c.ttl).Err(); err != nil {
-		log.Printf("cache set %s: %v", key, err)
+		logx.From(ctx).Warn("cache set failed", "key", key, logx.KeyError, err)
 	}
 }
 
@@ -61,7 +62,7 @@ func (c *Cache) Del(ctx context.Context, keys ...string) {
 		return
 	}
 	if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
-		log.Printf("cache del: %v", err)
+		logx.From(ctx).Warn("cache delete failed", logx.KeyError, err)
 	}
 }
 
@@ -75,7 +76,7 @@ func (c *Cache) DelPattern(ctx context.Context, pattern string) {
 		keys = append(keys, iter.Val())
 	}
 	if err := iter.Err(); err != nil {
-		log.Printf("cache scan %s: %v", pattern, err)
+		logx.From(ctx).Warn("cache scan failed", "pattern", pattern, logx.KeyError, err)
 	}
 	c.Del(ctx, keys...)
 }
@@ -85,7 +86,7 @@ func (c *Cache) DelPattern(ctx context.Context, pattern string) {
 func (c *Cache) Incr(ctx context.Context, key string, window time.Duration) int64 {
 	n, err := c.rdb.Incr(ctx, key).Result()
 	if err != nil {
-		log.Printf("cache incr %s: %v", key, err)
+		logx.From(ctx).Warn("cache incr failed", "key", key, logx.KeyError, err)
 		return 0
 	}
 	if n == 1 {
@@ -98,7 +99,7 @@ func (c *Cache) Incr(ctx context.Context, key string, window time.Duration) int6
 func (c *Cache) Count(ctx context.Context, key string) int64 {
 	n, err := c.rdb.Get(ctx, key).Int64()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		log.Printf("cache count %s: %v", key, err)
+		logx.From(ctx).Warn("cache count failed", "key", key, logx.KeyError, err)
 	}
 	return n
 }

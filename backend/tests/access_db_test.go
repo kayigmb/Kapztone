@@ -51,7 +51,7 @@ func TestOrgDirectory(t *testing.T) {
 			t.Fatal("the caller's own organisation is listed")
 		}
 	}
-	if strings.Contains(rec.Body.String(), "signing_address") || strings.Contains(rec.Body.String(), "status") {
+	if data := string(envelopeOf(t, rec).Data); strings.Contains(data, "signing_address") || strings.Contains(data, "status") {
 		t.Fatalf("directory shows more than name, kind and address: %s", rec.Body)
 	}
 
@@ -359,7 +359,7 @@ func TestUserManagement(t *testing.T) {
 	// Members, roles, the last admin.
 	rec = do(e.h, http.MethodGet, as(slug, "/users"), admin, "")
 	want(t, "list members", rec, http.StatusOK)
-	members := decodeTo[[]user.Member](t, rec)
+	members := decodeTo[listq.Page[user.Member]](t, rec).Data
 	byEmail := map[string]user.Member{}
 	for _, m := range members {
 		byEmail[m.Email] = m
@@ -384,7 +384,7 @@ func TestUserManagement(t *testing.T) {
 	want(t, "suspend", post(e, admin, as(slug, "/users/"+niaID+"/suspend"), nil), http.StatusOK)
 	want(t, "suspended member's passports", do(e.h, http.MethodGet, as(slug, "/passports"), nia, ""), http.StatusForbidden)
 	want(t, "suspend twice", post(e, admin, as(slug, "/users/"+niaID+"/suspend"), nil), http.StatusNotFound)
-	if m := decodeTo[[]user.Member](t, do(e.h, http.MethodGet, as(slug, "/users"), admin, "")); len(m) != 3 {
+	if m := decodeTo[listq.Page[user.Member]](t, do(e.h, http.MethodGet, as(slug, "/users"), admin, "")).Data; len(m) != 3 {
 		t.Fatalf("a suspended member left the list: %+v", m)
 	}
 	rivalTok := e.login(tRival)

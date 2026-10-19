@@ -97,7 +97,7 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 	key := CacheKeyPrefix + id
 	var res Result
 	if h.Cache != nil && h.Cache.Get(r.Context(), key, &res) {
-		httpx.WriteJSON(w, http.StatusOK, res)
+		httpx.OK(w, http.StatusOK, "", res)
 		return
 	}
 	res, err = h.Run(r.Context(), id)
@@ -112,7 +112,7 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 	if h.Cache != nil {
 		h.Cache.Set(r.Context(), key, res)
 	}
-	httpx.WriteJSON(w, http.StatusOK, res)
+	httpx.OK(w, http.StatusOK, "", res)
 }
 
 // run carries the state of one verification.

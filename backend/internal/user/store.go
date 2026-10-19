@@ -10,6 +10,7 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/dbx"
+	"github.com/kayigmb/chaintrack/backend/internal/listq"
 )
 
 var (
@@ -50,28 +51,27 @@ type Store struct {
 	Pool *pgxpool.Pool
 }
 
-// List returns everyone who belongs or belonged to the organisation, each
-// with their current place: a live scope means active, only a deleted one
-// means suspended.
-// ponytail: plain array, not paged; an organisation's staff is small. Move to
-// listq if member lists grow past a few hundred.
-func (s Store) List(ctx context.Context, orgID string) ([]Member, error) {
-	rows, err := s.Pool.Query(ctx,
-		`SELECT DISTINCT ON (u.id) u.id::text, u.name, u.email::text, r.name,
-		        CASE WHEN us.is_deleted THEN $2 ELSE $3 END, us.created_at
-		 FROM userscope us
-		 JOIN users u ON u.id = us.user_id AND NOT u.is_deleted
-		 JOIN roles r ON r.id = us.role_id
-		 WHERE us.organisation_id = $1::uuid
-		 ORDER BY u.id, us.is_deleted, us.updated_at DESC`, orgID, StatusSuspended, StatusActive)
-	if err != nil {
-		return nil, err
-	}
-	members, err := pgx.CollectRows(rows, pgx.RowToStructByPos[Member])
-	if members == nil {
-		members = []Member{}
-	}
-	return members, err
+// MemberList is what GET /users lets an organisation search and sort by.
+var MemberList = listq.Config{
+	Alias:  "m",
+	Search: []string{"name", "email", "role"},
+	Sort:   []string{"name", "email", "role", "status", listq.ColCreatedAt},
+}
+
+// List returns one page of everyone who belongs or belonged to the
+// organisation, each with their current place: a live scope means active,
+// only a deleted one means suspended. created_at is when they joined.
+func (s Store) List(ctx context.Context, q listq.Query, orgID string) (listq.Page[Member], error) {
+	return listq.Fetch(ctx, s.Pool, q, MemberList,
+		`SELECT m.id::text, m.name, m.email, m.role, m.status, m.created_at`,
+		`FROM (SELECT DISTINCT ON (u.id) u.id, u.name, u.email::text AS email, r.name AS role,
+		              CASE WHEN us.is_deleted THEN $2 ELSE $3 END AS status, us.created_at, false AS is_deleted
+		       FROM userscope us
+		       JOIN users u ON u.id = us.user_id AND NOT u.is_deleted
+		       JOIN roles r ON r.id = us.role_id
+		       WHERE us.organisation_id = $1::uuid
+		       ORDER BY u.id, us.is_deleted, us.updated_at DESC) m`,
+		nil, []any{orgID, StatusSuspended, StatusActive}, pgx.RowToStructByPos[Member])
 }
 
 func (s Store) CreateInvite(ctx context.Context, orgID, email, role, tokenHash, invitedBy string, expires time.Time) (Invite, error) {

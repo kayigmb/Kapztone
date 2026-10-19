@@ -9,7 +9,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [ ] Three clickable flows: coffee, mineral, fraud moments
 - [ ] Review with at least 3 experts; changes logged (log in `docs/design.md` is empty)
 - [ ] Decision column of the design-versus-backend gap table in `docs/design.md`
-- [ ] OpenAPI draft (`backend/api/openapi.yaml` does not exist)
+- [x] OpenAPI draft (`backend/api/openapi.yaml`; response bodies still mostly `object`)
 
 ### Sprint 2 gaps
 - [ ] Deploy contracts to Polygon Amoy (waits on key, faucet funds, RPC URL; steps in `docs/operations.md`)
@@ -21,30 +21,34 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Readable lot code (`RW-KTB-2026-0412`) in place of the uuid
 - [x] Per-action signing step (PIN / device) for issue, handover, transform, certificates
 - [x] Reports, audit log, CSV export
-- [ ] PDF export, saved reports, verification-outcome report
+- [x] PDF export (volume, blocked, audit)
+- [ ] Saved reports, verification-outcome report
 - [x] Retire a passport
 - [x] Required evidence per stage, enforced and recorded
 - [x] Regulator role for resolving flags
 - [x] 2FA recovery codes
 - [x] Capacity used per facility per period, exposed
-- [ ] Retry for failed IPFS pins
+- [x] Retry for failed IPFS pins
 - [ ] nginx in front of the web app, appending the real visitor address (`$proxy_add_x_forwarded_for`); until then a visitor can fake their address
 - [x] Real client address behind the web app (see Pending decisions)
 
 ### Sprint 4 frontend
 - [x] Built: facility registry + register, issue, passport detail, scan, transform, handover (send, list, accept / reject / cancel), issue / revoke certificate, flags and investigations, certificates list, template builder, organisation verification, reports, users, profile
 - [x] Maps (MapLibre + drawing) for facilities
-- [ ] Public origin / route map (needs facility location in the public verification); tables (TanStack Table)
-- [ ] Playwright happy-path tests
+- [x] Public origin map
+- [x] Tables (TanStack Table, server-side)
+- [ ] Route map (journey events carry no location)
+- [x] Playwright happy-path test (coffee: facility → issue → handover → accept → transform → public)
+- [ ] Playwright: certificates, reject / cancel, flags
 - [ ] Verification of a 50-ancestor lot in under 5 s
 - [ ] Visual check of built screens at 390 px and 1280 px, light and dark
 
 ### Sprint 5
-- [ ] `tools/sim`: 300 lots + 90 fraud cases, fixed seed
+- [ ] `tools/sim`: built (300 lots + 90 fraud cases, fixed seed); first run pending
 - [ ] `tools/baseline`: document-based comparison system
 - [ ] k6 load test: 1,000 events/hour
 - [ ] OWASP top-10 review of the API
-- [ ] Medicine template added without code change
+- [x] Medicine template added without code change (`tools/sim/templates/medicine.json`)
 - [ ] nginx and VPS deployment
 - [ ] Tag `v1.0-eval`
 - [ ] Tick PLAN.md §7 checklist (several items already true)
@@ -55,6 +59,73 @@ What has been built and what is left. Every finished piece of work adds an entry
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-19 — One response shape, workspaces, switching without signing in, dev without rate limits
+- **Every JSON answer is `{status, message, data}`** (`httpx.OK / Error / ErrorData`; `WriteJSON` removed). Each change answers with a sentence from its package's `values.go` (`Msg…`); reads send `""`. Details a screen needs ride in `data` (`two_factor_required`, `attempts_left`, the handover difference, the overlapping facility). Files and CSV / PDF downloads are unchanged. OpenAPI: `Envelope` schema.
+- **Messages come from the API, one toast path:** `lib/api.ts` parses the envelope; reads return `data`, writes return `{data, message}`. The QueryClient's `MutationCache` (`app/providers.tsx`) toasts the API's message on success and `problemOf(err)` on failure, unless the screen shows the failure itself (`meta: { inPlace: true }`). Screens' own `toast.success / toast.error` and the frontend's copies of success and refusal sentences are gone; the sign-in's attempts left now come in the API's message. The sim client and the e2e test read the envelope.
+- **Switch organisation without signing in again:** `POST /auth/handoff {slug}` (signed in, members only) makes a one-minute, one-time code bound to that address; the target spends it with `POST /auth/handoff/accept` and gets its own session (`internal/auth/handoff.go`, DB test). The switcher and the new `/handoff` page use it.
+- **Workspace picker:** a member on the bare address (acting for nobody) sees one card per organisation on `/dashboard`, and a sidebar of Workspaces + Profile only (`hasWorkspace` in `lib/dashboard.ts`, tested).
+- **Signed in → dashboard:** `/`, `/forgot` and `/reset` send a signed-in person to `/dashboard` (sign in and sign up already did). Sign out asks first.
+- **Modes:** `DEV=true` runs without rate limits (sign-in, sign-up, PIN); production keeps them. The start-up line logs `mode` and `rate_limits`; `/healthz` answers `{status, mode}`.
+- Fixed the mail test that failed when the dev API shared the database (a deadline in place of a round count).
+- Verified: backend vet + full DB suite (twice), lint (0 errors), build, 66 node tests.
+
+### 2026-10-19 — Confirmations, passwords, live form errors, theme on access pages
+- **Every decision asks first:** one shared `useConfirm()` dialog (`components/chaintrack/confirm.tsx`, mounted in `app/providers.tsx`). Used for approving / rejecting / asking changes of an organisation, saving or removing accreditations, approving, suspending, reinstating and deleting facilities, suspending, reinstating and changing the role of members, taking or letting go of a flag. Irreversible ones use the red button. The facilities screen's own dialog was removed for it.
+- **Passwords:** 8 to 72 characters (was 12; API, form rules, OpenAPI, help texts). Sign-up and the profile password change now ask for the password twice; a mismatch is shown on the second field; only the first is sent.
+- **Forms validate as you go:** every react-hook-form + zod form uses `liveValidation` (`lib/form.ts`): a field's error shows once you leave it and updates on each keystroke until it's right.
+- **Theme menu** on every access page (sign in, sign up, onboarding, reset, invite, lock), top right.
+- Verified: lint (0 errors), build, 64 node tests, backend build and the registration / OpenAPI tests.
+
+### 2026-10-19 — Tables on tablecn, cards on phones, pinned actions, one select
+- **tablecn** installed from its Base UI registry into `components/data-table/` (data table, column header, pagination, view options, skeleton, `use-data-table`, parsers); `@tanstack/react-table` 9.2.6. Unused pieces (toolbar filters, calendar, slider; date-fns and react-day-picker) removed; its few React-compiler lint hits fixed.
+- `ListTable` (one API page) and `ClientTable` (a short list on the page) wrap it with a **Table | Cards** toggle (cards by default on phones), the **View** column menu, and an **actions column always pinned to the end** with icon actions and tooltips. Users (members and platform accounts), templates, the audit log, the volume report and the dashboard's top organisations all use it; hand-written tables are gone.
+- One address scheme for every list, tables and card lists alike: `page`, `perPage`, `sort=name.asc`, `q`, `view` (`lib/list-params.ts`; `apiSort` / `tableSort` in `lib/list.ts`, tested).
+- **One select:** `SelectInput` (shadcn Select) replaces every native `<select>` (list filters and sorts, handover stage, certificate type); the Select trigger now matches the input height. Button gained shadcn's `outline` and `icon` names for shadcn blocks.
+- Verified: lint (0 errors), build, 64 node tests; no native `<select>` left. Not checked in the browser yet (API and web app were stopped); `make e2e` updated for the new stage select, not re-run.
+
+### 2026-10-19 — Senior pass: list kit, marketing home, platform dashboard, logging, certificates scope, PDF, IPFS retry
+- **One way to build a list** (frontend): `useListParams` on nuqs (typed URL state: page, rows per page 10/20/50, search, sort, per-screen filters), `usePaged` + `endpoints.*Page`, `ListBar` / `ListPager`, and `DataTable` on TanStack Table (server-side sort by header click, stacked rows on phones). Every list uses it: users, templates, facilities, handovers, certificates, flags, notifications, verification queue (compact rows now), audit. Tabs, filters and sorts are constants in `lib/consts.ts`; `PageHeader`, `Segmented` and `useThemeTokens` are shared.
+- **Buttons and sizes:** every action is `Button` / `buttonVariants` (the reports "Download CSV" was hand-styled and stayed big); `size="scan"` only on the camera sheet. No arbitrary pixel classes left outside the public page art (Tailwind scale, `shadow-selected` token).
+- **Certificates** (backend + screen): an organisation lists only certificates it issued or that are about its lots and facilities (`?scope=issued|about`); the platform sees all and can open the page. Before, any organisation could list every certificate. Tests for each side.
+- **Marketing home at `/`** from the supplied design, rebuilt in our tokens and components, with the claims the product doesn't back removed (offline sync, other languages, help centre, seal and certificate numbers, flag severity, implementation team); the lot-code box opens the real verification. The app's home moved to **`/dashboard`**.
+- **Platform dashboard:** `GET /stats` (totals by status, 30-day activity, lots by commodity, top organisations, ledger sealing backlog; one read-only snapshot) and charts (Recharts; colours validated for colour-blind readers; a table view under every chart).
+- **Logging:** `internal/logx` (slog, JSON or text). Request ids from the web app through the API and back, one access line per request with route, status, duration, user, organisation and the server error, panics with stacks. Every `log.Printf` replaced with structured fields; the relayer logs each sealed record. 5xx messages in the app quote the reference.
+- **PDF export:** `format=pdf` on volume, blocked and audit (go-pdf/fpdf), buttons beside CSV on the reports screen.
+- **IPFS retry:** migration 000019; failed pins retried with exponential back-off (1 min to 6 h, 10 tries), claimed with SKIP LOCKED.
+- **Also fixed:** `TestFacilityRulesAndReports` no longer fails after midnight (the test wrote a local date the API reads as UTC).
+- Verified: frontend lint (0 errors), build, node tests; backend vet, logx unit test, DB tests for scopes, stats, PDF, retry, users, OpenAPI drift + Redocly. Not verified in the browser against the running API (it needs a restart for all of this), and `make e2e` not re-run.
+
+### 2026-10-19 — UI pass: one page frame, smaller controls, server-side lists, notifications page, shell
+From the review of the running app.
+- **One page frame:** every screen's `<main>` is the same full-width `grid w-full content-start gap-6 p-4 lg:p-8` (issue, transform, scan, profile, passport and handover pages were centred and narrower).
+- **Smaller controls:** buttons and inputs 40 px on phones, 36 px from `lg`, no button shadow; `min-h-tap` 40 px, `h-tap-scan` 48 px (was 44 / 56).
+- **Lists paged, searched and sorted by the API** (10 compact rows a page, search box, sort, pager; state in the address): facilities (type filter), handovers (incoming / outgoing / done counted by the API), certificates (issued by you), flags (open / resolved), templates, verification queue (per tab), users, audit log, notifications; issue passport's template and facility pickers search and page too (6 a page). Facility rows are one line with a small capacity bar; suspend / reinstate / delete moved into the facility's detail.
+- **Backend for it:** `GET /handovers?box=incoming|outgoing|done`, `GET /facilities?kind=`, `GET /attestations?issuer_id=`, `GET /flags?status=resolved`, `GET /orgs?status=a,b&kind=a,b` (comma-separated), `GET /users` paged through listq for organisations and the platform. Tests for each; OpenAPI updated.
+- **Notifications page** `/notifications` (all / unread, search, pages). Opening a notification, here or in the bell, marks it read and goes to what it's about (handover, flag, passport, organisation; a certificate opens its lot or facility). `lib/notifications.ts`, tested. Nav item; the bell shows the latest six and "View all".
+- **Shell:** sidebar brand row and top bar both 64 px so their borders meet; the organisation card moved to the bottom of the sidebar; Profile is a nav item under Manage; the person's initials sit at the right of the top bar (to Profile); the theme button is a Light / Dark / System menu.
+- **Public page:** the origin card shows the facility on a map (the API already sent its location; the page now keeps it). The design gap row was wrong and is removed.
+- Verified: lint (0 errors), build, 63 node tests; backend vet, the touched DB tests and the OpenAPI test pass. Not verified in the browser: the API on :8080 was started before these changes and must be restarted, then `make e2e` (the spec now searches the issue pickers).
+- Known (not from this change): `TestFacilityRulesAndReports` fails between midnight and 02:00 CAT (a "yesterday" licence date in local time is still today in UTC), and `TestCommodityChainsEndToEnd` sometimes finds notifications not yet e-mailed.
+
+### 2026-10-19 — Simulation harness, OpenAPI draft, medicine template
+- **`tools/sim`** (`make sim`): 3 chains (coffee, tin, medicine) × 100 lots, 20 facilities each, fixed seed; 90 fraud cases (F1–F6, 5 per chain per type) as API attempts (refused = prevented) or insider SQL after sealing (verification not Verified = detected); every legitimate lot verified for false alarms; CSV + summary. Mechanisms in `tools/README.md`. Unit tests: plan reproducible per seed, 5 per type, outcome rules. **Not run yet** (first run pending).
+- **Medicine template** added as a data file (`tools/sim/templates/medicine.json`: manufacturer → distributor → pharmacy, unit box, GMP certificate and batch release as evidence, zero weight tolerance). No code change anywhere.
+- **OpenAPI draft** `backend/api/openapi.yaml` (3.1): every route with its permission (`x-permission`), public routes, the signing PIN header, list parameters, request bodies for the main inputs; response bodies mostly `object` for now. Valid (Redocly lint, style rules aside). `backend/tests/openapi_test.go` fails when a route, its permission or its public status drifts from `server.go`.
+- Verified: sim `go vet` + tests, backend `go vet` + OpenAPI test.
+
+### 2026-10-18 — Playwright happy path, and the bugs it found
+- `make e2e` → `frontend/e2e/coffee.spec.ts` (Playwright 1.63, Chromium) against the running stack. Setup through the API: a test template, a producer and a processor registered, documents uploaded, verified, PINs set. Then through the UI: register a farm plot (pin on the map) → platform approves → issue 1,000 kg → hand over to the washing station → it weighs and accepts → transform into 180 kg → the public page of the new lot shows a verdict that isn't Failed (Verified needs the chain and relayer; without them it's Warning). Runs in about 7 s.
+- Bugs fixed on the way:
+  - **Transform** never worked: the API answers the transform with its outputs inside it, the page expected a bare list ("answered in a way this page doesn't understand" after the lot was already made).
+  - **Maximum yield** units: the API holds a fraction (0.2), every screen showed and took a percentage, so a 20% stage read as 0.2% and blocked every transform, and the template builder saved 20 as 2,000%. Converted once in `lib/api.ts` (`yieldToPct` / `yieldToFraction` in `lib/schemas/template.ts`, tested).
+  - **Accepting a handover**: the "Handover complete" confirmation vanished as soon as the handover refreshed. It now shows from the handover's status.
+  - **Issue**: required evidence was looked up under a stage named `ISSUE` (an event, not a stage key), so the checklist was always empty. **Transform** listed every stage except one keyed `ISSUE`; it now lists the stages that allow TRANSFORM, labelled like everywhere else ("Washing station").
+  - **Template builder** started new templates with stage keys `ISSUE` / `HANDOVER`, which the API refuses; now `origin` / `transport`.
+  - A leftover "Current holder:" with nothing after it on transform input rows, removed.
+- Known: each run leaves 2 organisations and 1 template in the dev database (names carry the run id). Sign-ups go through a random `X-Forwarded-For` to stay under 10 per hour; that stops working once nginx sets the real address.
+- Not covered yet: certificates (needs a third organisation and accreditation), reject / cancel, flags.
+- Verified: e2e green 3 runs in a row, lint (0 errors), build, 60 node tests.
 
 ### 2026-10-18 — Facility maps, approval, licence (drafts 3a, 3b)
 - `/facilities/new`: location first. Drop pin | Draw boundary on a MapLibre map (OpenFreeMap street style, no key), undo / clear, centre and corner readout, GPS sets the pin. Licence end date and licence document (uploaded right after the facility is created). "Submit for approval".

@@ -44,6 +44,8 @@ const (
 const (
 	ParamStatus    = "status"
 	ParamSubjectID = "subject_id"
+	ParamIssuerID  = "issuer_id"
+	ParamScope     = "scope"
 )
 
 const MaxReasonLen = 1000
@@ -58,4 +60,19 @@ const (
 
 	MsgNotifyIssued  = "A certificate was issued for something your organisation holds."
 	MsgNotifyRevoked = "A certificate about something your organisation holds was revoked."
+)
+
+// What an organisation lists (?scope=): certificates it issued, or ones about
+// its own lots and facilities. Unset means both. The platform sees every one.
+const (
+	ScopeIssued = "issued"
+	ScopeAbout  = "about"
+)
+
+var Scopes = []string{ScopeIssued, ScopeAbout}
+
+// Confirmations the app shows as they are.
+const (
+	MsgIssued  = "Certificate issued. It shows on the lot's public verification."
+	MsgRevoked = "Certificate revoked. The lot's public page shows it as revoked."
 )

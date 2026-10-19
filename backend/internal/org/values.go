@@ -77,3 +77,18 @@ const (
 	MsgDuplicateType      = "a type is listed more than once"
 	MsgAccreditationDates = "valid_from and valid_to must be dates (2026-01-31) or RFC 3339 timestamps, with valid_to after valid_from"
 )
+
+// Confirmations the app shows as they are.
+const (
+	MsgRegistered            = "Account created. Upload your documents so we can verify the organisation."
+	MsgAccreditationsSaved   = "Accreditations saved."
+	MsgAccreditationsRemoved = "Accreditations removed."
+	MsgDocumentUploaded      = "Document uploaded."
+)
+
+// reviewMessage confirms a review decision.
+var reviewMessage = map[string]string{
+	StatusVerified:         "Organisation approved. It can trade now.",
+	StatusRejected:         "Organisation rejected. It sees your note.",
+	StatusChangesRequested: "Changes requested. The organisation sees your note.",
+}

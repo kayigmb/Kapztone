@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -34,8 +33,7 @@ func TestHealthz(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ping := func(context.Context) error { return tc.pingErr }
 			rec := do(server.NewRouter(deps(ping, a)), http.MethodGet, "/healthz", "", "")
-			var got struct{ Status string }
-			json.Unmarshal(rec.Body.Bytes(), &got)
+			got := decodeTo[struct{ Status string }](t, rec)
 			if rec.Code != tc.wantCode || got.Status != tc.want {
 				t.Fatalf("got %d %q, want %d %q", rec.Code, got.Status, tc.wantCode, tc.want)
 			}
@@ -171,8 +169,7 @@ func TestLogin(t *testing.T) {
 	if ok.Code != http.StatusOK {
 		t.Fatalf("login status = %d, body %s", ok.Code, ok.Body)
 	}
-	var out struct{ Token string }
-	if err := json.Unmarshal(ok.Body.Bytes(), &out); err != nil || out.Token == "" {
+	if out := decodeTo[struct{ Token string }](t, ok); out.Token == "" {
 		t.Fatalf("no token in %s", ok.Body)
 	}
 	if strings.Contains(ok.Body.String(), "password") {
@@ -229,11 +226,10 @@ func TestAccessControl(t *testing.T) {
 	// Naming an organisation the user is not in is not an error by itself:
 	// they are signed in, acting for nobody, with no permissions.
 	me := do(fakeRouter(a), http.MethodGet, orgURL("rival", "/me"), token, "")
-	var who struct {
+	who := decodeTo[struct {
 		Organisation *auth.Organisation
 		Permissions  []string
-	}
-	json.Unmarshal(me.Body.Bytes(), &who)
+	}](t, me)
 	if me.Code != http.StatusOK || who.Organisation != nil || len(who.Permissions) != 0 {
 		t.Fatalf("foreign organisation gave %d %s", me.Code, me.Body)
 	}
@@ -277,10 +273,10 @@ func TestEveryRouteIsGated(t *testing.T) {
 	h := fakeRouter(a)
 
 	public := []string{"GET /healthz", "POST /auth/login", "POST /orgs", "GET /verify/{id}", "POST /auth/logout",
-		"POST /invites/{token}/accept", "POST /auth/password/forgot", "POST /auth/password/reset", "POST /auth/lock"}
+		"POST /invites/{token}/accept", "POST /auth/password/forgot", "POST /auth/password/reset", "POST /auth/lock", "POST /auth/handoff/accept"}
 	signedIn := []string{"GET /me", "POST /auth/2fa/setup", "POST /auth/2fa/enable", "POST /auth/2fa/disable",
 		"POST /auth/2fa/recovery", "POST /auth/pin", "GET /notifications", "POST /notifications/{id}/read",
-		"PUT /me", "GET /me/organisations", "POST /auth/password", "POST /auth/sessions/revoke"}
+		"PUT /me", "GET /me/organisations", "POST /auth/password", "POST /auth/sessions/revoke", "POST /auth/handoff"}
 	idInPath := regexp.MustCompile(`\{[^}]+\}`)
 
 	for _, rt := range server.Routes(deps(noPing, a)) {

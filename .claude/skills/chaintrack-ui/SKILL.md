@@ -32,7 +32,7 @@ ChainTrack gives every shipment a digital product passport: where goods came fro
 - Icons: `lucide-react`, mapped in `reference/icons.md`. Default `strokeWidth={2}`, `aria-hidden` when next to text.
 - **UI primitives: shadcn/ui** (Base UI underneath). Add components with `npx shadcn add button dialog drawer select checkbox tabs tooltip sonner form table`. They go in `components/ui/` and you own and edit them.
   - When `shadcn init` touches `app/globals.css`, keep ChainTrack's theme: delete any colour variables shadcn adds (`--background`, `--primary`, … in `:root`/`.dark`) and keep the "shadcn/ui colour names → ChainTrack tokens" block. shadcn classes like `bg-background`, `text-muted-foreground` and `ring-ring` then follow ChainTrack in light and dark.
-  - Restyle each added component to match `reference/components.md` (heights, radii, variants). For example, Button gets `min-h-tap`, `rounded-md`, and the variants primary / secondary / ghost / danger-soft / danger-outline / danger.
+  - Restyle each added component to match `reference/components.md` (heights, radii, variants). For example, Button gets `h-10 lg:h-9`, `rounded-md`, and the variants primary / secondary / ghost / danger-soft / danger-outline / danger.
   - Don't use MUI, Chakra, Mantine or any other styled component library.
 - **Domain components** (VerdictBadge, PassportCard, JourneyTimeline, GenealogyTree, meters, CertificateTile, SignatureChip…) are custom, in `components/chaintrack/`, built on the primitives above. Use `cn()` from shadcn for class merging.
 - **Other libraries:** react-hook-form + zod (forms), TanStack Table (data tables), MapLibre GL via `react-map-gl` (maps), `qrcode` (labels), `@zxing/browser` (scanning), Sonner (toasts).
@@ -44,12 +44,12 @@ ChainTrack gives every shipment a digital product passport: where goods came fro
 
 ## Hard rules (never break these)
 
-1. **Only theme tokens.** Use `bg-surface`, `text-ink-muted`, `border-border-strong`, `p-4`, `rounded-lg`, etc. No hex values, no arbitrary colours (`bg-[#…]`), no Tailwind default palette (`text-red-500`; it is disabled in the theme). No `dark:` colour variants: tokens already switch.
+1. **Only theme tokens and the Tailwind scale.** No arbitrary pixel values (`text-[22px]` → `text-2xl`, `size-[18px]` → `size-4.5`); only the public page art keeps them. Use `bg-surface`, `text-ink-muted`, `border-border-strong`, `p-4`, `rounded-lg`, etc. No hex values, no arbitrary colours (`bg-[#…]`), no Tailwind default palette (`text-red-500`; it is disabled in the theme). No `dark:` colour variants: tokens already switch.
 2. **Status = icon + word, never colour alone.** Verified → `CircleCheck` + "Verified"; Warning → `TriangleAlert` + "Warning"; Failed → `OctagonX` + "Failed"; Awaiting → `Clock` + "Awaiting …". Verified is the same teal as the brand, so it is **never** shown as colour alone: always the icon and the word.
 3. **Status colours only mean status.** Teal `primary` = brand, primary actions, selection. Teal `verified` = verified/signed/valid/within limit. Amber `warning` = warning/expiring/near limit. Red `danger` = failed/altered/rejected/revoked/over limit. Slate `pending` = awaiting/in transit. Navy is the frame (sidebar, hero, brand panel), never a status.
 4. **Hide the blockchain.** Say "Verified", "Signed by both parties", "Records unchanged since signing". Hashes, block numbers, ledger links and the words blockchain/crypto/wallet/token/on-chain/smart contract appear **only** inside the collapsed "Technical details" disclosure.
 5. **Mono for data.** Lot codes, passport IDs, licence and certificate numbers, quantities and hashes use `font-mono` (`code`, `fig` helpers). Never truncate a lot code.
-6. **Readable minimums.** Text never below 12 px (`text-xs`); body 14 px. Every interactive element ≥ 44 px (`min-h-tap`). Scanning, handover, quick actions, the phone tab bar and phone primary actions are 56 px (`h-tap-scan`).
+6. **Readable minimums.** Text never below 12 px (`text-xs`); body 14 px. Controls 40 px on phones, 36 px from `lg` (`h-10 lg:h-9`; `min-h-tap` = 40 px). Scanning, handover, the phone tab bar and phone primary actions are 48 px (`h-tap-scan`, back to 36 px from `lg`).
 7. **Phone first.** Design at 390 px, then add `md:`/`lg:`. Side gutter 16 px on phones. No horizontal page scroll; tables collapse to stacked rows.
 8. **Two signatures.** A handover is complete only when sender **and** receiver have signed. Never show "Signed by both parties" before that.
 9. **Signed records are never edited.** No edit buttons on signed records; corrections create a new linked record.
@@ -77,5 +77,6 @@ ChainTrack gives every shipment a digital product passport: where goods came fro
 - [ ] Every status has an icon and a word
 - [ ] Lot codes and quantities in mono; units always shown (`1,200 kg`)
 - [ ] Works at 390 px and 1280 px, in light and dark
-- [ ] Text ≥ 12 px; tap targets ≥ 44 px (56 px on scan/handover)
+- [ ] Text ≥ 12 px; controls 36–40 px (48 px on scan/handover/phone tabs)
+- [ ] Same page frame as every screen (`grid w-full content-start gap-6 p-4 lg:p-8`); lists paged by the API, 10 compact rows, `ListToolbar` + `Pager`
 - [ ] Copy follows `content.md` (verbs on buttons, numbers with units, no blockchain words outside Technical details)

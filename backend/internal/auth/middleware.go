@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 type ctxKey int
@@ -95,6 +96,7 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
+		logx.SetUser(r.Context(), userID)
 		user, err := a.Store.ActiveUser(r.Context(), userID)
 		if errors.Is(err, ErrNotFound) {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
@@ -126,6 +128,9 @@ func (a *Auth) ResolveOrg(next http.Handler) http.Handler {
 		case err != nil:
 			httpx.ServerError(w, "resolve organisation", err)
 			return
+		}
+		if scope.Organisation != nil {
+			logx.SetOrg(r.Context(), scope.Organisation.Slug)
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKey, scope)))
 	})
@@ -198,10 +203,14 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
 		return
 	}
-	fail := func(body map[string]any) {
+	fail := func(msg string, details map[string]any) {
 		a.Limiter.record(ctx, LoginRate, in.Email, ip)
-		body["attempts_left"] = a.Limiter.left(ctx, LoginRate, in.Email, ip)
-		httpx.WriteJSON(w, http.StatusUnauthorized, body)
+		if a.Limiter != nil {
+			left := a.Limiter.left(ctx, LoginRate, in.Email, ip)
+			details["attempts_left"] = left
+			msg += " " + MsgAttemptsLeft(left)
+		}
+		httpx.ErrorData(w, http.StatusUnauthorized, msg, details)
 	}
 
 	user, err := a.Store.UserByEmail(ctx, in.Email)
@@ -214,7 +223,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		hash = dummyHash
 	}
 	if !CheckPassword(hash, in.Password) || err != nil {
-		fail(map[string]any{"error": MsgBadCredentials})
+		fail(MsgBadCredentials, map[string]any{})
 		return
 	}
 
@@ -236,7 +245,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 			if strings.TrimSpace(in.Code) == "" {
 				msg = MsgTwoFactorCode
 			}
-			fail(map[string]any{"error": msg, "two_factor_required": true})
+			fail(msg, map[string]any{"two_factor_required": true})
 			return
 		}
 	}
@@ -251,14 +260,14 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Browsers keep the token in the cookie. It is also returned for callers
 	// that are not browsers.
-	a.signIn(w, user.ID, user.TokenVersion, ttl)
+	a.signIn(w, user.ID, user.TokenVersion, ttl, MsgSignedIn)
 }
 
 // Logout clears the session cookie. The page cannot do it: scripts have no
 // access to the cookie. It needs no sign-in, since it only removes one.
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, a.sessionCookie("", -1))
-	w.WriteHeader(http.StatusNoContent)
+	httpx.OK(w, http.StatusOK, MsgSignedOut, nil)
 }
 
 // Me reports who is signed in and what they may do in the acting organisation.
@@ -273,7 +282,7 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+	httpx.OK(w, http.StatusOK, "", map[string]any{
 		"user":         map[string]string{"id": full.ID, "email": full.Email, "name": full.Name},
 		"organisation": scope.Organisation,
 		"role":         scope.Role,

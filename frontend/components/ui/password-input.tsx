@@ -16,7 +16,10 @@ function PasswordInput({ className, ...props }: React.ComponentProps<"input">) {
         {...props}
         type={shown ? "text" : "password"}
         // pr-12 keeps typed text clear of the button; the browser's own reveal icon (Edge) is hidden.
-        className={cn("pr-12 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden", className)}
+        className={cn(
+          "pr-12 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden",
+          className,
+        )}
       />
       <button
         type="button"
@@ -26,7 +29,11 @@ function PasswordInput({ className, ...props }: React.ComponentProps<"input">) {
         disabled={props.disabled}
         className="absolute inset-y-0 right-0 grid w-tap place-items-center rounded-r-md text-ink-muted hover:text-ink disabled:opacity-50"
       >
-        {shown ? <EyeOff className="size-5" aria-hidden /> : <Eye className="size-5" aria-hidden />}
+        {shown ? (
+          <EyeOff className="size-5" aria-hidden />
+        ) : (
+          <Eye className="size-5" aria-hidden />
+        )}
       </button>
     </div>
   );

@@ -126,6 +126,15 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 	if pg := decodeTo[listq.Page[facility.Facility]](t, rec); len(pg.Data) != 1 || pg.Data[0].CapacityUsed != 500_000 {
 		t.Fatalf("facility list: %+v", pg.Data)
 	}
+	byKind := func(kind string) int {
+		rec := do(e.h, http.MethodGet, as(w.prodSlug, "/facilities?kind="+kind), w.prodTok, "")
+		want(t, "facilities of kind "+kind, rec, http.StatusOK)
+		return decodeTo[listq.Page[facility.Facility]](t, rec).Total
+	}
+	if byKind(w.plot.Kind) != 1 || byKind(facility.KindWarehouse) != 0 {
+		t.Fatal("the kind filter doesn't filter")
+	}
+	want(t, "unknown kind", do(e.h, http.MethodGet, as(w.prodSlug, "/facilities?kind=castle"), w.prodTok, ""), http.StatusBadRequest)
 
 	// A transform's outputs are counted by the transforming organisation.
 	handover := func(id string) {

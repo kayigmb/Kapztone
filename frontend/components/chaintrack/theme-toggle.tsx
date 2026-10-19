@@ -2,27 +2,65 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useState } from "react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { copy, themes, type ThemeChoice } from "@/lib/consts";
+import { cn } from "@/lib/utils";
 
 const icon = { system: Monitor, light: Sun, dark: Moon };
+const t = copy.shell;
 
-/** Cycles device → light → dark. The shell only renders after sign-in has loaded, so the stored choice is known. */
+/** Light / Dark / System menu. The shell only renders after sign-in has loaded, so the stored choice is known. */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const now = (themes as readonly string[]).includes(theme ?? "") ? (theme as ThemeChoice) : "system";
-  const next = themes[(themes.indexOf(now) + 1) % themes.length];
+  const [open, setOpen] = useState(false);
+  const now = (themes as readonly string[]).includes(theme ?? "")
+    ? (theme as ThemeChoice)
+    : "system";
   const Icon = icon[now];
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<button type="button" onClick={() => setTheme(next)} aria-label={copy.shell.theme[now]} />}
-        className="grid size-tap place-items-center rounded-md border border-border text-ink-muted hover:bg-surface-sunken hover:text-ink"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        aria-label={`${t.themeMenu}: ${t.theme[now]}`}
+        className="grid size-9 place-items-center rounded-md border border-border text-ink-muted hover:bg-surface-sunken hover:text-ink"
       >
-        <Icon className="size-5" aria-hidden />
-      </TooltipTrigger>
-      <TooltipContent>{copy.shell.theme[now]}</TooltipContent>
-    </Tooltip>
+        <Icon className="size-4.5" aria-hidden />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 gap-0.5 p-1">
+        {themes.map((choice) => {
+          const ChoiceIcon = icon[choice];
+          const on = choice === now;
+          return (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={on}
+              onClick={() => {
+                setTheme(choice);
+                setOpen(false);
+              }}
+              className={cn(
+                "grid h-9 grid-cols-[auto_--spacing(4)_1fr] items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-surface-sunken",
+                on
+                  ? "bg-surface-sunken font-semibold text-primary"
+                  : "text-ink",
+              )}
+            >
+              <span
+                className={cn("size-1.5 rounded-full", on && "bg-primary")}
+                aria-hidden
+              />
+              <ChoiceIcon className="size-4" aria-hidden />
+              {t.theme[choice]}
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
   );
 }

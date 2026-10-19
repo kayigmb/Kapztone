@@ -328,7 +328,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	over := issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: left + 5})
 	want(t, "over capacity", over, http.StatusConflict)
 	wantMsg := passport.CapacityError{Requested: left + 5, Available: left, Unit: plot.CapacityUnit}.Error()
-	if got := decodeTo[struct{ Error string }](t, over).Error; got != wantMsg || !strings.Contains(got, fmt.Sprint(left)) {
+	if got := errorOf(t, over); got != wantMsg || !strings.Contains(got, fmt.Sprint(left)) {
 		t.Fatalf("capacity message = %q, want %q", got, wantMsg)
 	}
 	want(t, "exactly the rest", issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: left}), http.StatusCreated)

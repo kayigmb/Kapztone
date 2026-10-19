@@ -194,9 +194,8 @@ func TestFacilityFlow(t *testing.T) {
 	rec = create(admin, acmeSlug, plotAt)
 	want(t, "overlapping own facility", rec, http.StatusConflict)
 	if got := decodeTo[struct {
-		Error      string  `json:"error"`
 		FacilityID *string `json:"facility_id"`
-	}](t, rec); got.Error != facility.MsgOverlaps(plot.Name) || got.FacilityID == nil || *got.FacilityID != plot.ID {
+	}](t, rec); errorOf(t, rec) != facility.MsgOverlaps(plot.Name) || got.FacilityID == nil || *got.FacilityID != plot.ID {
 		t.Fatalf("overlap answer: %s", rec.Body)
 	}
 	rec = create(rivalAdmin, rivalSlug, plotAt)
@@ -306,7 +305,7 @@ func TestFacilityFlow(t *testing.T) {
 
 	// Delete hides the facility but keeps the row.
 	want(t, "another organisation deletes", do(e.h, http.MethodDelete, as(rivalSlug, one), rivalAdmin, ""), http.StatusNotFound)
-	want(t, "delete", do(e.h, http.MethodDelete, as(acmeSlug, one), admin, ""), http.StatusNoContent)
+	want(t, "delete", do(e.h, http.MethodDelete, as(acmeSlug, one), admin, ""), http.StatusOK)
 	want(t, "deleted facility", do(e.h, http.MethodGet, as(acmeSlug, one), admin, ""), http.StatusNotFound)
 	want(t, "delete twice", do(e.h, http.MethodDelete, as(acmeSlug, one), admin, ""), http.StatusNotFound)
 	if n := total(admin, list); n != 1 {

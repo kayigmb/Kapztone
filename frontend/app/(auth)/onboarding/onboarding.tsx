@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Clock, WifiOff } from "lucide-react";
 
-import { SignOutButton } from "@/app/sign-out-button";
+import { SignOutButton } from "@/components/chaintrack/sign-out-button";
 import { Notice } from "@/components/chaintrack/notice";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
@@ -20,55 +20,104 @@ const t = copy.onboarding;
 // Steps 3 and 4 of onboarding (screens.md §03): upload documents, then wait for the review.
 export function Onboarding() {
   const me = useMeGuard((me) =>
-    !me ? routes.signin : !me.organisation || me.organisation.status === orgStatus.verified ? routes.home : undefined);
+    !me
+      ? routes.signin
+      : !me.organisation || me.organisation.status === orgStatus.verified
+        ? routes.home
+        : undefined,
+  );
   const orgId = me.ready ? me.data!.organisation!.id : "";
-  const org = useQuery({ queryKey: queryKeys.org(orgId), queryFn: () => endpoints.org(orgId), enabled: !!orgId });
-  const docs = useQuery({ queryKey: queryKeys.orgDocuments(orgId), queryFn: () => endpoints.documents(orgId), enabled: !!orgId });
+  const org = useQuery({
+    queryKey: queryKeys.org(orgId),
+    queryFn: () => endpoints.org(orgId),
+    enabled: !!orgId,
+  });
+  const docs = useQuery({
+    queryKey: queryKeys.orgDocuments(orgId),
+    queryFn: () => endpoints.documents(orgId),
+    enabled: !!orgId,
+  });
 
   const failed = me.error ?? org.error ?? docs.error;
   if (failed) {
-    return <PageState icon={WifiOff} tone="danger" title={copy.errors.loadTitle}
-      retry={() => { me.refetch(); org.refetch(); docs.refetch(); }}>{problemOf(failed)}</PageState>;
+    return (
+      <PageState
+        icon={WifiOff}
+        tone="danger"
+        title={copy.errors.loadTitle}
+        retry={() => {
+          me.refetch();
+          org.refetch();
+          docs.refetch();
+        }}
+      >
+        {problemOf(failed)}
+      </PageState>
+    );
   }
-  if (!org.data || !docs.data) return <Loading className="mx-auto max-w-xl px-4 py-8" />;
+  if (!org.data || !docs.data)
+    return <Loading className="mx-auto max-w-xl px-4 py-8" />;
 
   const o = org.data;
   const documents = docs.data;
   const missing = missingDocuments(documents);
   const complete = missing.length === 0;
-  const sentBack = o.status === orgStatus.rejected || o.status === orgStatus.changesRequested;
+  const sentBack =
+    o.status === orgStatus.rejected || o.status === orgStatus.changesRequested;
   const latest = documents.at(-1);
 
   // What happens, in order; the first unfinished line is where things stand.
   const progress = [
     { name: t.progress.account, done: true },
-    { name: t.progress.documents, done: complete, note: complete ? undefined : t.progress.stillNeeded(missing.map((m) => m.label.toLowerCase()).join(", ")) },
-    { name: t.progress.registry, done: false, note: complete ? t.progress.registryNote : undefined },
+    {
+      name: t.progress.documents,
+      done: complete,
+      note: complete
+        ? undefined
+        : t.progress.stillNeeded(
+            missing.map((m) => m.label.toLowerCase()).join(", "),
+          ),
+    },
+    {
+      name: t.progress.registry,
+      done: false,
+      note: complete ? t.progress.registryNote : undefined,
+    },
     { name: t.progress.approval, done: false, note: t.progress.approvalNote },
   ];
   const now = progress.findIndex((p) => !p.done);
   const waiting = complete && !sentBack;
 
   return (
-    <main className="mx-auto grid w-full max-w-[540px] gap-6">
+    <main className="mx-auto grid w-full max-w-135 gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-2">
           <span className="eyebrow text-primary">{t.eyebrow}</span>
-          <h1 className="text-page">{waiting ? t.pendingTitle : t.uploadTitle}</h1>
-          <p className="text-sm text-ink-muted">{waiting ? t.pendingSub(o.name) : t.uploadSub}</p>
+          <h1 className="text-page">
+            {waiting ? t.pendingTitle : t.uploadTitle}
+          </h1>
+          <p className="text-sm text-ink-muted">
+            {waiting ? t.pendingSub(o.name) : t.uploadSub}
+          </p>
         </div>
         <SignOutButton />
       </header>
 
-      <Stepper steps={copy.signup.steps} current={complete ? 3 : 2} error={o.status === orgStatus.rejected} />
+      <Stepper
+        steps={copy.signup.steps}
+        current={complete ? 3 : 2}
+        error={o.status === orgStatus.rejected}
+      />
 
       {o.status === orgStatus.rejected ? (
         <Notice kind="blocking">
-          <strong>{t.rejected(o.name)}</strong> {o.review_reason ?? t.noReason} {t.uploadAgain}
+          <strong>{t.rejected(o.name)}</strong> {o.review_reason ?? t.noReason}{" "}
+          {t.uploadAgain}
         </Notice>
       ) : o.status === orgStatus.changesRequested ? (
         <Notice kind="warning">
-          <strong>{t.changesRequested}</strong> {o.review_reason ?? t.noReason} {t.uploadAgain}
+          <strong>{t.changesRequested}</strong> {o.review_reason ?? t.noReason}{" "}
+          {t.uploadAgain}
         </Notice>
       ) : (
         <Notice kind="warning">
@@ -82,18 +131,38 @@ export function Onboarding() {
             <span className="grid size-14 place-items-center rounded-full bg-pending-soft text-pending">
               <Clock className="size-7" aria-hidden />
             </span>
-            {latest && <StatusChip tone="pending" icon={Clock}>{t.submitted(formatDateTime(latest.created_at))}</StatusChip>}
+            {latest && (
+              <StatusChip tone="pending" icon={Clock}>
+                {t.submitted(formatDateTime(latest.created_at))}
+              </StatusChip>
+            )}
           </div>
           <ol className="grid gap-3">
             {progress.map((p, i) => (
-              <li key={p.name} className="grid grid-cols-[24px_1fr] gap-x-3">
-                <span className={cn("grid size-6 place-items-center rounded-full border-2",
-                  p.done ? "border-verified bg-verified text-on-verified" : i === now ? "border-primary" : "border-border-strong")}>
+              <li key={p.name} className="grid grid-cols-[auto_1fr] gap-x-3">
+                <span
+                  className={cn(
+                    "grid size-6 place-items-center rounded-full border-2",
+                    p.done
+                      ? "border-verified bg-verified text-on-verified"
+                      : i === now
+                        ? "border-primary"
+                        : "border-border-strong",
+                  )}
+                >
                   {p.done && <Check className="size-4" aria-hidden />}
                 </span>
                 <div>
-                  <p className={cn(i === now ? "font-semibold" : !p.done && "text-ink-muted")}>{p.name}</p>
-                  {p.note && i >= now && <p className="text-small text-ink-muted">{p.note}</p>}
+                  <p
+                    className={cn(
+                      i === now ? "font-semibold" : !p.done && "text-ink-muted",
+                    )}
+                  >
+                    {p.name}
+                  </p>
+                  {p.note && i >= now && (
+                    <p className="text-small text-ink-muted">{p.note}</p>
+                  )}
                 </div>
               </li>
             ))}

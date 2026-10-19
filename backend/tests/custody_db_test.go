@@ -17,6 +17,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/audit"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
+	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
@@ -105,6 +106,19 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	rec = handoverForm(e, w.prodTok, start, fields, photoA, photoB)
 	want(t, "partial handover", rec, http.StatusCreated)
 	h := decodeTo[passport.Handover](t, rec)
+
+	// The boxes each side sees it in (?box=), and a box that doesn't exist.
+	boxed := func(tok, slug, box string) int {
+		rec := do(e.h, http.MethodGet, as(slug, "/handovers?box="+box), tok, "")
+		want(t, "handovers in "+box, rec, http.StatusOK)
+		return decodeTo[listq.Page[passport.Handover]](t, rec).Total
+	}
+	if boxed(w.procTok, w.procSlug, passport.BoxIncoming) != 1 || boxed(w.prodTok, w.prodSlug, passport.BoxOutgoing) != 1 ||
+		boxed(w.prodTok, w.prodSlug, passport.BoxIncoming) != 0 || boxed(w.procTok, w.procSlug, passport.BoxDone) != 0 {
+		t.Fatal("a waiting handover is in the wrong box")
+	}
+	want(t, "unknown box", do(e.h, http.MethodGet, as(w.procSlug, "/handovers?box=inbox"), w.procTok, ""), http.StatusBadRequest)
+
 	if h.Quantity != 400 || h.ChildPassportID == nil || *h.ChildPassportID == lot.ID || h.PassportID != *h.ChildPassportID ||
 		h.SplitFrom == nil || *h.SplitFrom != lot.ID || h.Location == nil || h.Location.Lat != -1.95 || len(h.Photos) != 2 ||
 		h.TemplateVersion == nil || *h.TemplateVersion != 1 {

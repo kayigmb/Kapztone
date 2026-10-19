@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/smtp"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 // Mailer sends the e-mail copy of each notification to the organisation's
@@ -100,7 +101,7 @@ func send(addr string, a smtp.Auth, from string, to []string, msg []byte, requir
 func (m *Mailer) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		if err := m.SendPending(ctx); err != nil {
-			log.Printf("mailer: %v (will retry)", err)
+			logx.From(ctx).Warn("mailer: will retry", logx.KeyError, err)
 		}
 		select {
 		case <-ctx.Done():

@@ -82,8 +82,24 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ServerError(w, "register organisation", err)
 	default:
-		httpx.WriteJSON(w, http.StatusCreated, o)
+		httpx.OK(w, http.StatusCreated, MsgRegistered, o)
 	}
+}
+
+// listOf reads a comma-separated filter whose every value must be allowed; none means no filter.
+func listOf(w http.ResponseWriter, r *http.Request, param string, allowed []string) ([]string, bool) {
+	out := []string{} // never nil: a NULL array would match nothing
+	for v := range strings.SplitSeq(r.URL.Query().Get(param), ",") {
+		if v = strings.TrimSpace(v); v == "" {
+			continue
+		}
+		if !slices.Contains(allowed, v) {
+			listq.BadParam(w, param, allowed)
+			return nil, false
+		}
+		out = append(out, v)
+	}
+	return out, true
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
@@ -95,17 +111,21 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	status := r.URL.Query().Get(ParamStatus)
-	if status != "" && !slices.Contains(Statuses, status) {
-		listq.BadParam(w, ParamStatus, Statuses)
+	// Both filters take several values, comma-separated: ?status=rejected,changes_requested.
+	status, ok := listOf(w, r, ParamStatus, Statuses)
+	if !ok {
 		return
 	}
-	page, err := h.Store.List(r.Context(), q, g, status)
+	kinds, ok := listOf(w, r, ParamKind, Kinds)
+	if !ok {
+		return
+	}
+	page, err := h.Store.List(r.Context(), q, g, status, kinds)
 	if err != nil {
 		httpx.ServerError(w, "list organisations", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 // Directory lets a verified organisation find others to hand lots to. It
@@ -127,12 +147,12 @@ func (h *Handlers) Directory(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list directory", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	if o, ok := h.visibleOrg(w, r); ok {
-		httpx.WriteJSON(w, http.StatusOK, o)
+		httpx.OK(w, http.StatusOK, "", o)
 	}
 }
 
@@ -166,7 +186,7 @@ func (h *Handlers) Review(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "review organisation", err)
 	default:
 		h.InvalidateOrg(r.Context(), o.Slug)
-		httpx.WriteJSON(w, http.StatusOK, o)
+		httpx.OK(w, http.StatusOK, reviewMessage[rv.Decision], o)
 	}
 }
 
@@ -181,7 +201,7 @@ func (h *Handlers) Accreditations(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list accreditations", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, list)
+	httpx.OK(w, http.StatusOK, "", list)
 }
 
 // SetAccreditations replaces the certificate types an organisation may issue.
@@ -210,8 +230,10 @@ func (h *Handlers) SetAccreditations(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case err != nil:
 		httpx.ServerError(w, "set accreditations", err)
+	case len(list) == 0:
+		httpx.OK(w, http.StatusOK, MsgAccreditationsRemoved, list)
 	default:
-		httpx.WriteJSON(w, http.StatusOK, list)
+		httpx.OK(w, http.StatusOK, MsgAccreditationsSaved, list)
 	}
 }
 
@@ -229,7 +251,7 @@ func (h *Handlers) ListDocuments(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list documents", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 // Upload stores a KYB document for the organisation.
@@ -272,7 +294,7 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 	if statusChanged {
 		h.InvalidateOrg(r.Context(), o.Slug)
 	}
-	httpx.WriteJSON(w, http.StatusCreated, doc)
+	httpx.OK(w, http.StatusCreated, MsgDocumentUploaded, doc)
 }
 
 // Download streams a stored document to a caller allowed to see it.

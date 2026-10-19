@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,10 +21,12 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/config"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
+	"github.com/kayigmb/chaintrack/backend/internal/stats"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
@@ -35,9 +37,13 @@ import (
 const cacheTTL = 60 * time.Second
 
 func main() {
+	format, level := config.Logging()
+	if _, err := logx.Setup(os.Stderr, format, level); err != nil {
+		logx.Fatal("log settings", err)
+	}
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		logx.Fatal("settings", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -46,23 +52,23 @@ func main() {
 	// Uploaded files live in a bucket. In development a missing one is created.
 	files, err := upload.New(ctx, cfg.Storage, cfg.Dev)
 	if err != nil {
-		log.Fatal(err)
+		logx.Fatal("start-up", err)
 	}
 
 	// The pool connects lazily, so the API starts even if the database is briefly down.
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("database config: %v", err)
+		logx.Fatal("database config", err)
 	}
 	defer pool.Close()
 
 	c, err := cache.New(cfg.RedisURL, cacheTTL)
 	if err != nil {
-		log.Fatalf("redis config: %v", err)
+		logx.Fatal("redis config", err)
 	}
 	defer c.Close()
 	if err := c.Ping(ctx); err != nil {
-		log.Printf("redis unavailable, serving from the database: %v", err)
+		slog.Warn("redis unavailable, serving from the database", logx.KeyError, err)
 	}
 
 	pg := auth.PgStore{Pool: pool}
@@ -70,16 +76,16 @@ func main() {
 
 	// Code is the reference for roles and permissions; make the database match.
 	if err := auth.SyncRoles(ctx, pool); err != nil {
-		log.Fatal(err)
+		logx.Fatal("start-up", err)
 	}
 	store.InvalidateAllScopes(ctx)
 
 	created, err := pg.EnsureSuperadmin(ctx, cfg.SuperadminEmail, cfg.SuperadminPassword)
 	if err != nil {
-		log.Fatalf("seed superadmin: %v", err)
+		logx.Fatal("seed superadmin", err)
 	}
 	if created {
-		log.Printf("created superadmin %s", cfg.SuperadminEmail)
+		slog.Info("created superadmin", "email", cfg.SuperadminEmail)
 	}
 
 	a := &auth.Auth{
@@ -90,7 +96,7 @@ func main() {
 		Accounts:    pg,
 		Dev:         cfg.Dev,
 		Secrets:     cfg.Secrets,
-		Limiter:     &auth.Limiter{Cache: c},
+		Limiter:     limiter(cfg.Dev, c),
 	}
 	o := &org.Handlers{
 		Store:         org.Store{Pool: pool},
@@ -103,6 +109,8 @@ func main() {
 	certificates := &attestation.Handlers{Store: attestation.Store{Pool: pool}, Files: files, PIN: a.CheckPIN}
 	if cfg.PinataJWT != "" {
 		certificates.Pin = attestation.Pinata{JWT: cfg.PinataJWT, URL: attestation.PinataURL}.Pin
+		retrier := &attestation.Retrier{Store: certificates.Store, Files: files, Pin: certificates.Pin}
+		go retrier.Run(ctx)
 	}
 	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, Dev: cfg.Dev}
 	if cfg.SMTP != nil {
@@ -116,12 +124,12 @@ func main() {
 	// up; while it is down, verification answers with a warning.
 	client, err := ethclient.DialContext(ctx, cfg.ChainRPCURL)
 	if err != nil {
-		log.Fatalf("chain config: %v", err)
+		logx.Fatal("chain config", err)
 	}
 	defer client.Close()
 	contracts, err := chain.Bind(cfg.Contracts, client)
 	if err != nil {
-		log.Fatalf("contracts: %v", err)
+		logx.Fatal("contracts", err)
 	}
 
 	srv := &http.Server{
@@ -142,6 +150,7 @@ func main() {
 			Verify: &verify.Handlers{Pool: pool, Passports: passports, Certificates: certificates.Store,
 				Contracts: contracts, Files: files, Cache: c},
 			Audit: &audit.Handlers{Store: audit.Store{Pool: pool}},
+			Stats: &stats.Handlers{Store: stats.Store{Pool: pool}},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -153,8 +162,18 @@ func main() {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("api listening on :%s", cfg.Port)
+	slog.Info("api listening", "port", cfg.Port, "mode", server.Mode(cfg.Dev), "rate_limits", !cfg.Dev, "chain_id", cfg.ChainID.String(),
+		"bucket", cfg.Storage.Bucket, "ipfs", cfg.PinataJWT != "", "smtp", cfg.SMTP != nil)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		logx.Fatal("start-up", err)
 	}
+}
+
+// limiter counts sign-in and sign-up attempts in production; development has
+// no rate limits, so testing by hand is never paused.
+func limiter(dev bool, c *cache.Cache) *auth.Limiter {
+	if dev {
+		return nil
+	}
+	return &auth.Limiter{Cache: c}
 }

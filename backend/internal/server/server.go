@@ -3,12 +3,10 @@ package server
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/audit"
@@ -16,9 +14,11 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
+	"github.com/kayigmb/chaintrack/backend/internal/stats"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
@@ -28,6 +28,8 @@ import (
 const (
 	HealthOK     = "ok"
 	HealthDBDown = "db unavailable"
+	ModeDev      = "dev"
+	ModeProd     = "prod"
 )
 
 // Access says who may call a route.
@@ -65,6 +67,7 @@ type Deps struct {
 	User        *user.Handlers
 	// Audit records every successful change; nil turns the audit log off (unit tests).
 	Audit *audit.Handlers
+	Stats *stats.Handlers
 }
 
 const idPath = "/{" + httpx.ParamID + "}"
@@ -76,12 +79,13 @@ func Routes(d Deps) []Route {
 		get, post, put, del = http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete
 	)
 	return []Route{
-		{get, "/healthz", Public, "", healthz(d.Ping)},
+		{get, "/healthz", Public, "", healthz(d.Ping, Mode(a.Dev))},
 		{post, "/auth/login", Public, "", a.Login},
 		{post, "/auth/logout", Public, "", a.Logout},
 		{post, "/auth/password/forgot", Public, "", a.LimitIP(auth.ForgotRate, a.ForgotPassword)},
 		{post, "/auth/password/reset", Public, "", a.LimitIP(auth.RegisterRate, a.ResetPassword)},
 		{post, "/auth/lock", Public, "", a.LimitIP(auth.RegisterRate, a.LockAccount)},
+		{post, "/auth/handoff/accept", Public, "", a.LimitIP(auth.RegisterRate, a.AcceptHandoff)},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
 		{post, "/invites/{" + user.ParamToken + "}/accept", Public, "", a.LimitIP(auth.RegisterRate, u.Accept)},
 		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
@@ -91,6 +95,7 @@ func Routes(d Deps) []Route {
 		{get, "/me/organisations", SignedIn, "", u.MyOrganisations},
 		{post, "/auth/password", SignedIn, "", a.ChangePassword},
 		{post, "/auth/sessions/revoke", SignedIn, "", a.RevokeSessions},
+		{post, "/auth/handoff", SignedIn, "", a.StartHandoff},
 		{post, "/auth/2fa/setup", SignedIn, "", a.SetupTwoFactor},
 		{post, "/auth/2fa/enable", SignedIn, "", a.EnableTwoFactor},
 		{post, "/auth/2fa/disable", SignedIn, "", a.DisableTwoFactor},
@@ -163,13 +168,14 @@ func Routes(d Deps) []Route {
 		{get, "/audit/verify", Permission, auth.AuditVerify, d.Audit.Verify},
 		{get, "/reports/volume", Permission, auth.ReportRead, d.Audit.Volume},
 		{get, "/reports/blocked", Permission, auth.ReportRead, d.Audit.Blocked},
+		{get, "/stats", Permission, auth.AuditVerify, d.Stats.Get},
 	}
 }
 
 func NewRouter(d Deps) http.Handler {
 	a := d.Auth
 	r := chi.NewRouter()
-	r.Use(middleware.Logger, middleware.Recoverer, auth.WithFrontend)
+	r.Use(logx.Middleware(auth.ClientIP), auth.WithFrontend)
 
 	for _, rt := range Routes(d) {
 		var chain chi.Middlewares
@@ -191,15 +197,23 @@ func NewRouter(d Deps) http.Handler {
 }
 
 // healthz takes ping so the check can be tested without a database.
-func healthz(ping func(context.Context) error) http.HandlerFunc {
+// Mode names how the API runs: "dev" (no rate limits, dev-only conveniences) or "prod".
+func Mode(dev bool) string {
+	if dev {
+		return ModeDev
+	}
+	return ModeProd
+}
+
+func healthz(ping func(context.Context) error, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
 		if err := ping(ctx); err != nil {
-			log.Printf("healthz: %v", err)
-			httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": HealthDBDown})
+			logx.From(req.Context()).Error("health check failed", logx.KeyError, err)
+			httpx.OK(w, http.StatusServiceUnavailable, "", map[string]string{"status": HealthDBDown, "mode": mode})
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": HealthOK})
+		httpx.OK(w, http.StatusOK, "", map[string]string{"status": HealthOK, "mode": mode})
 	}
 }

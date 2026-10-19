@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -18,6 +17,8 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 type Handlers struct {
@@ -78,24 +79,32 @@ func (h *Handlers) fail(w http.ResponseWriter, what string, err error) {
 // platform every user with all their memberships.
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	if gate, ok := auth.CurrentScope(r.Context()).Gate(); ok && gate == "" {
-		accounts, err := h.Store.All(r.Context())
+		q, ok := listq.FromRequest(w, r, AccountList)
+		if !ok {
+			return
+		}
+		accounts, err := h.Store.All(r.Context(), q)
 		if err != nil {
 			httpx.ServerError(w, "list users", err)
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, accounts)
+		httpx.OK(w, http.StatusOK, "", accounts)
 		return
 	}
 	o, ok := actingOrg(w, r)
 	if !ok {
 		return
 	}
-	members, err := h.Store.List(r.Context(), o.ID)
+	q, ok := listq.FromRequest(w, r, MemberList)
+	if !ok {
+		return
+	}
+	members, err := h.Store.List(r.Context(), q, o.ID)
 	if err != nil {
 		httpx.ServerError(w, "list members", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, members)
+	httpx.OK(w, http.StatusOK, "", members)
 }
 
 type roleInput struct {
@@ -151,16 +160,20 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	if h.Mail != nil {
 		body := fmt.Sprintf(MsgInviteBodyFmt, o.Name, in.Role, link)
 		if err := h.Mail(in.Email, InviteSubject, body); err != nil {
-			log.Printf("invite %s: send e-mail: %v", inv.ID, err)
+			logx.From(r.Context()).Error("invite e-mail failed", "invite_id", inv.ID, logx.KeyError, err)
 		} else {
 			out["emailed"] = true
 		}
 	}
 	if h.Dev {
-		log.Printf("invite %s for %s: %s", inv.ID, in.Email, link)
+		logx.From(r.Context()).Info("dev: invite link not e-mailed", "invite_id", inv.ID, "link", link)
 		out["link"] = link
 	}
-	httpx.WriteJSON(w, http.StatusCreated, out)
+	msg := MsgInviteLink
+	if out["emailed"] == true {
+		msg = MsgInviteSent(inv.Email)
+	}
+	httpx.OK(w, http.StatusCreated, msg, out)
 }
 
 // Accept is public: the token in the link is the proof of invitation. A new
@@ -190,7 +203,7 @@ func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.InvalidateUser(r.Context(), acc.UserID)
-	httpx.WriteJSON(w, http.StatusOK, acc)
+	httpx.OK(w, http.StatusOK, MsgInviteAccepted, acc)
 }
 
 func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +224,7 @@ func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.InvalidateUser(r.Context(), id)
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"role": in.Role})
+	httpx.OK(w, http.StatusOK, MsgRoleChanged, map[string]string{"role": in.Role})
 }
 
 // Suspend removes the person's access to the acting organisation only.
@@ -233,7 +246,7 @@ func (h *Handlers) Suspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.InvalidateUser(r.Context(), id)
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": StatusSuspended})
+	httpx.OK(w, http.StatusOK, MsgSuspended, map[string]string{"status": StatusSuspended})
 }
 
 func (h *Handlers) Reinstate(w http.ResponseWriter, r *http.Request) {
@@ -250,5 +263,5 @@ func (h *Handlers) Reinstate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.InvalidateUser(r.Context(), id)
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": StatusActive})
+	httpx.OK(w, http.StatusOK, MsgReinstated, map[string]string{"status": StatusActive})
 }

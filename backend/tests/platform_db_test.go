@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
+	"github.com/kayigmb/chaintrack/backend/internal/stats"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 )
 
@@ -119,7 +121,7 @@ func TestProfileAndPlatformUsers(t *testing.T) {
 	want(t, "new password", do(e.h, http.MethodPost, "/auth/login", "", loginBody(e.email(tAcme), newPassword)), http.StatusOK)
 
 	// The platform sees every user with every membership; an organisation only its members.
-	all := decodeTo[[]user.Account](t, do(e.h, http.MethodGet, "/users", root, ""))
+	all := decodeTo[listq.Page[user.Account]](t, do(e.h, http.MethodGet, "/users?size=100", root, "")).Data
 	at := slices.IndexFunc(all, func(a user.Account) bool { return a.Email == e.email(tAcme) })
 	if at < 0 || len(all[at].Memberships) != 1 || all[at].Memberships[0].Organisation != tAcme ||
 		all[at].Memberships[0].Role != auth.RoleOrgAdmin || all[at].Memberships[0].Status != user.StatusActive || all[at].Name != "Amina K." {
@@ -129,4 +131,20 @@ func TestProfileAndPlatformUsers(t *testing.T) {
 	if at < 0 || len(all[at].Memberships) != 1 || all[at].Memberships[0].OrganisationID != nil || all[at].Memberships[0].Organisation != "" {
 		t.Fatalf("platform users list, root: %+v", all[at])
 	}
+}
+
+// The platform dashboard: one answer with every block; organisations get none.
+func TestPlatformStats(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.addUser(tRoot, auth.RoleSuperadmin, "")
+	root := e.login(tRoot)
+	e.verifiedOrg(tAcme, org.KindProducer, root)
+
+	rec := do(e.h, http.MethodGet, "/stats", root, "")
+	want(t, "platform stats", rec, http.StatusOK)
+	st := decodeTo[stats.Stats](t, rec)
+	if len(st.Activity) != stats.Days || st.Users < 2 || len(st.Organisations) == 0 || st.Activity[len(st.Activity)-1].Signups < 1 {
+		t.Fatalf("stats: %+v", st)
+	}
+	want(t, "an organisation asks", do(e.h, http.MethodGet, as(e.slug(tAcme), "/stats"), e.login(tAcme), ""), http.StatusForbidden)
 }

@@ -92,5 +92,5 @@ func (a *Auth) SetPIN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Limiter.reset(ctx, PINRate, u.ID)
-	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"pin_set": true})
+	httpx.OK(w, http.StatusOK, MsgPINSet, map[string]bool{"pin_set": true})
 }

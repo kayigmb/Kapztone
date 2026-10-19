@@ -38,7 +38,7 @@ func TestFacilityRulesAndReports(t *testing.T) {
 	if errorOf(t, rec) != passport.MsgFacilityPending {
 		t.Fatalf("pending facility: %s", rec.Body)
 	}
-	e.exec(`UPDATE facilities SET licence_valid_to = $2 WHERE id = $1::uuid`, w.plot.ID, time.Now().AddDate(0, 0, -1).Format(facility.DateLayout))
+	e.exec(`UPDATE facilities SET licence_valid_to = $2 WHERE id = $1::uuid`, w.plot.ID, time.Now().UTC().AddDate(0, 0, -1).Format(facility.DateLayout))
 	rec = issueAt(w.plot.ID, 10)
 	want(t, "issue with an expired licence", rec, http.StatusConflict)
 	if errorOf(t, rec) != passport.MsgLicenceExpired {

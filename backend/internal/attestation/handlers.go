@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -14,6 +12,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
@@ -26,7 +25,7 @@ type Handlers struct {
 	PIN func(http.ResponseWriter, *http.Request) bool
 	// Pin copies an issued certificate's file to IPFS and returns its
 	// content id. nil means files are kept in the bucket only.
-	Pin func(ctx context.Context, name string, content io.Reader) (cid string, err error)
+	Pin PinFunc
 }
 
 // Input is a certificate's details, sent as form fields beside the file.
@@ -58,10 +57,10 @@ func ParseInput(get func(string) string) (Input, string) {
 	return in, ""
 }
 
-func respond(w http.ResponseWriter, status int, what string, v any, err error) {
+func respond(w http.ResponseWriter, status int, message, what string, v any, err error) {
 	switch {
 	case err == nil:
-		httpx.WriteJSON(w, status, v)
+		httpx.OK(w, status, message, v)
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case errors.Is(err, ErrNotAccredited):
@@ -104,7 +103,7 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 	a, err := h.Store.Issue(r.Context(), o.ID, auth.CurrentUser(r.Context()).ID, in, f)
 	if err != nil {
 		h.Files.Remove(r.Context(), f.Key) // do not keep a file with no record
-		respond(w, 0, "issue certificate", nil, err)
+		respond(w, 0, "", "issue certificate", nil, err)
 		return
 	}
 	// Pinned only once the certificate is recorded, so a refused file is
@@ -112,12 +111,15 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 	// on-chain is the proof; IPFS only makes the file available elsewhere.
 	if h.Pin != nil {
 		if pinned, err := h.pin(r.Context(), a); err != nil {
-			log.Printf("pin certificate %s: %v", a.ID, err)
+			logx.From(r.Context()).Warn("ipfs pin failed; will retry", "attestation_id", a.ID, logx.KeyError, err)
+			if err := h.Store.RecordPinFailure(r.Context(), a.ID, time.Now(), err); err != nil {
+				logx.From(r.Context()).Error("ipfs retry not scheduled", "attestation_id", a.ID, logx.KeyError, err)
+			}
 		} else {
 			a = pinned
 		}
 	}
-	httpx.WriteJSON(w, http.StatusCreated, a)
+	httpx.OK(w, http.StatusCreated, MsgIssued, a)
 }
 
 func (h *Handlers) pin(ctx context.Context, a Attestation) (Attestation, error) {
@@ -133,11 +135,21 @@ func (h *Handlers) pin(ctx context.Context, a Attestation) (Attestation, error) 
 	return h.Store.SetCID(ctx, a.ID, cid)
 }
 
-// Certificates are evidence meant to be checked, so reading them is not
-// gated by organisation: the permission alone decides.
+// List shows an organisation the certificates it issued and those about its
+// own lots and facilities; the platform sees every certificate. The public
+// verification page shows a lot's certificates to anyone.
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
+	gate, ok := auth.Gate(w, r)
+	if !ok {
+		return
+	}
 	q, ok := listq.FromRequest(w, r, List)
 	if !ok {
+		return
+	}
+	scope := r.URL.Query().Get(ParamScope)
+	if scope != "" && !slices.Contains(Scopes, scope) {
+		listq.BadParam(w, ParamScope, Scopes)
 		return
 	}
 	status := r.URL.Query().Get(ParamStatus)
@@ -150,8 +162,13 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, ParamSubjectID+" must be an id")
 		return
 	}
-	page, err := h.Store.Find(r.Context(), q, subjectID, status)
-	respond(w, http.StatusOK, "list certificates", page, err)
+	issuerID := r.URL.Query().Get(ParamIssuerID)
+	if issuerID != "" && !httpx.IsUUID(issuerID) {
+		httpx.Error(w, http.StatusBadRequest, ParamIssuerID+" must be an id")
+		return
+	}
+	page, err := h.Store.Find(r.Context(), q, Filter{Gate: gate, Scope: scope, SubjectID: subjectID, IssuerID: issuerID, Status: status})
+	respond(w, http.StatusOK, "", "list certificates", page, err)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +177,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := h.Store.Get(r.Context(), id)
-	respond(w, http.StatusOK, "get certificate", a, err)
+	respond(w, http.StatusOK, "", "get certificate", a, err)
 }
 
 // Download streams the certificate's file.
@@ -171,7 +188,7 @@ func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.Store.Get(r.Context(), id)
 	if err != nil {
-		respond(w, 0, "get certificate", nil, err)
+		respond(w, 0, "", "get certificate", nil, err)
 		return
 	}
 	upload.Serve(w, r, h.Files, a.StorageKey, a.FileName, a.ContentType, a.CreatedAt)
@@ -211,5 +228,5 @@ func (h *Handlers) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := h.Store.Revoke(r.Context(), id, gate, auth.CurrentUser(r.Context()).ID, in.Reason)
-	respond(w, http.StatusOK, "revoke certificate", a, err)
+	respond(w, http.StatusOK, MsgRevoked, "revoke certificate", a, err)
 }

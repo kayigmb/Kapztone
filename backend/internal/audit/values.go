@@ -9,16 +9,29 @@ package audit
 const (
 	ParamActor  = "actor"  // user id
 	ParamRoute  = "route"  // route pattern, e.g. /passports/{id}/handovers
-	ParamFormat = "format" // empty for JSON, FormatCSV for a download
+	ParamFormat = "format" // empty for JSON; FormatCSV or FormatPDF for a download
 )
 
-const FormatCSV = "csv"
-
-// File names of CSV downloads.
+// Download formats (?format=); empty means JSON.
 const (
-	FileAudit   = "audit.csv"
-	FileVolume  = "volume.csv"
-	FileBlocked = "blocked.csv"
+	FormatCSV = "csv"
+	FormatPDF = "pdf"
+)
+
+var Formats = []string{FormatCSV, FormatPDF}
+
+// PDF titles.
+const (
+	TitleAudit   = "Audit log"
+	TitleVolume  = "Volume issued at origin"
+	TitleBlocked = "Actions the rules refused"
+)
+
+// File names of downloads, without extension.
+const (
+	FileAudit   = "audit"
+	FileVolume  = "volume"
+	FileBlocked = "blocked"
 )
 
 // Rules whose refusals are counted (rule_events.rule), declared once.
@@ -41,7 +54,7 @@ const (
 
 // Messages shown to callers.
 const (
-	MsgBadFormat = ParamFormat + " must be " + FormatCSV + " or left out"
+	MsgBadFormat = ParamFormat + " must be " + FormatCSV + " or " + FormatPDF + ", or left out"
 	MsgBadActor  = ParamActor + " must be a user id"
 )
 

@@ -20,6 +20,10 @@ export function passportRef(text: string): string {
 }
 
 export const lotCodeSchema = z.object({
-  code: z.string().trim().min(1, copy.validation.lotCode).transform(passportRef),
+  code: z
+    .string()
+    .trim()
+    .min(1, copy.validation.lotCode)
+    .transform(passportRef),
 });
 export type LotCodeForm = z.input<typeof lotCodeSchema>;

@@ -79,7 +79,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "list notifications", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 // Read marks a notification as read. Reading it twice changes nothing.
@@ -106,6 +106,6 @@ func (h *Handlers) Read(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ServerError(w, "read notification", err)
 	default:
-		httpx.WriteJSON(w, http.StatusOK, n)
+		httpx.OK(w, http.StatusOK, "", n)
 	}
 }

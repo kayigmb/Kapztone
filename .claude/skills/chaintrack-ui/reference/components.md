@@ -180,12 +180,12 @@ Attention (something for you to do): border `border-pending/40`, icon square and
 | danger | `bg-danger text-on-danger border-danger` | Irreversible confirmations only |
 | disabled | `bg-surface-sunken text-ink-subtle border-border` | Use `aria-disabled` + a visible reason nearby |
 
-Base: `inline-flex items-center justify-center gap-2 min-h-tap px-4 rounded-md border text-sm font-semibold`, icons 18 px. Size `scan`: `h-tap-scan px-6 text-base`. `block`: `w-full`. Labels are verbs naming the result ("Accept and sign", "Issue passport"), never "Submit"/"OK".
+Base: `inline-flex items-center justify-center gap-2 h-10 lg:h-9 px-3.5 rounded-md border text-sm font-semibold` (no shadow), icons 18 px. Size `scan`: `h-tap-scan px-6 text-base`. `block`: `w-full`. Labels are verbs naming the result ("Accept and sign", "Issue passport"), never "Submit"/"OK".
 
 ### Form fields
 
 - Field `grid gap-1.5`: label `text-sm font-semibold` (`htmlFor`), control, then help `text-small text-ink-subtle` **or** error.
-- Input (Figma `.field-group > input`): `w-full min-h-tap px-3 py-2.5 rounded-md border border-border-strong/60 bg-surface text-ink text-sm`, focus `border-primary ring-3 ring-primary/15`. Mono inputs (quantities, codes) `font-mono text-[15px]`.
+- Input (Figma `.field-group > input`): `w-full h-10 lg:h-9 px-3 py-2 rounded-md border border-border-strong/60 bg-surface text-ink text-sm`, focus `border-primary ring-3 ring-primary/15`. Mono inputs (quantities, codes) `font-mono text-[15px]`.
 - Unit addon: input `rounded-r-none` + `px-3 grid place-items-center border border-l-0 border-border-strong rounded-r-md bg-surface-sunken text-ink-muted font-mono text-sm` ("kg").
 - Error: input `border-2 border-danger` + `aria-invalid` + `aria-describedby`; message `flex gap-1.5 text-small font-semibold text-danger` with `OctagonX size-4`, saying what's wrong **and** what to enter: "More than the 960 kg this passport holds. Enter 960 kg or less."
 - Select: same box as input with `ChevronDown` right. Date fields show `Calendar` left.
@@ -277,3 +277,19 @@ Each Figma class in `ui/figma-make/styles.css` and the piece that builds it. Bui
 | Detail banner | `.passport-detail-banner` | passport detail | `rounded-lg bg-navy-900 text-hero-ink p-5 grid lg:grid-cols-[1.6fr_0.7fr_1fr_auto]`; captions `text-xs text-hero-subtle uppercase` |
 | Public hero, product card, route art, tree | `.passport-hero`, `.product-card`, `.route-map`, `.tree` | `app/(public)/p/[id]/verification-view.tsx` | see `patterns.md` → Public verification page |
 | Access shell | `.auth-shell`, `.auth-brand` | `app/(auth)/layout.tsx` | see `patterns.md` → Access screens |
+
+## List controls (`components/chaintrack/list-controls.tsx`)
+
+Every list is paged, searched and sorted by the API. `useListState(defaultSort)` keeps page / `q` / sort / filters in the address; `ListToolbar` is the search box (sent 300 ms after typing stops), any filter `Choice` selects and the sort select in one row; `Pager` sits under the list: "1–10 of 86", page n of m, previous / next (36 px square buttons). 10 rows a page; rows are compact (`px-4 py-3`, 36 px icon square, one line of title, one of mono detail, chip right). A selected row: `bg-primary-soft/60` + inset 3 px teal edge. Pickers inside forms (issue: template, facility) are the same, 6 a page.
+
+## Shell top bar (right side)
+
+Bell (36 px, popover of the latest six with "View all notifications" → `/notifications`), theme menu (36 px, Light / Dark / System with a dot on the current one), Scan QR, then the person's initials (round, `bg-primary-soft text-primary`) linking to `/profile`. The sidebar's brand row and the top bar are both `h-16`, so their borders meet; the organisation card sits at the bottom of the sidebar, and Profile is a nav item under Manage.
+
+## Tables (`ListTable` / `ClientTable`, tablecn)
+
+Tables are tablecn's data table (vendored in `components/data-table/`) behind `components/chaintrack/list-table.tsx`. Header click (or its menu) sorts; the pager has rows per page 10 / 20 / 50 and first / previous / next / last. Toolbar right: **Table | Cards** toggle (two 32 px icon buttons, `Table2` / `LayoutGrid`, selected one `bg-primary-soft text-primary`) and **View** (show / hide columns). Without a choice, phones get cards and `md` up a table. The `actions` column is always the last, pinned while the table scrolls sideways, and holds icon-only actions with tooltips (`Eye` open, `Ban` suspend in `text-danger`, `RotateCcw` reinstate). A card: first column as the title, the rest as label / value rows, actions in a footer.
+
+## Select (`SelectInput`)
+
+The only select: shadcn Select (Base UI), trigger the height of an input (`h-10 lg:h-9`), `border-border-strong/60`, placeholder for an empty form value. Used for list filters and sorts and for form fields (with react-hook-form's `Controller`).

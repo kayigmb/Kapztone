@@ -4,6 +4,7 @@
 // Pure: no imports with side effects, so `node --test lib/verification.test.ts` can run it.
 
 import { copy } from "./consts.ts";
+import type { Geometry } from "./geo.ts";
 
 export type Verdict = "verified" | "warning" | "failed";
 export type CertificateState = "valid" | "expiring" | "expired" | "revoked";
@@ -52,14 +53,31 @@ export type ApiCertificate = {
 
 export type ApiVerification = {
   verdict: Verdict;
-  reasons: { level: Verdict; check: string; code: string; message: string; subject_id: string }[];
+  reasons: {
+    level: Verdict;
+    check: string;
+    code: string;
+    message: string;
+    subject_id: string;
+  }[];
   checks: { name: string; result: Verdict }[];
   passport: ApiPassport;
-  origins: { facility: Named & { kind: string }; organisation: Named }[];
+  origins: {
+    facility: Named & {
+      kind: string;
+      location?: { type: string; coordinates?: unknown } | null;
+    };
+    organisation: Named;
+  }[];
   organisations: Named[];
   genealogy: {
     nodes: ApiPassport[];
-    edges: { parent_id: string; child_id: string; stage: string; quantity_used: number }[];
+    edges: {
+      parent_id: string;
+      child_id: string;
+      stage: string;
+      quantity_used: number;
+    }[];
   };
   certificates: ApiCertificate[];
 };
@@ -82,7 +100,13 @@ export type View = {
     facts: { label: string; value: string; mono?: boolean; wide?: boolean }[];
     issued: string;
   };
-  origins: { id: string; name: string; kind: string; owner: string }[];
+  origins: {
+    id: string;
+    name: string;
+    kind: string;
+    owner: string;
+    geometry?: Geometry;
+  }[];
   journey: {
     id: string;
     kind: string;
@@ -94,7 +118,14 @@ export type View = {
     state: "done" | "current" | "warning" | "failed";
   }[];
   // `via`: how it went into the lot it feeds, e.g. "Washing station · 400 kg used".
-  madeFrom: { lotCode: string; description: string; quantity: string; origin: boolean; revoked: boolean; via?: string }[];
+  madeFrom: {
+    lotCode: string;
+    description: string;
+    quantity: string;
+    origin: boolean;
+    revoked: boolean;
+    via?: string;
+  }[];
   certificates: {
     id: string;
     type: string;
@@ -104,7 +135,12 @@ export type View = {
     validTo: string;
     note?: string;
   }[];
-  checks: { name: string; label: string; result: Verdict; explanation: string }[];
+  checks: {
+    name: string;
+    label: string;
+    result: Verdict;
+    explanation: string;
+  }[];
   technical: { label: string; value: string | null }[];
 };
 
@@ -115,16 +151,40 @@ const eventTitles = t.eventTitles;
 // ---- Formatting (content.md → Formatting) ----
 
 const zone = "Africa/Kigali"; // Central Africa Time
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const months = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const partsFmt = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: zone,
+  day: "numeric",
+  month: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: zone,
 });
 const numberFmt = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
 // Intl's own short months differ by locale ("Sept"), so the month name comes from the list above.
 function parts(iso: string | Date) {
-  const p = Object.fromEntries(partsFmt.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
-  return { date: `${Number(p.day)} ${months[Number(p.month) - 1]} ${p.year}`, time: `${p.hour}:${p.minute}` };
+  const p = Object.fromEntries(
+    partsFmt.formatToParts(new Date(iso)).map((x) => [x.type, x.value]),
+  );
+  return {
+    date: `${Number(p.day)} ${months[Number(p.month) - 1]} ${p.year}`,
+    time: `${p.hour}:${p.minute}`,
+  };
 }
 
 export const formatDate = (iso: string | Date) => parts(iso).date;
@@ -132,7 +192,8 @@ export const formatDateTime = (iso: string | Date) => {
   const p = parts(iso);
   return `${p.date}, ${p.time} CAT`;
 };
-export const formatQuantity = (n: number, unit: string) => `${numberFmt.format(n)} ${unit}`;
+export const formatQuantity = (n: number, unit: string) =>
+  `${numberFmt.format(n)} ${unit}`;
 
 /** "farm_plot" → "Farm plot". */
 export function humanize(key: string): string {
@@ -144,7 +205,8 @@ const expiringWithinDays = 30;
 
 function certificateState(c: ApiCertificate, now: Date): CertificateState {
   if (c.status !== "valid") return c.status;
-  const daysLeft = (new Date(c.valid_to).getTime() - now.getTime()) / 86_400_000;
+  const daysLeft =
+    (new Date(c.valid_to).getTime() - now.getTime()) / 86_400_000;
   return daysLeft <= expiringWithinDays ? "expiring" : "valid";
 }
 
@@ -157,7 +219,10 @@ function topReasons(api: ApiVerification): View["reasons"] {
   const found = [...api.reasons]
     .sort((a, b) => order[a.level] - order[b.level])
     .filter((r) => !seen.has(r.code) && seen.add(r.code))
-    .map((r) => ({ result: (r.level === "failed" ? "fail" : "warn") as Result, text: r.message }));
+    .map((r) => ({
+      result: (r.level === "failed" ? "fail" : "warn") as Result,
+      text: r.message,
+    }));
   const passed = api.checks
     .filter((c) => c.result === "verified" && checks[c.name])
     .map((c) => ({ result: "pass" as Result, text: checks[c.name].reason }));
@@ -179,7 +244,8 @@ function summary(api: ApiVerification, product: string): string {
 
 export function toView(api: ApiVerification, now: Date = new Date()): View {
   const names = new Map(api.organisations.map((o) => [o.id, o.name]));
-  const name = (id: string | null | undefined) => (id ? (names.get(id) ?? t.unknownOrg) : undefined);
+  const name = (id: string | null | undefined) =>
+    id ? (names.get(id) ?? t.unknownOrg) : undefined;
   const p = api.passport;
   const product = humanize(p.commodity);
   const events = p.events ?? [];
@@ -192,11 +258,22 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     parties: { from: name(e.from_org), to: name(e.to_org) },
     quantity: formatQuantity(e.quantity, p.unit),
     signedByBoth: e.kind === "HANDOVER",
-    state: e.kind === "REVOKE" ? "failed" : e.kind === "FLAG" ? "warning" : i === events.length - 1 ? "current" : "done",
+    state:
+      e.kind === "REVOKE"
+        ? "failed"
+        : e.kind === "FLAG"
+          ? "warning"
+          : i === events.length - 1
+            ? "current"
+            : "done",
   }));
 
   const explain = (check: string) => {
-    const said = [...new Set(api.reasons.filter((r) => r.check === check).map((r) => r.message))];
+    const said = [
+      ...new Set(
+        api.reasons.filter((r) => r.check === check).map((r) => r.message),
+      ),
+    ];
     return said.length ? said.join(" ") : (checks[check]?.pass ?? "");
   };
 
@@ -205,7 +282,9 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
     summary: summary(api, product),
     reasons: topReasons(api),
     checkedAt: formatDateTime(now),
-    records: t.meta.records(api.genealogy.nodes.length + api.certificates.length),
+    records: t.meta.records(
+      api.genealogy.nodes.length + api.certificates.length,
+    ),
     meta: [
       t.meta.checked(formatDateTime(now)),
       t.meta.records(api.genealogy.nodes.length + api.certificates.length),
@@ -219,10 +298,21 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
       origin: p.facility_id !== null,
       facts: [
         { label: t.facts.commodity, value: product },
-        { label: t.facts.quantity, value: formatQuantity(p.quantity, p.unit), mono: true },
-        { label: t.facts.holder, value: name(p.organisation_id) ?? "", wide: true },
+        {
+          label: t.facts.quantity,
+          value: formatQuantity(p.quantity, p.unit),
+          mono: true,
+        },
+        {
+          label: t.facts.holder,
+          value: name(p.organisation_id) ?? "",
+          wide: true,
+        },
         { label: t.facts.status, value: humanize(p.status) },
-        { label: t.facts.updated, value: formatDate(events.at(-1)?.created_at ?? p.created_at) },
+        {
+          label: t.facts.updated,
+          value: formatDate(events.at(-1)?.created_at ?? p.created_at),
+        },
       ],
       issued: t.issued(formatDate(p.created_at)),
     },
@@ -231,6 +321,12 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
       name: o.facility.name,
       kind: humanize(o.facility.kind),
       owner: o.organisation.name,
+      // The API sends PostGIS GeoJSON: a pin or a boundary, as the map draws them.
+      geometry:
+        o.facility.location?.type === "Point" ||
+        o.facility.location?.type === "Polygon"
+          ? (o.facility.location as Geometry)
+          : undefined,
     })),
     journey,
     madeFrom: api.genealogy.nodes
@@ -243,7 +339,12 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
           quantity: formatQuantity(n.quantity, n.unit),
           origin: n.facility_id !== null,
           revoked: n.status === "revoked",
-          via: edge ? t.via(humanize(edge.stage), formatQuantity(edge.quantity_used, n.unit)) : undefined,
+          via: edge
+            ? t.via(
+                humanize(edge.stage),
+                formatQuantity(edge.quantity_used, n.unit),
+              )
+            : undefined,
         };
       }),
     certificates: api.certificates.map((c) => {
@@ -273,10 +374,16 @@ export function toView(api: ApiVerification, now: Date = new Date()): View {
       { label: t.technical.fingerprint, value: p.data_hash },
       { label: t.technical.sealedIn, value: p.tx_hash },
       ...events.map((e) => ({
-        label: t.technical.eventSealed(eventTitles[e.kind] ?? e.kind, formatDate(e.created_at)),
+        label: t.technical.eventSealed(
+          eventTitles[e.kind] ?? e.kind,
+          formatDate(e.created_at),
+        ),
         value: e.tx_hash,
       })),
-      ...api.certificates.map((c) => ({ label: t.technical.certificateFingerprint(humanize(c.type)), value: c.doc_hash })),
+      ...api.certificates.map((c) => ({
+        label: t.technical.certificateFingerprint(humanize(c.type)),
+        value: c.doc_hash,
+      })),
     ],
   };
 }

@@ -78,7 +78,6 @@ The screens were specified before the backend was built, and they ask for more t
 | 1, 5, 6 | Product name, packaging ("16 bags"), grade, crop year | Commodity, unit, quantity | |
 | 1 | Route map with a location per journey step | Journey events carry no location | |
 | 1 | Signed value against stored value ("signed for 2,100 kg, now shows 2,850 kg") | A reason code and message per finding, no field-level difference | |
-| 1 | Origin facility on a map | Public verification gives the origin facility's name and kind, no location | |
 | 1 | "Report a concern" from the public page | Flags need sign-in | |
 | 4 | Capacity used this period, per facility | Computed only when a passport is issued; not exposed || Built: `capacity_used` |
 | 4 | Licence expiry and document, approval before first use, edit boundary, GPS walk, overlap and forest-loss checks | Licence number; boundary validity and area | Backend built: licence end date + document, approval, overlap check. Not built: edit boundary, GPS walk, forest-loss check |
@@ -101,7 +100,7 @@ The screens were specified before the backend was built, and they ask for more t
 | Screen | Figma shows | The backend has | Decision |
 | --- | --- | --- | --- |
 | Profile, sign-up | Language (English / Kinyarwanda / Français) | No language setting | Hidden |
-| Profile, users, sign-up | Phone number ("Work email or phone") | Email only | Hidden |
+| Profile, users, sign-up | Phone number ("Email or phone") | Email only | Hidden |
 | Sign-up, organisation verification | Country, registration number | Name, address, kind | Hidden |
 | Flags | Severity (High / Medium / Low), severity filter | Reason, status, source, assignee | Hidden |
 | Reports | Verification outcomes report ("96.8% verified") | Volume, blocked, audit | Hidden |

@@ -2,12 +2,9 @@ package audit
 
 import (
 	"context"
-	"encoding/csv"
-	"log"
-	"mime"
 	"net/http"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +13,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 type Handlers struct {
@@ -55,7 +53,7 @@ func (h *Handlers) Record(method, route string) func(http.Handler) http.Handler 
 			}
 			// The caller may already be gone; the row is still written.
 			if err := h.Store.Add(context.WithoutCancel(r.Context()), e); err != nil {
-				log.Printf("audit %s %s: %v", method, route, err)
+				logx.From(r.Context()).Error("audit row not written", logx.KeyMethod, method, logx.KeyRoute, route, logx.KeyError, err)
 			}
 		})
 	}
@@ -79,25 +77,29 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, MsgBadActor)
 		return
 	}
-	switch v.Get(ParamFormat) {
-	case "":
+	format, ok := formatOf(w, r)
+	if !ok {
+		return
+	}
+	if format == "" {
 		page, err := h.Store.List(r.Context(), q, g, actor, route)
 		if err != nil {
 			httpx.ServerError(w, "list audit", err)
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, page)
-	case FormatCSV:
-		out := csvDownload(w, FileAudit, AuditColumns)
-		err := h.Store.Each(r.Context(), q, g, actor, route, func(e Entry) error {
-			return out.Write(cells(strconv.FormatInt(e.Seq, 10), e.CreatedAt.UTC().Format(time.RFC3339),
-				deref(e.ActorUserID), deref(e.ActorEmail), deref(e.OrganisationID), e.Method, e.Route,
-				deref(e.SubjectID), strconv.Itoa(e.Status), e.Hash))
-		})
-		finish(out, "audit csv", err)
-	default:
-		httpx.Error(w, http.StatusBadRequest, MsgBadFormat)
+		httpx.OK(w, http.StatusOK, "", page)
+		return
 	}
+	out := export(w, format, FileAudit, TitleAudit, describe(q, route), AuditColumns)
+	err := h.Store.Each(r.Context(), q, g, actor, route, func(e Entry) error {
+		return out.Row(strconv.FormatInt(e.Seq, 10), e.CreatedAt.UTC().Format(time.RFC3339),
+			deref(e.ActorUserID), deref(e.ActorEmail), deref(e.OrganisationID), e.Method, e.Route,
+			deref(e.SubjectID), strconv.Itoa(e.Status), e.Hash)
+	})
+	if err != nil {
+		logx.From(r.Context()).Error("audit export cut short", logx.KeyError, err)
+	}
+	out.Close(r.Context())
 }
 
 // Verify walks the whole chain.
@@ -107,7 +109,7 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "verify audit", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, c)
+	httpx.OK(w, http.StatusOK, "", c)
 }
 
 // Volume is the quantity issued at origin per month, commodity and unit,
@@ -121,9 +123,8 @@ func (h *Handlers) Volume(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	format := r.URL.Query().Get(ParamFormat)
-	if format != "" && format != FormatCSV {
-		httpx.Error(w, http.StatusBadRequest, MsgBadFormat)
+	format, ok := formatOf(w, r)
+	if !ok {
 		return
 	}
 	rows, err := h.Store.Volumes(r.Context(), g, q.Start, q.End)
@@ -132,16 +133,16 @@ func (h *Handlers) Volume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if format == "" {
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": rows})
+		httpx.OK(w, http.StatusOK, "", map[string]any{"data": rows})
 		return
 	}
-	out := csvDownload(w, FileVolume, VolumeColumns)
+	out := export(w, format, FileVolume, TitleVolume, describe(q, ""), VolumeColumns)
 	for _, v := range rows {
-		if err = out.Write(cells(v.Month, v.Commodity, v.Unit, strconv.FormatInt(v.Quantity, 10), strconv.FormatInt(v.Exported, 10))); err != nil {
+		if out.Row(v.Month, v.Commodity, v.Unit, strconv.FormatInt(v.Quantity, 10), strconv.FormatInt(v.Exported, 10)) != nil {
 			break
 		}
 	}
-	finish(out, "volume csv", err)
+	out.Close(r.Context())
 }
 
 // Blocked counts the actions each rule refused between start_date and end_date
@@ -155,9 +156,8 @@ func (h *Handlers) Blocked(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	format := r.URL.Query().Get(ParamFormat)
-	if format != "" && format != FormatCSV {
-		httpx.Error(w, http.StatusBadRequest, MsgBadFormat)
+	format, ok := formatOf(w, r)
+	if !ok {
 		return
 	}
 	rows, err := h.Store.Blocked(r.Context(), g, q.Start, q.End)
@@ -166,49 +166,41 @@ func (h *Handlers) Blocked(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if format == "" {
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": rows})
+		httpx.OK(w, http.StatusOK, "", map[string]any{"data": rows})
 		return
 	}
-	out := csvDownload(w, FileBlocked, BlockedColumns)
+	out := export(w, format, FileBlocked, TitleBlocked, describe(q, ""), BlockedColumns)
 	for _, b := range rows {
-		if err = out.Write(cells(b.Rule, strconv.FormatInt(b.Count, 10))); err != nil {
+		if out.Row(b.Rule, strconv.FormatInt(b.Count, 10)) != nil {
 			break
 		}
 	}
-	finish(out, "blocked csv", err)
+	out.Close(r.Context())
 }
 
-// cells guards a CSV row against spreadsheet formulas: a cell starting with
-// = + - @ (an e-mail address can) is read by Excel as a formula, so it is
-// written with a leading apostrophe.
-func cells(row ...string) []string {
-	for i, c := range row {
-		if c != "" && strings.ContainsRune("=+-@\t\r", rune(c[0])) {
-			row[i] = "'" + c
+// formatOf reads ?format=: "" (JSON), FormatCSV or FormatPDF.
+func formatOf(w http.ResponseWriter, r *http.Request) (string, bool) {
+	f := r.URL.Query().Get(ParamFormat)
+	if f != "" && !slices.Contains(Formats, f) {
+		httpx.Error(w, http.StatusBadRequest, MsgBadFormat)
+		return "", false
+	}
+	return f, true
+}
+
+// describe says which rows a download holds, for the PDF's subtitle.
+func describe(q listq.Query, route string) string {
+	day := func(t *time.Time) string {
+		if t == nil {
+			return "…"
 		}
+		return t.UTC().Format("2 Jan 2006")
 	}
-	return row
-}
-
-// csvDownload starts a CSV attachment and writes its heading row.
-func csvDownload(w http.ResponseWriter, name string, columns []string) *csv.Writer {
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
-	out := csv.NewWriter(w)
-	out.Write(columns)
-	return out
-}
-
-// finish flushes a download. Once rows are sent the status cannot change,
-// so a failure part-way is only logged.
-func finish(out *csv.Writer, what string, err error) {
-	out.Flush()
-	if err == nil {
-		err = out.Error()
+	s := "From " + day(q.Start) + " to " + day(q.End)
+	if route != "" {
+		s += " · route " + route
 	}
-	if err != nil {
-		log.Printf("%s: %v", what, err)
-	}
+	return s
 }
 
 func deref(s *string) string {

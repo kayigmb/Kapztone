@@ -905,12 +905,16 @@ func (s Store) Cancel(ctx context.Context, id, fromOrg, userID string) (Handover
 }
 
 // FindHandovers returns handovers the gate's organisation sent or is to receive.
-func (s Store) FindHandovers(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Handover], error) {
+func (s Store) FindHandovers(ctx context.Context, q listq.Query, gate, status, box string) (listq.Page[Handover], error) {
 	// The status filter is applied to the status as read, so "expired" works.
 	const shown = `CASE WHEN h.status = $1 AND h.deadline < now() THEN $2 ELSE h.status END`
+	inBox := `($5 = ''
+		OR ($5 = '` + BoxIncoming + `' AND h.to_org = NULLIF($3, '')::uuid AND ` + shown + ` = $1)
+		OR ($5 = '` + BoxOutgoing + `' AND h.from_org = NULLIF($3, '')::uuid AND ` + shown + ` = $1)
+		OR ($5 = '` + BoxDone + `' AND ` + shown + ` <> $1))`
 	page, err := listq.Fetch(ctx, s.Pool, q, HandoverList, "SELECT "+handoverColumns(1, 2), "FROM handovers h",
-		[]string{party(3), `($4 = '' OR ` + shown + ` = $4)`},
-		[]any{HandoverAwaiting, HandoverExpired, gate, status}, scanHandover)
+		[]string{party(3), `($4 = '' OR ` + shown + ` = $4)`, inBox},
+		[]any{HandoverAwaiting, HandoverExpired, gate, status, box}, scanHandover)
 	if err == nil {
 		err = attachPhotos(ctx, s.Pool, page.Data)
 	}

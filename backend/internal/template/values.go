@@ -59,3 +59,11 @@ const (
 	MsgInUse          = "passports already use this template; its commodity and unit can no longer change"
 	MsgNoDraft        = "this template has no draft to publish; save the changes first"
 )
+
+// Confirmations the app shows as they are.
+const (
+	MsgCreated    = "Template created and live."
+	MsgDraftSaved = "Draft saved. Publish it to make it the live version."
+	MsgPublished  = "Template published. New passports use this version."
+	MsgDeleted    = "Template deleted."
+)

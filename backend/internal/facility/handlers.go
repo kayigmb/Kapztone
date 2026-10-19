@@ -30,7 +30,7 @@ func target(w http.ResponseWriter, r *http.Request) (id, gate string, ok bool) {
 
 // respond writes a facility, or the right error. A facility outside the
 // caller's gate looks exactly like a missing one.
-func respond(w http.ResponseWriter, status int, what string, f Facility, err error) {
+func respond(w http.ResponseWriter, status int, message, what string, f Facility, err error) {
 	var overlap OverlapError
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -48,11 +48,11 @@ func respond(w http.ResponseWriter, status int, what string, f Facility, err err
 		if overlap.FacilityID != "" {
 			id = &overlap.FacilityID
 		}
-		httpx.WriteJSON(w, http.StatusConflict, map[string]any{"error": overlap.Error(), "facility_id": id})
+		httpx.ErrorData(w, http.StatusConflict, overlap.Error(), map[string]any{"facility_id": id})
 	case err != nil:
 		httpx.ServerError(w, what, err)
 	default:
-		httpx.WriteJSON(w, status, f)
+		httpx.OK(w, status, message, f)
 	}
 }
 
@@ -73,7 +73,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Create(r.Context(), o.ID, in)
-	respond(w, http.StatusCreated, "create facility", f, err)
+	respond(w, http.StatusCreated, MsgRegistered(in.Name), "create facility", f, err)
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
@@ -90,17 +90,22 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		listq.BadParam(w, ParamStatus, Statuses)
 		return
 	}
+	kind := r.URL.Query().Get(ParamKind)
+	if kind != "" && !slices.Contains(Kinds, kind) {
+		listq.BadParam(w, ParamKind, Kinds)
+		return
+	}
 	bbox, ok := ParseBBox(r.URL.Query().Get(ParamBBox))
 	if !ok {
 		httpx.Error(w, http.StatusBadRequest, MsgBadBBox)
 		return
 	}
-	page, err := h.Store.Find(r.Context(), q, gate, status, bbox)
+	page, err := h.Store.Find(r.Context(), q, gate, status, kind, bbox)
 	if err != nil {
 		httpx.ServerError(w, "list facilities", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, page)
+	httpx.OK(w, http.StatusOK, "", page)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +114,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Get(r.Context(), id, gate)
-	respond(w, http.StatusOK, "get facility", f, err)
+	respond(w, http.StatusOK, "", "get facility", f, err)
 }
 
 // SetStatus suspends or reactivates a facility.
@@ -127,7 +132,7 @@ func (h *Handlers) SetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.SetStatus(r.Context(), id, gate, in.Status)
-	respond(w, http.StatusOK, "set facility status", f, err)
+	respond(w, http.StatusOK, statusMessage[in.Status], "set facility status", f, err)
 }
 
 // Approve makes a pending facility active and puts it on the ledger: the platform only.
@@ -137,7 +142,7 @@ func (h *Handlers) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Approve(r.Context(), id, auth.CurrentUser(r.Context()).ID)
-	respond(w, http.StatusOK, "approve facility", f, err)
+	respond(w, http.StatusOK, MsgApproved, "approve facility", f, err)
 }
 
 // UploadLicence stores the facility's licence document, replacing any earlier
@@ -168,13 +173,13 @@ func (h *Handlers) UploadLicence(w http.ResponseWriter, r *http.Request) {
 	}, validTo)
 	if err != nil {
 		h.Files.Remove(r.Context(), u.Key) // do not keep a file with no record
-		respond(w, 0, "record licence", f, err)
+		respond(w, 0, "", "record licence", f, err)
 		return
 	}
 	if old != "" {
 		h.Files.Remove(r.Context(), old)
 	}
-	respond(w, http.StatusOK, "", f, nil)
+	respond(w, http.StatusOK, MsgLicenceSaved, "", f, nil)
 }
 
 // Licence streams the facility's licence document.
@@ -188,7 +193,7 @@ func (h *Handlers) Licence(w http.ResponseWriter, r *http.Request) {
 		err = ErrNoLicence
 	}
 	if err != nil {
-		respond(w, 0, "get licence", f, err)
+		respond(w, 0, "", "get licence", f, err)
 		return
 	}
 	l := f.LicenceDocument
@@ -201,8 +206,8 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Store.Delete(r.Context(), id, gate); err != nil {
-		respond(w, 0, "delete facility", Facility{}, err)
+		respond(w, 0, "", "delete facility", Facility{}, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	httpx.OK(w, http.StatusOK, MsgDeleted, nil)
 }

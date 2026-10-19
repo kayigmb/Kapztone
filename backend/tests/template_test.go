@@ -126,7 +126,7 @@ func TestTemplateCRUD(t *testing.T) {
 	}
 
 	want(t, "member deletes", do(e.h, http.MethodDelete, as(acmeSlug, one), staff, ""), http.StatusForbidden)
-	want(t, "delete", do(e.h, http.MethodDelete, one, root, ""), http.StatusNoContent)
+	want(t, "delete", do(e.h, http.MethodDelete, one, root, ""), http.StatusOK)
 	want(t, "deleted template", do(e.h, http.MethodGet, one, root, ""), http.StatusNotFound)
 	want(t, "update deleted", do(e.h, http.MethodPut, one, root, string(body)), http.StatusNotFound)
 	want(t, "delete twice", do(e.h, http.MethodDelete, one, root, ""), http.StatusNotFound)
