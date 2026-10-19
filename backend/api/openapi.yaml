@@ -1,0 +1,1153 @@
+openapi: 3.1.0
+info:
+  title: ChainTrack API
+  version: 0.1.0-draft
+  description: |
+    Digital product passports for business shipments. Draft: every route of
+    `internal/server/server.go` with who may call it; request bodies for the
+    main inputs. Response bodies are left as `object` until a consumer needs
+    them (the Go structs in each package are the reference).
+
+    **Organisation.** Every call acts for the organisation named by the first
+    label of the site's host (`acme.chaintrack.example`, passed as
+    `X-Forwarded-Host` by the web app; `?pslug=` in development).
+
+    **Lists** take `page`, `size`, `search`, `sort`, `start_date`, `end_date`
+    and answer `{data, page, size, total}` (inside the envelope's `data`).
+
+    **Every JSON answer** is the envelope `{status, message, data}`: `status`
+    repeats the HTTP status, `message` is a sentence safe to show (empty on
+    reads; on a refusal, what went wrong), `data` the result (`null` on most
+    refusals; details such as `attempts_left` on some). Files, CSV and PDF
+    downloads are sent as they are.
+
+    `tests/openapi_test.go` fails when a route is missing here.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearer: []
+  - session: []
+
+tags:
+  - name: auth
+  - name: organisations
+  - name: facilities
+  - name: templates
+  - name: passports
+  - name: handovers
+  - name: certificates
+  - name: flags
+  - name: users
+  - name: reports
+  - name: public
+
+paths:
+  /healthz:
+    get:
+      tags: [public]
+      summary: Database reachable, and the mode the API runs in
+      description: '`data` is `{status, mode}`; mode `dev` has no rate limits.'
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  # ---- Access ----
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in; the token is set as the session cookie and returned for scripts
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Login" }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_in: { type: integer }
+        "401": { description: "Wrong email, password or code; carries `attempts_left`" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Clear the session cookie
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Mail a reset link; always 202, whether the email is known or not
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "202": { description: Accepted }
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Set a new password with a reset link's token
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /auth/lock:
+    post:
+      tags: [auth]
+      summary: Lock an account from the link mailed after a password change
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: Change my password; other sessions end
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /auth/handoff:
+    post:
+      tags: [auth]
+      summary: A one-minute code that signs this person in at another organisation's address
+      description: |
+        `{slug}` names the organisation (`""` for the bare address); the caller
+        must belong to it. Answers `{code}`; the target address spends it with
+        `POST /auth/handoff/accept`.
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
+  /auth/handoff/accept:
+    post:
+      tags: [auth]
+      summary: Spend a handoff code at the address it was made for; signs in there
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /auth/sessions/revoke:
+    post:
+      tags: [auth]
+      summary: Sign out every other device
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/2fa/setup:
+    post:
+      tags: [auth]
+      summary: Start two-factor sign-in (secret and QR)
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/2fa/enable:
+    post:
+      tags: [auth]
+      summary: Turn two-factor sign-in on with a first code; returns recovery codes
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/2fa/disable:
+    post:
+      tags: [auth]
+      summary: Turn two-factor sign-in off
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/2fa/recovery:
+    post:
+      tags: [auth]
+      summary: Replace the recovery codes
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /auth/pin:
+    post:
+      tags: [auth]
+      summary: Set my 6-digit signing PIN (needs my password)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PIN" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /me:
+    get:
+      tags: [auth]
+      summary: Who I am, the acting organisation and my permissions there
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+    put:
+      tags: [auth]
+      summary: Change my name
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /me/organisations:
+    get:
+      tags: [auth]
+      summary: The organisations I belong to
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /notifications:
+    get:
+      tags: [auth]
+      summary: My notifications (`unread=true` for unread only)
+      parameters:
+        - { name: unread, in: query, schema: { type: boolean } }
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /notifications/{id}/read:
+    post:
+      tags: [auth]
+      summary: Mark a notification read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  # ---- Organisations ----
+
+  /orgs:
+    post:
+      tags: [organisations]
+      summary: Register a business and its first user (pending until verified)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Registration" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [organisations]
+      summary: Organisations I may see (all for the platform)
+      x-permission: org:read
+      parameters:
+        - { name: status, in: query, description: "One or more, comma-separated: pending,verified", schema: { type: string } }
+        - { name: kind, in: query, description: "One or more, comma-separated", schema: { type: string } }
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /orgs/directory:
+    get:
+      tags: [organisations]
+      summary: Verified organisations to hand a lot to (name, kind, slug)
+      x-permission: org:search
+      parameters:
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /orgs/{id}:
+    get:
+      tags: [organisations]
+      x-permission: org:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "404": { $ref: "#/components/responses/Error" }
+  /orgs/{id}/verify:
+    post:
+      tags: [organisations]
+      summary: Review a registration (verified, rejected, changes_requested)
+      x-permission: org:verify
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Review" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: No documents uploaded yet }
+  /orgs/{id}/accreditations:
+    get:
+      tags: [organisations]
+      summary: Certificate types this organisation may issue
+      x-permission: org:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+    put:
+      tags: [organisations]
+      summary: Replace the full set of accreditations
+      x-permission: org:verify
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/Accreditation" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+  /orgs/{id}/documents:
+    get:
+      tags: [organisations]
+      summary: Registration documents
+      x-permission: document:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+    post:
+      tags: [organisations]
+      summary: Upload a registration document (reopens a rejected registration)
+      x-permission: org:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [type, file]
+              properties:
+                type: { type: string, enum: [registration, licence, other] }
+                file: { type: string, format: binary }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+  /documents/{id}/file:
+    get:
+      tags: [organisations]
+      x-permission: document:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/File" }
+
+  # ---- Facilities ----
+
+  /facilities:
+    post:
+      tags: [facilities]
+      summary: Register a facility (pending until the platform approves it)
+      x-permission: facility:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Facility" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { description: Overlaps another facility }
+    get:
+      tags: [facilities]
+      x-permission: facility:read
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string, enum: [farm_plot, mine_site, washing_station, processing_plant, warehouse] } }
+        - { name: bbox, in: query, description: "minLon,minLat,maxLon,maxLat", schema: { type: string } }
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /facilities/{id}:
+    get:
+      tags: [facilities]
+      x-permission: facility:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+    delete:
+      tags: [facilities]
+      x-permission: facility:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /facilities/{id}/status:
+    post:
+      tags: [facilities]
+      summary: Suspend or reinstate
+      x-permission: facility:suspend
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, suspended] }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /facilities/{id}/approve:
+    post:
+      tags: [facilities]
+      summary: Approve a pending facility and put it on the ledger
+      x-permission: facility:suspend
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: Not pending }
+  /facilities/{id}/licence:
+    get:
+      tags: [facilities]
+      x-permission: facility:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/File" }
+    post:
+      tags: [facilities]
+      summary: Upload the licence document (with a new end date when renewed)
+      x-permission: facility:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                licence_valid_to: { type: string, format: date }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  # ---- Templates ----
+
+  /templates:
+    post:
+      tags: [templates]
+      summary: Create a commodity template (live at once)
+      x-permission: template:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Template" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [templates]
+      x-permission: template:read
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /templates/{id}:
+    get:
+      tags: [templates]
+      x-permission: template:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+    put:
+      tags: [templates]
+      summary: Save a draft of the next version
+      x-permission: template:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Template" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+    delete:
+      tags: [templates]
+      x-permission: template:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /templates/{id}/publish:
+    post:
+      tags: [templates]
+      summary: Make the draft the live version
+      x-permission: template:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: No draft }
+
+  # ---- Passports ----
+
+  /passports:
+    post:
+      tags: [passports]
+      summary: Issue an origin passport (capacity and evidence checked)
+      x-permission: passport:issue
+      parameters: [{ $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Issue" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "409": { description: "Over capacity, facility not active, or evidence missing" }
+    get:
+      tags: [passports]
+      x-permission: passport:read
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /passports/{id}:
+    get:
+      tags: [passports]
+      summary: A passport with its journey
+      x-permission: passport:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /passports/{id}/genealogy:
+    get:
+      tags: [passports]
+      x-permission: passport:read
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - { name: direction, in: query, schema: { type: string, enum: [ancestors, descendants] } }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /passports/{id}/retire:
+    post:
+      tags: [passports]
+      summary: Retire a lot (consumed, destroyed)
+      x-permission: passport:retire
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /passports/{id}/handovers:
+    post:
+      tags: [handovers]
+      summary: Start a handover (sender signs); less than all splits the lot first
+      x-permission: handover:create
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Handover" }
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Handover"
+                - type: object
+                  properties:
+                    photos: { type: array, maxItems: 6, items: { type: string, format: binary } }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "409": { $ref: "#/components/responses/Error" }
+  /transforms:
+    post:
+      tags: [passports]
+      summary: Process, split or merge lots; outputs ≤ inputs × the stage's maxYield
+      x-permission: transform:create
+      parameters: [{ $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Transform" }
+      responses:
+        "201":
+          description: The transform, with the new passports in `outputs`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  outputs: { type: array, items: { type: object } }
+        "409": { description: Mass balance broken or evidence missing }
+
+  # ---- Handovers ----
+
+  /handovers:
+    get:
+      tags: [handovers]
+      x-permission: passport:read
+      parameters:
+        - { name: box, in: query, description: "incoming / outgoing: waiting on the acting organisation or the other side; done: finished", schema: { type: string, enum: [incoming, outgoing, done] } }
+        - { name: status, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /handovers/{id}:
+    get:
+      tags: [handovers]
+      x-permission: passport:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /handovers/{id}/photos/{photoId}:
+    get:
+      tags: [handovers]
+      x-permission: passport:read
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - { name: photoId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { $ref: "#/components/responses/File" }
+  /handovers/{id}/accept:
+    post:
+      tags: [handovers]
+      summary: Receiver weighs and signs; custody moves
+      x-permission: handover:accept
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Accept" }
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/Accept" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: Received weight outside the stage tolerance }
+  /handovers/{id}/reject:
+    post:
+      tags: [handovers]
+      summary: Receiver refuses, with reasons; optionally raises a flag
+      x-permission: handover:accept
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Reject" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /handovers/{id}/cancel:
+    post:
+      tags: [handovers]
+      summary: Sender withdraws a handover still waiting
+      x-permission: handover:create
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  # ---- Certificates ----
+
+  /attestations:
+    post:
+      tags: [certificates]
+      summary: Issue a certificate about a passport or facility (accredited issuers)
+      x-permission: certificate:issue
+      parameters: [{ $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [subject_type, subject_id, type, valid_from, valid_to, file]
+              properties:
+                subject_type: { type: string, enum: [passport, facility] }
+                subject_id: { type: string, format: uuid }
+                type: { type: string, description: An evidence key a template asks for }
+                valid_from: { type: string, format: date }
+                valid_to: { type: string, format: date }
+                file: { type: string, format: binary }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+        "403": { description: Not accredited for this type }
+    get:
+      tags: [certificates]
+      x-permission: passport:read
+      parameters:
+        - { name: subject_id, in: query, schema: { type: string, format: uuid } }
+        - { name: issuer_id, in: query, schema: { type: string, format: uuid } }
+        - { name: scope, in: query, description: "An organisation sees certificates it issued (issued) or about its lots and facilities (about); both when left out. The platform sees all.", schema: { type: string, enum: [issued, about] } }
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+        - { name: status, in: query, schema: { type: string, enum: [valid, expired, revoked] } }
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /attestations/{id}:
+    get:
+      tags: [certificates]
+      x-permission: passport:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /attestations/{id}/file:
+    get:
+      tags: [certificates]
+      x-permission: passport:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/File" }
+  /attestations/{id}/revoke:
+    post:
+      tags: [certificates]
+      x-permission: certificate:revoke
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: Already revoked }
+
+  # ---- Flags ----
+
+  /flags:
+    post:
+      tags: [flags]
+      x-permission: flag:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Flag" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+    get:
+      tags: [flags]
+      x-permission: flag:create
+      parameters:
+        - { name: status, in: query, description: "resolved = cleared or confirmed", schema: { type: string, enum: [open, cleared, confirmed, resolved] } }
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /flags/{id}:
+    get:
+      tags: [flags]
+      x-permission: flag:create
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /flags/{id}/resolve:
+    post:
+      tags: [flags]
+      summary: Clear, or confirm (revokes the passport and its descendants); platform or a verified regulator
+      x-permission: flag:create
+      parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/pin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Resolve" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
+  /flags/{id}/assignee:
+    put:
+      tags: [flags]
+      summary: Assign or unassign an investigator
+      x-permission: flag:create
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  # ---- Users ----
+
+  /users:
+    get:
+      tags: [users]
+      summary: Members of the acting organisation; every account for the platform
+      x-permission: user:manage
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /invites:
+    post:
+      tags: [users]
+      summary: Invite someone by email with a role
+      x-permission: user:manage
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "201": { $ref: "#/components/responses/Object" }
+  /invites/{token}/accept:
+    post:
+      tags: [users]
+      summary: Accept an invite (name and password)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /users/{id}/role:
+    put:
+      tags: [users]
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /users/{id}/suspend:
+    post:
+      tags: [users]
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /users/{id}/reinstate:
+    post:
+      tags: [users]
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  # ---- Reports and audit ----
+
+  /audit:
+    get:
+      tags: [reports]
+      summary: Audit log (`format=csv` or `pdf` for a file)
+      x-permission: audit:read
+      parameters:
+        - $ref: "#/components/parameters/format"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+  /audit/verify:
+    get:
+      tags: [reports]
+      summary: Walk the whole audit chain (platform only)
+      x-permission: audit:verify
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /reports/volume:
+    get:
+      tags: [reports]
+      summary: Volume by commodity, facility and period
+      x-permission: report:read
+      parameters:
+        - $ref: "#/components/parameters/format"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+  /reports/blocked:
+    get:
+      tags: [reports]
+      summary: Actions the rules refused
+      x-permission: report:read
+      parameters:
+        - $ref: "#/components/parameters/format"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+
+  /stats:
+    get:
+      tags: [reports]
+      summary: "Platform dashboard: totals by status, 30-day activity, volume by commodity, top organisations, chain outbox health"
+      x-permission: audit:verify
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  # ---- Public verification ----
+
+  /verify/{id}:
+    get:
+      tags: [public]
+      summary: Verdict for a passport (id or lot code), with reasons, journey, origins, genealogy, certificates
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: Passport uuid or lot code }
+      responses:
+        "200":
+          description: The verification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Verification" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+    session:
+      type: apiKey
+      in: cookie
+      name: ct_session
+      description: Browsers; a change also needs `Origin` to be the site itself
+
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    pin:
+      name: X-Signing-PIN
+      in: header
+      required: true
+      description: The signer's 6-digit PIN; every signing action checks it
+      schema: { type: string, pattern: "^[0-9]{6}$" }
+    page: { name: page, in: query, schema: { type: integer, minimum: 1 } }
+    size: { name: size, in: query, schema: { type: integer, minimum: 1 } }
+    search: { name: search, in: query, schema: { type: string } }
+    sort: { name: sort, in: query, schema: { type: string } }
+    start_date: { name: start_date, in: query, schema: { type: string, format: date } }
+    end_date: { name: end_date, in: query, schema: { type: string, format: date } }
+    format: { name: format, in: query, description: Left out for JSON, schema: { type: string, enum: [csv, pdf] } }
+
+  requestBodies:
+    Object:
+      content:
+        application/json:
+          schema: { type: object }
+
+  responses:
+    Object:
+      description: OK
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Envelope" }
+    Page:
+      description: One page of a list
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties: { data: { $ref: "#/components/schemas/Page" } }
+    File:
+      description: The stored file
+      content:
+        application/octet-stream:
+          schema: { type: string, format: binary }
+    Error:
+      description: Refused
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Envelope" }
+
+  schemas:
+    Envelope:
+      type: object
+      required: [status, message, data]
+      properties:
+        status: { type: integer, description: The HTTP status }
+        message: { type: string, description: A sentence safe to show; empty on reads }
+        data: { description: The result; null or details on a refusal }
+    Page:
+      type: object
+      properties:
+        data: { type: array, items: { type: object } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer }
+    Login:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        code: { type: string, description: Authenticator code when two-factor sign-in is on }
+        remember: { type: boolean }
+        trust_device: { type: boolean }
+    PIN:
+      type: object
+      required: [pin, password]
+      properties:
+        pin: { type: string, pattern: "^[0-9]{6}$" }
+        password: { type: string }
+    Registration:
+      type: object
+      required: [name, slug, kind, user_name, email, password]
+      properties:
+        name: { type: string }
+        slug: { type: string, description: The organisation's subdomain }
+        kind: { type: string, enum: [producer, processor, transporter, exporter, importer, certifier, regulator] }
+        user_name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+    Review:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [verified, rejected, changes_requested] }
+        reason: { type: string }
+    Accreditation:
+      type: object
+      required: [type, valid_from, valid_to]
+      properties:
+        type: { type: string }
+        valid_from: { type: string, format: date }
+        valid_to: { type: string, format: date }
+    Facility:
+      type: object
+      required: [name, kind, location, licence_number, licence_valid_to, capacity, capacity_unit, capacity_period]
+      properties:
+        name: { type: string, maxLength: 200 }
+        kind: { type: string, enum: [farm_plot, mine_site, washing_station, processing_plant, warehouse] }
+        location:
+          type: object
+          description: GeoJSON Point or Polygon, [longitude, latitude]
+          required: [type, coordinates]
+          properties:
+            type: { type: string, enum: [Point, Polygon] }
+            coordinates: {}
+        licence_number: { type: string }
+        licence_valid_to: { type: string, format: date }
+        capacity: { type: integer, minimum: 1 }
+        capacity_unit: { type: string, maxLength: 16 }
+        capacity_period: { type: string, enum: [season, year, month] }
+    Template:
+      type: object
+      required: [commodity, name, unit, capacityRule, stages]
+      properties:
+        commodity: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" }
+        name: { type: string }
+        unit: { type: string }
+        originFacilityKind: { type: string }
+        capacityRule:
+          type: object
+          properties:
+            type: { type: string, enum: [yield_per_area, facility_capacity] }
+            kgPerHaPerSeason: { type: number }
+        stages:
+          type: array
+          items: { $ref: "#/components/schemas/Stage" }
+    Stage:
+      type: object
+      required: [key, events]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" }
+        events:
+          type: array
+          items: { type: string, enum: [ISSUE, HANDOVER, TRANSFORM, EXPORT, IMPORT] }
+        maxYield: { type: number, exclusiveMinimum: 0, description: "A fraction: outputs ≤ inputs × maxYield (0.2 = 20%)" }
+        requiredEvidence: { type: array, items: { type: string } }
+        handoverTolerance: { type: number, description: Percent the received weight may differ }
+    Issue:
+      type: object
+      required: [facility_id, template_id, quantity]
+      properties:
+        facility_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+    Handover:
+      type: object
+      required: [to_org, stage]
+      properties:
+        to_org: { type: string, format: uuid }
+        stage: { type: string }
+        quantity: { type: integer, description: Unset means all that remains }
+        note: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+    Accept:
+      type: object
+      required: [received_quantity]
+      properties:
+        received_quantity: { type: integer, minimum: 0 }
+        lat: { type: number }
+        lon: { type: number }
+    Reject:
+      type: object
+      properties:
+        reasons: { type: array, items: { type: string } }
+        note: { type: string }
+        also_flag: { type: boolean }
+    Transform:
+      type: object
+      required: [stage, inputs, outputs]
+      properties:
+        stage: { type: string }
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [passport_id, quantity]
+            properties:
+              passport_id: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1 }
+        outputs:
+          type: array
+          items:
+            type: object
+            required: [quantity]
+            properties:
+              quantity: { type: integer, minimum: 1 }
+    Flag:
+      type: object
+      required: [passport_id, reason]
+      properties:
+        passport_id: { type: string, format: uuid }
+        reason: { type: string }
+    Resolve:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [cleared, confirmed] }
+        note: { type: string }
+    Verification:
+      type: object
+      properties:
+        verdict: { type: string, enum: [verified, warning, failed] }
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              level: { type: string }
+              check: { type: string }
+              code: { type: string }
+              message: { type: string }
+              subject_id: { type: string }
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              result: { type: string }
+        passport: { type: object }
+        origins: { type: array, items: { type: object } }
+        genealogy: { type: object }
+        certificates: { type: array, items: { type: object } }

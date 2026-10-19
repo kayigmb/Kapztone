@@ -1,0 +1,13 @@
+{
+  "commodity": "coffee",
+  "name": "Arabica coffee · cherry to green (Rwanda)",
+  "unit": "kg",
+  "originFacilityKind": "farm_plot",
+  "capacityRule": { "type": "facility_capacity" },
+  "stages": [
+    { "key": "origin", "events": ["ISSUE"], "requiredEvidence": ["plot_registration"] },
+    { "key": "washing_station", "events": ["HANDOVER", "TRANSFORM"], "maxYield": 0.2 },
+    { "key": "export", "events": ["HANDOVER", "EXPORT"], "requiredEvidence": ["certificate_of_origin"] },
+    { "key": "import", "events": ["HANDOVER", "IMPORT"] }
+  ]
+}

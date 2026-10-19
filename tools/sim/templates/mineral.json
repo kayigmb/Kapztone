@@ -1,0 +1,13 @@
+{
+  "commodity": "tin",
+  "name": "Cassiterite · mine to smelter",
+  "unit": "kg",
+  "originFacilityKind": "mine_site",
+  "capacityRule": { "type": "facility_capacity" },
+  "stages": [
+    { "key": "origin", "events": ["ISSUE"], "requiredEvidence": ["mining_licence"] },
+    { "key": "trader", "events": ["HANDOVER"] },
+    { "key": "smelter", "events": ["HANDOVER", "TRANSFORM"], "maxYield": 0.7, "requiredEvidence": ["assay_report"] },
+    { "key": "export", "events": ["HANDOVER", "EXPORT"], "requiredEvidence": ["export_permit"] }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "commodity": "medicine",
+  "name": "Essential medicine · manufacturer to pharmacy",
+  "unit": "box",
+  "originFacilityKind": "processing_plant",
+  "capacityRule": { "type": "facility_capacity" },
+  "stages": [
+    { "key": "origin", "events": ["ISSUE"], "requiredEvidence": ["gmp_certificate"] },
+    { "key": "distributor", "events": ["HANDOVER"], "requiredEvidence": ["batch_release"], "handoverTolerance": 0 },
+    { "key": "pharmacy", "events": ["HANDOVER"], "handoverTolerance": 0 }
+  ]
+}
