@@ -342,12 +342,22 @@ func TestUserManagement(t *testing.T) {
 	inv = invite(e.email("late"), auth.RoleMember)
 	e.exec(`UPDATE invites SET expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, inv.Invite.ID)
 	want(t, "expired invite", accept(tokenOf(inv.Link), "Late", testPassword), http.StatusNotFound)
-	var sentTo, sentBody string
+	sent := make(chan [2]string, 1)
 	e.users.Dev = false
-	e.users.Mail = func(to, _, body string) error { sentTo, sentBody = to, body; return nil }
+	e.users.Mail = func(to, _, text, _ string) error { sent <- [2]string{to, text}; return nil }
 	inv = invite(e.email("mailed"), auth.RoleMember)
-	if !inv.Emailed || inv.Link != "" || sentTo != e.email("mailed") || !strings.Contains(sentBody, user.InvitePath) {
-		t.Fatalf("production invite: %+v, sent to %q: %q", inv, sentTo, sentBody)
+	if !inv.Emailed || inv.Link != "" {
+		t.Fatalf("production invite: %+v", inv)
+	}
+	var sentTo, sentBody string
+	select {
+	case got := <-sent:
+		sentTo, sentBody = got[0], got[1]
+	case <-time.After(10 * time.Second):
+		t.Fatal("invitation e-mail was not queued")
+	}
+	if sentTo != e.email("mailed") || !strings.Contains(sentBody, user.InvitePath) {
+		t.Fatalf("production invite sent to %q: %q", sentTo, sentBody)
 	}
 	var plain int
 	e.pool.QueryRow(context.Background(), `SELECT count(*) FROM invites WHERE token_hash = $1`,
@@ -377,6 +387,19 @@ func TestUserManagement(t *testing.T) {
 	want(t, "promote", do(e.h, http.MethodPut, as(slug, "/users/"+niaID+"/role"), admin, `{"role":"org_admin"}`), http.StatusOK)
 	if me := decodeTo[meResponse](t, do(e.h, http.MethodGet, as(slug, "/me"), nia, "")); me.Role != auth.RoleOrgAdmin {
 		t.Fatalf("promotion not seen: %+v", me)
+	}
+	// Two admins now, so only the self rule can refuse this.
+	want(t, "demote oneself", do(e.h, http.MethodPut, as(slug, "/users/"+adminID+"/role"), admin, `{"role":"member"}`), http.StatusConflict)
+	rec = do(e.h, http.MethodGet, as(slug, "/users"), admin, "")
+	want(t, "list members again", rec, http.StatusOK)
+	stillAdmin := false
+	for _, m := range decodeTo[listq.Page[user.Member]](t, rec).Data {
+		if m.ID == adminID && m.Role == auth.RoleOrgAdmin {
+			stillAdmin = true
+		}
+	}
+	if !stillAdmin {
+		t.Fatal("self-demotion went through")
 	}
 	want(t, "someone else's member", do(e.h, http.MethodPut, as(slug, "/users/"+fakeOrgID+"/role"), admin, `{"role":"member"}`), http.StatusNotFound)
 

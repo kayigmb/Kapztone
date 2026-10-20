@@ -9,7 +9,6 @@ const tones = {
   neutral: "bg-primary-soft text-primary",
 } as const;
 
-/** The outcome of an access step (drafts 2e, 2g, 2h): a round mark, a title, what happened, what to do next. */
 export function AuthResult({
   icon: Icon,
   tone = "neutral",

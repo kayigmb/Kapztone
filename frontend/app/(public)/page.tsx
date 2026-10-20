@@ -1,4 +1,5 @@
-import { Landing } from "@/components/marketing/landing";
+import { LandingGate } from "@/components/marketing/landing/gate";
+import { Landing } from "@/components/marketing/landing/landing";
 import { copy } from "@/lib/consts";
 
 export const metadata = {
@@ -8,5 +9,9 @@ export const metadata = {
 
 // The public home: what ChainTrack is, and a way to verify a label.
 export default function Page() {
-  return <Landing />;
+  return (
+    <LandingGate>
+      <Landing />
+    </LandingGate>
+  );
 }

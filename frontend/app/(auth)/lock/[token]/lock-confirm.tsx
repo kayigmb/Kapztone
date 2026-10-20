@@ -65,9 +65,10 @@ export function LockConfirm({ token }: { token: string }) {
             variant="danger"
             block
             onClick={() => lock.mutate()}
-            disabled={lock.isPending}
+            loading={lock.isPending}
+            loadingText={t.submitting}
           >
-            {lock.isPending ? t.submitting : t.submit}
+            {t.submit}
           </Button>
           {back}
         </>

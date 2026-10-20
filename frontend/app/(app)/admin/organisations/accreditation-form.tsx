@@ -2,17 +2,18 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, CircleDashed, OctagonX } from "lucide-react";
+import { BadgeCheck, CircleDashed } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { endpoints, problemOf, type AccreditationRow } from "@/lib/api";
+import { endpoints, type AccreditationRow } from "@/lib/api";
 import { copy, queryKeys, confirmCopy } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import {
@@ -51,16 +52,20 @@ export function AccreditationForm({ orgId }: { orgId: string }) {
           </StatusChip>
         )}
       </header>
-      {types.isPending || current.isPending ? (
-        <Loading />
-      ) : types.isError || current.isError ? (
-        <Notice kind="blocking">
-          {problemOf(types.error ?? current.error)}
-        </Notice>
-      ) : (
-        // Mounted once the current accreditation is known, so the form starts from it.
-        <Form orgId={orgId} types={types.data} current={current.data} />
-      )}
+      <DataWidget query={types}>
+        {() => (
+          <DataWidget query={current}>
+            {() => (
+              // Mounted once the current accreditation is known, so the form starts from it.
+              <Form
+                orgId={orgId}
+                types={types.data!}
+                current={current.data!}
+              />
+            )}
+          </DataWidget>
+        )}
+      </DataWidget>
     </section>
   );
 }
@@ -152,12 +157,7 @@ function Form({
             </div>
           )}
         />
-        {errors.types && (
-          <p className="flex gap-1.5 text-small font-semibold text-danger">
-            <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-            {errors.types.message}
-          </p>
-        )}
+        <FieldNote error={errors.types?.message} />
       </fieldset>
       <div className="grid gap-4 md:grid-cols-2">
         <TextField
@@ -178,7 +178,8 @@ function Form({
         <Button
           type="button"
           variant="secondary"
-          disabled={save.isPending || current.length === 0}
+          disabled={current.length === 0}
+          loading={save.isPending}
           onClick={async () => {
             const c = confirmCopy.decline;
             if (
@@ -194,8 +195,8 @@ function Form({
         >
           {t.decline}
         </Button>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? t.saving : t.accredit}
+        <Button type="submit" loading={save.isPending} loadingText={t.saving}>
+          {t.accredit}
         </Button>
       </div>
     </form>

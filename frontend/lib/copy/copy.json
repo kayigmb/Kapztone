@@ -1,0 +1,1494 @@
+{
+  "brand": "ChainTrack",
+  "loading": "Loading…",
+  "errors": {
+    "unreachable": "We couldn't reach ChainTrack just now. Nothing was changed. Try again in a moment.",
+    "unexpected": "Something went wrong on our side. Nothing was changed. Try again in a moment.",
+    "unexpectedRef": {
+      "$template": "Something went wrong on our side. Try again; if it keeps happening, quote reference {id}."
+    },
+    "badAnswer": "ChainTrack answered in a way this page doesn't understand. Reload the page.",
+    "tryAgain": "Try again",
+    "loadTitle": "We couldn't load this page"
+  },
+  "signOut": "Sign out",
+  "password": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "handoverStatusLabel": {
+    "expired": "Expired"
+  },
+  "removeLocation": "Remove location",
+  "removeFile": {
+    "$template": "Remove {name}"
+  },
+  "shell": {
+    "nav": {
+      "home": "Dashboard",
+      "workspaces": "Workspaces",
+      "facilities": "Facilities",
+      "issue": "Issue passport",
+      "handovers": "Handovers",
+      "transform": "Transform",
+      "certificates": "Certificates",
+      "flags": "Flags",
+      "adminOrgs": "Verify organisations",
+      "templates": "Templates",
+      "reports": "Reports",
+      "users": "Users",
+      "profile": "Profile",
+      "notifications": "Notifications"
+    },
+    "groups": {
+      "workspace": "Workspace",
+      "trust": "Trust & compliance",
+      "manage": "Manage"
+    },
+    "eyebrow": "Workspace",
+    "menu": "Menu",
+    "more": "More",
+    "scan": "Scan",
+    "scanQr": "Scan QR",
+    "platform": "ChainTrack platform",
+    "back": "Back",
+    "collapse": "Fold the sidebar",
+    "expand": "Unfold the sidebar",
+    "theme": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "themeMenu": "Theme",
+    "yourProfile": {
+      "$template": "{name}: your profile"
+    },
+    "switchOrg": "Switch organisation",
+    "switchNote": "Opens that organisation's address; you stay signed in.",
+    "current": "Current"
+  },
+  "list": {
+    "search": "Search",
+    "sort": "Sort by",
+    "perPage": "Rows",
+    "viewAs": "Show as",
+    "actions": "Actions",
+    "views": {
+      "table": "Table",
+      "cards": "Cards"
+    },
+    "filter": "Show",
+    "all": "All",
+    "prev": "Previous page",
+    "next": "Next page",
+    "page": {
+      "$template": "Page {page} of {pages}"
+    },
+    "noMatch": "Nothing matches. Try another search or filter.",
+    "newest": "Newest first",
+    "oldest": "Oldest first",
+    "nameAZ": "Name A–Z",
+    "nameZA": "Name Z–A",
+    "endingSoonest": "Ending soonest",
+    "typeAZ": "Type A–Z",
+    "statusAZ": "Status"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Nothing new.",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all as read",
+    "read": "Read",
+    "unread": "Unread",
+    "viewAll": "View all notifications",
+    "sub": "Everything that happened to your lots, handovers, certificates and flags. Open one to go to it.",
+    "tabs": {
+      "all": "All",
+      "unread": "Unread"
+    },
+    "emptyUnread": "You're all caught up.",
+    "kinds": {
+      "org_registered": "New organisation registered",
+      "documents_uploaded": "Documents ready for review",
+      "flag_raised": "Flag raised",
+      "flag_resolved": "Flag resolved",
+      "handover_started": "Handover waiting for you",
+      "handover_accepted": "Handover accepted",
+      "handover_rejected": "Handover rejected",
+      "certificate_issued": "Certificate issued",
+      "certificate_revoked": "Certificate revoked",
+      "passport_revoked": "Passport revoked"
+    }
+  },
+  "profile": {
+    "title": "Your profile",
+    "sub": "Your account and how you sign in and sign records.",
+    "details": "Details",
+    "name": "Full name",
+    "email": "Email",
+    "organisation": "Organisation",
+    "role": "Role",
+    "saveName": "Save name",
+    "password": "Password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "changePassword": "Change password",
+    "pin": "Signing PIN",
+    "pinHelpSet": "Your PIN is set. You enter it whenever you sign a record.",
+    "pinHelpUnset": "Set a 6-digit PIN. You'll need it to sign passports, handovers and certificates.",
+    "pinLabel": "New 6-digit PIN",
+    "pinPassword": "Your password",
+    "setPin": "Set PIN",
+    "changePin": "Change PIN",
+    "pinStatusSet": "Set",
+    "pinStatusUnset": "Not set",
+    "twoFactor": "Two-factor sign-in",
+    "twoFactorHelp": "Ask for a code from an authenticator app each time you sign in.",
+    "startSetup": "Set up two-factor sign-in",
+    "scanQr": "Scan this with your authenticator app, or type the key below.",
+    "secret": "Key",
+    "code": "6-digit code from the app",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off two-factor sign-in",
+    "turnOffHelp": "Enter a current code from your app to turn it off.",
+    "recoveryTitle": "Save your recovery codes",
+    "recoveryBody": "Each code signs you in once if you lose your phone. They won't be shown again.",
+    "newRecovery": "Get new recovery codes",
+    "newRecoveryHelp": "Enter a current code from your app. Your old recovery codes stop working.",
+    "done": "I've saved them"
+  },
+  "users": {
+    "title": "Users",
+    "subOrg": "People who can act for your organisation.",
+    "subPlatform": "Everyone with a ChainTrack account.",
+    "search": "Search by name or email",
+    "empty": "No users match.",
+    "since": {
+      "$template": "Since {d}"
+    },
+    "memberships": "Organisations",
+    "columns": {
+      "person": "Person",
+      "role": "Role",
+      "status": "Status",
+      "joined": "Joined",
+      "twoFactor": "Two-factor",
+      "actions": "Actions"
+    },
+    "noMemberships": "No organisation",
+    "twoFactorOn": "Two-factor on",
+    "twoFactorOff": "Two-factor off",
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "disabled": "Disabled"
+    },
+    "invite": "Invite person",
+    "inviteEmail": "Email",
+    "inviteRole": "Role",
+    "sendInvite": "Send invitation",
+    "notEmailed": "E-mail is off, so nothing was sent. Share this link with them (development only):",
+    "role": "Role",
+    "changeRole": "Change role",
+    "suspend": "Suspend",
+    "reinstate": "Reinstate",
+    "you": "You",
+    "notAllowedTitle": "You can't manage users.",
+    "notAllowedBody": "Only organisation admins and the platform admin can open this page."
+  },
+  "invite": {
+    "eyebrow": "Invitation",
+    "title": "Join an organisation",
+    "sub": "You've been invited to act for an organisation on ChainTrack.",
+    "name": "Full name",
+    "nameHelp": "Leave empty if you already have a ChainTrack account.",
+    "password": "Password",
+    "passwordHelp": "New account: choose one, 12 to 72 characters. Existing account: your current password.",
+    "submit": "Accept invitation",
+    "submitting": "Accepting…",
+    "done": "You're in.",
+    "signInAt": "Sign in at your organisation's address"
+  },
+  "dashboard": {
+    "platformLine": "Platform administration",
+    "dateHeader": "Date",
+    "showTable": "Show as a table",
+    "tiles": {
+      "passportsHeld": {
+        "label": "Passports you hold",
+        "note": "Active lots"
+      },
+      "incoming": {
+        "label": "Incoming to accept",
+        "note": "Waiting for your signature"
+      },
+      "outgoing": {
+        "label": "Sent, awaiting receiver",
+        "note": "Signed by you"
+      },
+      "openFlags": {
+        "label": "Open flags",
+        "note": "Under review"
+      },
+      "certValid": {
+        "label": "Certificates valid",
+        "note": "Issued by you"
+      },
+      "certExpired": {
+        "label": "Certificates expired",
+        "note": "Past their end date"
+      },
+      "certRevoked": {
+        "label": "Certificates revoked",
+        "note": "Withdrawn"
+      },
+      "orgsPending": {
+        "label": "Organisations to verify",
+        "note": "Waiting for review"
+      },
+      "orgsChanges": {
+        "label": "Changes requested",
+        "note": "Waiting for the organisation"
+      },
+      "orgsRejected": {
+        "label": "Rejected",
+        "note": "Not verified"
+      }
+    },
+    "actions": {
+      "scan": "Scan QR",
+      "issue": "Issue passport",
+      "registerFacility": "Register facility",
+      "handover": "Hand over",
+      "transform": "Transform",
+      "reviewFlags": "Review flags",
+      "issueCertificate": "Issue certificate",
+      "reviewOrgs": "Review organisations",
+      "templates": "Templates",
+      "users": "Users",
+      "reports": "Run report"
+    },
+    "panels": {
+      "incoming": {
+        "title": "Incoming handovers",
+        "sub": "Lots on their way to you that need your answer",
+        "empty": "Nothing on its way to you."
+      },
+      "passports": {
+        "title": "Passports you hold",
+        "sub": "Recently updated lots",
+        "empty": "You don't hold any active passports."
+      },
+      "capacity": {
+        "title": "Facility capacity",
+        "sub": "Current period",
+        "empty": "No facilities yet. Register a facility before issuing passports."
+      },
+      "certificates": {
+        "title": "Latest certificates",
+        "sub": "Issued by your organisation",
+        "empty": "No certificates issued yet."
+      },
+      "flags": {
+        "title": "Open flags",
+        "sub": "Concerns being looked into",
+        "empty": "No open flags."
+      },
+      "orgsPending": {
+        "title": "Waiting for verification",
+        "sub": "Oldest first",
+        "empty": "No organisations are waiting."
+      }
+    },
+    "columns": {
+      "lot": "Lot",
+      "product": "Product",
+      "quantity": "Quantity",
+      "status": "Status"
+    },
+    "quickActions": "Quick actions",
+    "all": "View all",
+    "from": {
+      "$template": "From {name}"
+    },
+    "to": {
+      "$template": "To {name}"
+    },
+    "someOrg": "another organisation",
+    "stage": {
+      "$template": "Stage: {stage}"
+    },
+    "awaiting": "Awaiting receiver",
+    "capacityOf": {
+      "$template": "{used} of {max}"
+    },
+    "capacityLeft": {
+      "$template": "{left} left this period"
+    },
+    "capacityNear": "Close to the limit",
+    "capacityOver": "Over the declared capacity",
+    "workspaces": {
+      "title": "Workspaces",
+      "open": "Open workspace",
+      "noneTitle": "You don't belong to an organisation yet.",
+      "noneBody": "Ask your organisation's admin for an invitation, or create your organisation's account."
+    },
+    "loadFailed": "Couldn't load"
+  },
+  "scan": {
+    "title": "Scan a passport",
+    "hint": "Point the camera at the QR label on the bag, box or document.",
+    "noCamera": "The camera isn't available here. Type the lot code instead.",
+    "codeLabel": "Lot code",
+    "codeHint": "Printed under the QR code, e.g. ACME-2026-0412",
+    "open": "Open passport",
+    "close": "Close"
+  },
+  "stepOf": {
+    "$template": "Step {n} of {total}"
+  },
+  "signing": {
+    "title": "Sign with your PIN",
+    "label": "6-digit signing PIN",
+    "help": "This signature is yours alone; your PIN is checked once for this action.",
+    "noPinTitle": "You don't have a signing PIN yet",
+    "noPinBody": "Set a 6-digit PIN in your profile, then come back to sign this record.",
+    "setPin": "Set a PIN in your profile",
+    "signing": "Signing…"
+  },
+  "facilities": {
+    "title": "Facilities",
+    "register": "Register facility",
+    "filterLabel": "Type",
+    "filterAll": "All types",
+    "empty": "No facilities yet. A facility is where your goods originate or are handled: a plot, a site, a station or a warehouse. Register one before issuing passports.",
+    "emptyType": "No facilities of this type.",
+    "active": "Active",
+    "suspended": "Suspended",
+    "suspendedNote": "Suspended facilities can't issue passports.",
+    "suspend": "Suspend",
+    "reinstate": "Reinstate",
+    "suspendTitle": {
+      "$template": "Suspend {name}?"
+    },
+    "suspendBody": "It can't issue passports while suspended. Lots already issued here keep their records.",
+    "suspendConfirm": "Suspend facility",
+    "pending": "Awaiting approval",
+    "pendingNote": "The platform checks the licence and location before this facility can issue passports.",
+    "expired": "Licence expired",
+    "expiredNote": "The licence has ended. Upload the renewed licence to keep issuing from here.",
+    "approve": "Approve facility",
+    "mapLabel": "Map of your facilities",
+    "legend": {
+      "active": "Active",
+      "pending": "Awaiting approval",
+      "inactive": "Suspended or licence expired"
+    },
+    "detail": {
+      "licence": "Licence number",
+      "licenceValid": "Licence valid to",
+      "licenceUnknown": "Not given",
+      "licenceDoc": "Licence document",
+      "licenceOpen": "Open licence",
+      "licenceNone": "No licence document uploaded.",
+      "licenceUpload": "Upload licence",
+      "mapLabel": {
+        "$template": "Map of {name}"
+      },
+      "point": "Point location",
+      "declared": "Declared capacity",
+      "coordinates": "Coordinates",
+      "issueHere": "Issue passport here",
+      "delete": "Delete facility",
+      "deleteTitle": {
+        "$template": "Delete {name}?"
+      },
+      "deleteBody": "The facility is removed from your list. Passports already issued here keep their records and their journey.",
+      "deleteConfirm": "Delete facility",
+      "selected": "Selected facility"
+    },
+    "new": {
+      "title": "Register facility",
+      "sub": "A place where your goods originate or are handled. You need one before issuing passports.",
+      "steps": [
+        "Location",
+        "Details",
+        "Capacity"
+      ],
+      "name": "Facility name",
+      "nameHelp": "What your team calls it, like Plot 14 · Kigoma Hill.",
+      "kind": "Type",
+      "licence": "Licence number",
+      "licenceHelp": "Printed on the facility's licence.",
+      "capacity": "Declared capacity",
+      "capacityHelp": "The most that may originate here in one period. Capacity is checked every time a passport is issued from here.",
+      "unit": "Unit",
+      "unitHelp": "The unit your commodity template uses, like kg.",
+      "period": "Per period",
+      "location": "Location",
+      "modes": {
+        "pin": "Drop pin",
+        "area": "Draw boundary"
+      },
+      "hint": {
+        "pin": "Tap the map where the facility is.",
+        "area": "Tap the map to add corners, at least 3. The shape closes itself."
+      },
+      "mapLabel": "Map: tap to place the facility",
+      "centre": "Centre",
+      "undo": "Undo",
+      "clear": "Clear",
+      "gps": "Use my GPS position",
+      "gpsHelp": "Your browser asks for permission. Put yourself inside the facility.",
+      "gpsFail": "We couldn't get your position. Allow location access and try again, or tap the map.",
+      "licenceValid": "Licence valid to",
+      "licenceDoc": "Licence document",
+      "licenceDocHelp": "A PDF or clear photo of the licence. You can add it later from the facility.",
+      "approvalNote": "The platform approves each facility before it can issue passports. Capacity is checked every time a passport is issued from here.",
+      "save": "Submit for approval",
+      "saving": "Submitting…",
+      "licenceFailed": "The facility is saved, but the licence didn't upload. Upload it from the facility."
+    }
+  },
+  "issue": {
+    "title": "Issue passport",
+    "steps": [
+      "Facility",
+      "Quantity",
+      "Sign"
+    ],
+    "where": "Where was it produced?",
+    "template": "Product template",
+    "templateHelp": "Sets the unit, the stages your lot moves through and the evidence each stage needs.",
+    "templateEmpty": "No templates yet. A platform admin creates the commodity templates.",
+    "facility": "Facility",
+    "facilityEmpty": "No facilities yet. Register a farm plot, site or warehouse first.",
+    "facilityNone": "No capacity left this period.",
+    "facilitySuspended": "Suspended: can't issue from here",
+    "facilityPending": "Awaiting approval: can't issue yet",
+    "howMuch": "How much?",
+    "quantity": "Quantity",
+    "evidence": "Evidence on file",
+    "evidenceHelp": "The template's first stage asks for a valid certificate of each of these, attached to this facility.",
+    "evidenceNone": "This template asks for no evidence before issuing.",
+    "evidenceMissing": {
+      "$template": "Missing: {keys}. Ask a certifier to issue these certificates for this facility, then issue the passport."
+    },
+    "evidenceOnFile": "On file",
+    "evidenceMissingChip": "Missing",
+    "review": "Check and sign",
+    "meaning": "Your signature records this harvest on ChainTrack. It can't be edited afterwards; mistakes are corrected with a new, linked record.",
+    "sign": "Sign and issue passport",
+    "facts": {
+      "product": "Product",
+      "template": "Template",
+      "facility": "Facility",
+      "quantity": "Quantity",
+      "evidence": "Evidence"
+    },
+    "blockedReason": "Continue is blocked until the quantity fits.",
+    "createdTitle": "Passport issued",
+    "createdBody": {
+      "$template": "{quantity} from {facility}."
+    },
+    "printLabels": "Print labels",
+    "labelsNote": "Print one label per bag or crate. Labels print at 50 × 30 mm on standard thermal printers.",
+    "handOver": "Hand over",
+    "viewPassport": "View passport",
+    "another": "Issue another passport"
+  },
+  "handover": {
+    "title": "Hand over a lot",
+    "steps": [
+      "Lot",
+      "Details",
+      "Receiver",
+      "Sign"
+    ],
+    "pickTitle": "Which lot is leaving?",
+    "pickHint": "Scan the QR label on the bags, or choose a lot you hold.",
+    "pickEmpty": "You don't hold any active passports. Issue a passport before handing a lot over.",
+    "isRightLot": "Is this the right lot?",
+    "canHandOver": "You hold this lot and nothing is pending on it. It can be handed over.",
+    "notHolder": "Another organisation holds this lot. Only its holder can hand it over.",
+    "openFlag": "A flag is open on this lot. It can't be handed over until the flag is resolved.",
+    "openHandover": "A handover of this lot is still waiting for the receiver. Cancel it or wait for their answer.",
+    "details": "What's leaving?",
+    "allOfIt": "All of it",
+    "partOfIt": "Part of it",
+    "quantity": "Quantity",
+    "partial": {
+      "$template": "Sending less keeps the rest ({rest}) on this passport; the part you send gets its own lot code."
+    },
+    "stage": "Stage it goes into",
+    "stageHelp": "Only stages of this product that allow a handover.",
+    "stagePlaceholder": "Choose a stage",
+    "noStages": "This product's template has no stage that allows a handover. Ask your platform admin to add one.",
+    "location": "Add my location",
+    "locationAdded": {
+      "$template": "Location added · {lat}, {lon}"
+    },
+    "locationFailed": "Your location isn't available. You can send without it.",
+    "photos": "Photos",
+    "photosHelp": {
+      "$template": "Up to {max}: bags, seal, the truck."
+    },
+    "tooManyPhotos": {
+      "$template": "Choose at most {max} photos."
+    },
+    "next": "Continue",
+    "back": "Back",
+    "stayHolder": "You stay the holder until the receiver signs. Unanswered handovers expire in 7 days.",
+    "youHold": "You hold this",
+    "note": "Where and how",
+    "noteHelp": "A place and how the goods were handed over, like Nyamagabe depot, sealed bags on truck KTB-409.",
+    "receiver": "Who is receiving it?",
+    "receiverSearch": "Search verified organisations",
+    "receiverEmpty": "No verified organisations match that name.",
+    "receiverEmptyAll": "No other verified organisations yet. A receiver must be verified by the platform before it can receive lots.",
+    "verified": "Verified",
+    "review": "Check and sign",
+    "facts": {
+      "lot": "Lot",
+      "product": "Product",
+      "quantity": "Quantity",
+      "from": "From",
+      "to": "Receiver",
+      "where": "Where"
+    },
+    "meaning": {
+      "$template": "You confirm these goods left your custody. {receiver} must inspect and sign before the handover is complete."
+    },
+    "sign": "Sign and send",
+    "sentTitle": "Sent for signature",
+    "sentBody": {
+      "$template": "{quantity} is on its way to {receiver}."
+    },
+    "stepsNext": [
+      "You signed",
+      "Receiver inspects and signs",
+      "Custody moves to them"
+    ],
+    "signedBySender": "Signed by sender",
+    "awaitingReceiver": "Awaiting receiver signature",
+    "rejectedByReceiver": "Rejected by receiver",
+    "signedByBoth": "Signed by both parties",
+    "cancelNote": "If they reject the handover, you're notified and the lot stays with you while the flag is open.",
+    "cancel": "Cancel handover",
+    "cancelTitle": "Cancel this handover?",
+    "cancelBody": "The receiver is told the handover was cancelled. You keep the lot and can hand it over again later.",
+    "cancelConfirm": "Cancel handover",
+    "notSender": "Only the organisation that started this handover can cancel it.",
+    "cancelled": "Handover cancelled.",
+    "expired": "This handover expired before the receiver answered. Start it again if the lot is still leaving.",
+    "another": "Hand over another lot"
+  },
+  "receiver": {
+    "title": "Handovers",
+    "sub": "Lots arriving from other organisations, and lots you've sent.",
+    "tabs": {
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
+      "done": "Done"
+    },
+    "emptyIncoming": "No handovers are waiting for you. When another organisation hands a lot to you, it appears here to inspect and sign.",
+    "emptyOutgoing": "Nothing is on its way from you.",
+    "emptyDone": "Nothing has been completed yet.",
+    "open": "Inspect",
+    "from": {
+      "$template": "From {name}"
+    },
+    "to": {
+      "$template": "To {name}"
+    },
+    "expected": "Sent",
+    "received": "Weight received",
+    "receivedHelp": "What you weighed on arrival. It is recorded with your signature.",
+    "matches": "Matches what was sent",
+    "within": {
+      "$template": "Difference {n} {unit} ({pct}%) — within the {tol}% tolerance."
+    },
+    "outside": {
+      "$template": "Difference {n} {unit} ({pct}%) — outside the {tol}% tolerance. You can't accept this; reject it or raise a flag."
+    },
+    "location": "Add my location",
+    "locationAdded": {
+      "$template": "Location added · {lat}, {lon}"
+    },
+    "locationFailed": "Your location isn't available. You can sign without it.",
+    "photos": "Inspection photos",
+    "photosHelp": {
+      "$template": "Up to {max} photos: bags, seal, scale."
+    },
+    "inspect": "Inspect on arrival",
+    "checklist": {
+      "seal": "Seal number matches",
+      "count": "Count and labels match",
+      "noDamage": "No damage"
+    },
+    "checklistNote": "Answer each point from what you can see. The sender and a regulator read your answers if you reject.",
+    "accept": "Accept and sign",
+    "meaning": {
+      "$template": "You confirm you received this lot from {sender}. The handover is complete once you sign."
+    },
+    "completeTitle": "Handover complete",
+    "completeBody": {
+      "$template": "You now hold {quantity}."
+    },
+    "nextTitle": "What happens next",
+    "next": [
+      "The lot is yours",
+      "It appears in your passports",
+      "You can hand it over or process it"
+    ],
+    "viewPassport": "View passport",
+    "reject": "Reject / raise flag",
+    "rejectTitle": "Reject this handover?",
+    "rejectChips": {
+      "weight_short": "Weight short",
+      "damaged": "Damaged",
+      "wrong_product": "Wrong product",
+      "seal_broken": "Seal broken",
+      "not_expected": "Not expected"
+    },
+    "rejectPick": "Pick at least one reason.",
+    "rejectStays": {
+      "$template": "{sender} stays the holder. They can send the lot again with the right quantity."
+    },
+    "sentQty": "Sent",
+    "sentOn": "Sent on",
+    "partOf": {
+      "$template": "Split from {code}: the sender keeps the rest of that lot."
+    },
+    "rejectReason": "What's wrong?",
+    "rejectReasonHelp": "Pick one, or write your own. The sender and a regulator read it.",
+    "rejectNote": "What you saw",
+    "rejectNoteHelp": "Optional detail for the sender and the regulator.",
+    "rejectFlag": "Also raise a flag so a regulator looks at it",
+    "rejectConfirm": "Reject and flag",
+    "rejectOnly": "Reject handover",
+    "rejectedTitle": "Handover rejected",
+    "rejectedBody": {
+      "$template": "The lot stays with {sender} until it's resolved."
+    },
+    "flagNote": "A flag is open on this lot. It stays with its holder until a regulator clears it or confirms it as fraud.",
+    "backToList": "Back to handovers"
+  },
+  "transform": {
+    "title": "Transform lots",
+    "sub": "Processing that turns lots into new lots: washing, drying, milling, concentrating.",
+    "stage": "Stage",
+    "stageHelp": "The stage the new lots enter. It comes from the template of the lots you select.",
+    "inputs": "Inputs",
+    "addInput": "Scan or add another lot",
+    "inputEmpty": "Select the lots that go into this operation.",
+    "noneHeld": "You don't hold any active passports to process.",
+    "useAll": "Use all of it",
+    "usePart": "Part: ",
+    "outputs": "New output lots",
+    "addOutput": "Add output lot",
+    "output": {
+      "$template": "Output {n}"
+    },
+    "quantity": "Quantity",
+    "remove": "Remove",
+    "meterWithin": {
+      "$template": "Within limit · {below} below the allowed maximum"
+    },
+    "meterOver": {
+      "$template": "Over the allowed maximum by {over}. Lower the outputs to continue."
+    },
+    "yieldLine": {
+      "$template": "Yield {yieldPct}% of the {maxPct}% allowed"
+    },
+    "inOut": {
+      "$template": "{into} in → {out} out"
+    },
+    "blocked": "Fix the mass balance to continue",
+    "noYield": "This stage has no maximum yield recorded; check the outputs by hand before signing.",
+    "meaning": "Your signature records this processing step. The input passports are closed and linked to the new ones.",
+    "createdBody": {
+      "$template": "{into} in → {out} out · yield {yieldPct}% of {maxPct}% allowed"
+    },
+    "inputsClosed": "The input passports are closed. The new ones are linked to them.",
+    "printLabels": "Print labels",
+    "handOver": "Hand over",
+    "again": "Process another lot"
+  },
+  "passportView": {
+    "facts": {
+      "product": "Product",
+      "quantity": "Quantity",
+      "remaining": "Remaining",
+      "holder": "Current holder",
+      "status": "Status",
+      "issued": "Issued",
+      "facility": "Facility",
+      "template": "Template"
+    },
+    "status": {
+      "active": "Active",
+      "consumed": "Consumed",
+      "retired": "Retired",
+      "revoked": "Revoked"
+    },
+    "journey": "Journey",
+    "journeyEmpty": "No journey events yet.",
+    "certificates": "Certificates",
+    "certificatesEmpty": "No certificates are attached to this lot.",
+    "madeFrom": "Made from",
+    "madeInto": "Made into",
+    "noGenealogy": "This lot wasn't made from other lots, and hasn't been processed into any.",
+    "notHolder": "Another organisation holds this lot. You can read its records but can't act on them.",
+    "openHandover": "A handover of this lot is waiting for the receiver. It can be handed over again once that's answered.",
+    "actions": {
+      "handOver": "Hand over",
+      "transform": "Use in a transform",
+      "retire": "Retire lot",
+      "publicPage": "Open public page"
+    },
+    "retireTitle": "Retire this lot?",
+    "retireBody": "Retiring closes the lot: it can't be handed over or transformed again. Retire it when it reached its final buyer.",
+    "retireConfirm": "Retire lot",
+    "eventKinds": {
+      "ISSUE": "Issued",
+      "HANDOVER": "Handed over",
+      "TRANSFORM": "Processed",
+      "FLAG": "Flag raised",
+      "REVOKE": "Revoked",
+      "RETIRE": "Retired"
+    },
+    "eventFrom": {
+      "$template": "from {name}"
+    },
+    "eventTo": {
+      "$template": "to {name}"
+    },
+    "sealed": "Sealed",
+    "notSealed": "Not sealed yet"
+  },
+  "certificates": {
+    "title": "Certificates",
+    "sub": "Signed documents you've issued, and those about your lots and facilities. Public verification pages show them.",
+    "subPlatform": "Every certificate on the platform.",
+    "scopes": {
+      "issued": "Issued by us",
+      "about": "About our lots"
+    },
+    "all": "All",
+    "notAllowedTitle": "You can't open certificates.",
+    "notAllowedBody": "Ask an admin of your organisation for access to passports.",
+    "emptyTitle": "No certificates yet.",
+    "revokeSign": "Sign and revoke certificate",
+    "cancel": "Cancel",
+    "issue": "Issue certificate",
+    "headers": {
+      "type": "Certificate",
+      "attached": "Attached to",
+      "valid": "Validity",
+      "status": "Status"
+    },
+    "empty": "No certificates issued yet. Issue one to attach a signed document to a lot or a facility.",
+    "emptyType": "No certificates of this type.",
+    "status": {
+      "valid": "Valid",
+      "expiring": "Expiring soon",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "open": "Open document",
+    "attachedLot": {
+      "$template": "Lot {code}"
+    },
+    "unknownSubject": "Attached record",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke this certificate?",
+    "revokeBody": "It shows as revoked on every public page that mentions it. The holder and their buyers can read your reason.",
+    "revokeReason": "Reason",
+    "revokeReasonHelp": "Shown to the holder and on the public page.",
+    "revokeReasonEmpty": "Say why the certificate is being revoked.",
+    "revokeConfirm": "Revoke certificate",
+    "new": {
+      "title": "Issue certificate",
+      "sub": "Attach a signed document to a lot or a facility. It appears on public verification pages for that record.",
+      "attach": "Attach to",
+      "attachPassport": "Passport (lot)",
+      "attachFacility": "Facility",
+      "passport": "Passport",
+      "passportHelp": "Choose a lot you hold.",
+      "passportEmpty": "You don't hold any active passports.",
+      "facility": "Facility",
+      "facilityEmpty": "No facilities yet.",
+      "type": "Certificate type",
+      "typeHelp": "Your organisation may issue the types it is accredited for.",
+      "typePlaceholder": "Choose a type",
+      "typeEmpty": "No certificate types yet. A platform admin accredits your organisation for the types you may issue.",
+      "validFrom": "Valid from",
+      "validTo": "Valid until",
+      "validityHelp": "The end date must be after the start date.",
+      "document": "Signed document",
+      "documentHelp": "PDF, PNG or JPEG · up to 10 MB",
+      "documentMissing": "Attach the signed document.",
+      "preview": "Preview",
+      "checks": "Checks before issuing",
+      "checkVerdict": {
+        "$template": "Public verdict of the lot: {verdict}"
+      },
+      "checkAccredited": "Your organisation is accredited for this type",
+      "checkDates": "The validity window is in order",
+      "checkFile": "A signed document is attached",
+      "checkMissing": "Not ready yet",
+      "cancel": "Cancel",
+      "sign": "Sign and issue",
+      "meaning": "Your signature issues this certificate. Its document and dates can't be edited afterwards; a mistake is corrected by revoking it and issuing a new one."
+    }
+  },
+  "flags": {
+    "title": "Flags and investigations",
+    "queue": "Flags",
+    "empty": "No flags. When something looks wrong with a lot — a record that changed, quantities that don't balance, a handover the receiver refused — a flag appears here.",
+    "emptyResolved": "Nothing resolved yet.",
+    "tabs": {
+      "open": "Open",
+      "resolved": "Resolved"
+    },
+    "selectOne": "Choose a flag to read it.",
+    "raised": {
+      "$template": "Raised {when}"
+    },
+    "passport": "Lot",
+    "raisedBy": "Raised by",
+    "reasonLabel": "What happened",
+    "status": {
+      "open": "Under review",
+      "cleared": "Cleared",
+      "confirmed": "Confirmed as fraud"
+    },
+    "openChip": "Under review",
+    "resolution": "Resolution note",
+    "clear": "Clear flag",
+    "clearTitle": "Clear this flag?",
+    "clearBody": "The lot can be handed over and processed again. Your note is shown to its holder.",
+    "clearNote": "Note",
+    "clearNoteHelp": "Why it's cleared. Required.",
+    "clearNoteEmpty": "Say why the flag is cleared.",
+    "confirmFraud": "Confirm fraud",
+    "fraudTitle": "Confirm fraud on this flag?",
+    "fraudBodyNone": "The flagged passport will be revoked, and everything made from it.",
+    "fraudReason": "Finding",
+    "fraudReasonHelp": "What was confirmed. It is shown on the public pages of the affected lots.",
+    "fraudReasonEmpty": "Say what was confirmed.",
+    "fraudWarning": "Public verification pages for these lots will show Failed immediately. Holders and their buyers are notified.",
+    "resolveNotYours": "Only a regulator or the platform can resolve flags.",
+    "raise": "Raise a flag",
+    "raiseTitle": "Raise a flag on this lot",
+    "raiseBody": "The lot stays with its current holder while the flag is open. A regulator reads your reason.",
+    "raiseReason": "What's wrong?",
+    "raiseReasonHelp": "Say what you saw, so a regulator knows where to look.",
+    "raiseConfirm": "Raise flag",
+    "raisedFlag": "Flag raised.",
+    "source": {
+      "user": "A business",
+      "rules": "The rules engine",
+      "public": "A public verifier"
+    },
+    "assignee": "Assigned to",
+    "unassigned": "Nobody yet",
+    "assignMe": "Assign to me",
+    "unassign": "Unassign",
+    "resolveIntro": "Read the lot's history before deciding. Clearing frees the lot; confirming fraud revokes it and everything made from it.",
+    "affected": "Affected lots",
+    "affectedEmpty": "Nothing else was made from this lot."
+  },
+  "templates": {
+    "title": "Product templates",
+    "sub": "The platform's rules for one commodity: its unit, the stages a lot moves through, yields and evidence.",
+    "new": "New template",
+    "empty": "No templates yet.",
+    "headers": {
+      "name": "Template",
+      "commodity": "Commodity",
+      "unit": "Unit",
+      "stages": "Stages",
+      "updated": "Updated"
+    },
+    "open": "Open",
+    "create": "New template",
+    "detail": {
+      "title": {
+        "$template": "Product template · {name}"
+      },
+      "untitled": "New template",
+      "general": "General",
+      "name": "Template name",
+      "nameHelp": "What this template is called, like Arabica coffee · cherry (Rwanda).",
+      "commodity": "Commodity",
+      "commodityHelp": "Lowercase letters, digits and underscores, like arabica_coffee_cherry.",
+      "unit": "Base unit",
+      "unitHelp": "The unit every quantity in this template uses, like kg.",
+      "capacityRule": "Capacity rule",
+      "capacityFacility": "Each facility's own declared capacity",
+      "capacityPerArea": "Facility area × a rate per hectare per season",
+      "kgPerHa": "Kilograms per hectare per season",
+      "originKind": "Origin facility type",
+      "originKindHelp": "The kind of facility a lot may be issued at.",
+      "stages": "Stages",
+      "addStage": "Add stage",
+      "removeStage": "Remove stage",
+      "stageKey": "Stage key",
+      "stageKeyHelp": "Lowercase letters, digits and underscores, like washing_station.",
+      "events": "Allowed events",
+      "maxYield": "Maximum yield (%)",
+      "maxYieldHelp": "On a transform, the outputs may be at most this share of the inputs. Leave empty for no limit.",
+      "evidence": "Required evidence",
+      "evidenceHelp": "A valid certificate of each key must be attached before a lot may enter this stage.",
+      "evidenceKey": "Evidence key",
+      "evidenceAdd": "Add evidence",
+      "preview": "Live preview",
+      "previewNote": "A lot enters at the first stage and moves through them in order.",
+      "save": "Save template",
+      "saving": "Saving…",
+      "create": "Create template",
+      "cancel": "Cancel",
+      "notAllowed": "You can't edit templates.",
+      "notAllowedBody": "Only the platform team edits product templates. Ask a platform admin if a template needs changing.",
+      "ruleChip": "Rules",
+      "evidenceChip": "Evidence"
+    }
+  },
+  "reports": {
+    "title": "Reports and audit",
+    "sub": "Every action on ChainTrack is written to a log that can't be edited.",
+    "audit": "Audit trail",
+    "auditEmpty": "No events in this period.",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "clear": "Clear filters"
+    },
+    "headers": {
+      "when": "When",
+      "event": "Event",
+      "organisation": "Organisation",
+      "by": "By",
+      "reference": "Reference"
+    },
+    "event": {
+      "$template": "{method} {route}"
+    },
+    "accepted": "Accepted",
+    "refused": "Refused",
+    "someone": "Someone",
+    "signedOut": "Not signed in",
+    "platformOrg": "ChainTrack platform",
+    "exportCsv": "Export CSV",
+    "exporting": "Preparing the file…",
+    "volume": "Volume by commodity",
+    "volumeEmpty": "No volume recorded in this period.",
+    "volumeHeaders": {
+      "month": "Month",
+      "commodity": "Commodity",
+      "quantity": "Quantity"
+    },
+    "verifyChain": "Verify the whole log",
+    "verifyChainHelp": "Walks every recorded action and checks each row against the one before it. Platform only.",
+    "verifyOk": "Every row matches the one before it. The log is intact.",
+    "verifyBad": {
+      "$template": "The log doesn't match at row {seq}. Contact the platform team."
+    },
+    "reference": "Reference"
+  },
+  "scanPage": {
+    "title": "Scan a passport",
+    "hint": "Point the camera at the QR label. The lot opens as soon as the code is read.",
+    "orType": "Or type the lot code"
+  },
+  "meta": {
+    "profile": "Your profile · ChainTrack",
+    "users": "Users · ChainTrack",
+    "notifications": "Notifications · ChainTrack",
+    "landing": "ChainTrack · Know where it came from",
+    "landingDescription": "Digital product passports for business shipments: verified origin, dual-signed handovers and a public verification anyone can scan.",
+    "invite": "Join an organisation · ChainTrack",
+    "signin": "Sign in · ChainTrack",
+    "forgot": "Reset password · ChainTrack",
+    "reset": "New password · ChainTrack",
+    "lock": "Lock account · ChainTrack",
+    "handoff": "Switching organisation · ChainTrack",
+    "signup": "Create account · ChainTrack",
+    "onboarding": "Verification · ChainTrack",
+    "adminOrgs": "Verification queue · ChainTrack",
+    "passport": "Product passport · ChainTrack",
+    "facilities": "Facilities · ChainTrack",
+    "facilityNew": "Register facility · ChainTrack",
+    "issue": "Issue passport · ChainTrack",
+    "passportDetail": "Lot · ChainTrack",
+    "handover": "Hand over a lot · ChainTrack",
+    "handovers": "Handovers · ChainTrack",
+    "handoverDetail": "Inspect handover · ChainTrack",
+    "transform": "Transform lots · ChainTrack",
+    "scan": "Scan a passport · ChainTrack",
+    "certificates": "Certificates · ChainTrack",
+    "certificateNew": "Issue certificate · ChainTrack",
+    "flags": "Flags and investigations · ChainTrack",
+    "templates": "Product templates · ChainTrack",
+    "adminTemplate": "Product template · ChainTrack",
+    "reports": "Reports and audit · ChainTrack"
+  },
+  "auth": {
+    "eyebrow": "Trusted trade infrastructure",
+    "title": "Every product has a story. Make it verifiable.",
+    "body": "Create trusted passports, sign custody handovers and protect your supply chain.",
+    "foot": "Secure by design · Built for regulated trade"
+  },
+  "signin": {
+    "eyebrow": "Welcome back",
+    "remember": "Keep me signed in",
+    "title": "Sign in to your organisation",
+    "sub": "Use the email and password for your ChainTrack account.",
+    "email": "Email",
+    "password": "Password",
+    "code": "Authenticator code",
+    "codeHelp": "The 6 digits your authenticator app shows for ChainTrack.",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "notSignedIn": "You are not signed in.",
+    "newHere": "New to ChainTrack?",
+    "createAccount": "Create your organisation's account",
+    "forgot": "Forgot password?",
+    "trust": "Trust this device for 30 days",
+    "trustHelp": "Skip the code on this device. Don't tick this on a shared computer.",
+    "capsLock": "Caps Lock is on"
+  },
+  "forgot": {
+    "back": "Back to sign in",
+    "title": "Reset your password",
+    "sub": "Enter your Email. We'll send a link that works for 30 minutes.",
+    "email": "Email",
+    "submit": "Send reset link",
+    "submitting": "Sending…",
+    "note": "Resetting your password does not change your signing PIN or two-factor setup.",
+    "sentTitle": "Check your email",
+    "sent": {
+      "$template": "If an account exists for {email}, a reset link is on its way. It expires in 30 minutes."
+    },
+    "nothingTitle": "Nothing arrived?",
+    "nothing": [
+      "Check spam or quarantine folders.",
+      "Use a different email.",
+      "Ask your organisation admin to send an invite."
+    ],
+    "again": "Use a different email"
+  },
+  "reset": {
+    "title": "Choose a new password",
+    "new": "New password",
+    "confirm": "Confirm password",
+    "rules": {
+      "match": "Passwords match"
+    },
+    "signOutNote": "Every device signed in to your account will be signed out.",
+    "submit": "Update password",
+    "submitting": "Updating…",
+    "expiredTitle": "This link has expired",
+    "expired": "Reset links work once, for 30 minutes. Your password has not changed.",
+    "newLink": "Send a new link",
+    "doneTitle": "Password updated",
+    "done": "You were signed out of every device. We've emailed you a confirmation with a link to lock your account if this wasn't you.",
+    "toSignIn": "Continue to sign in"
+  },
+  "handoff": {
+    "title": "Switching organisation…",
+    "body": "Opening your workspace at this address. You stay signed in.",
+    "failedTitle": "You're not signed in here yet",
+    "toSignIn": "Sign in"
+  },
+  "lock": {
+    "title": "Lock your account?",
+    "body": "If you didn't change your password, lock the account now. Everyone signed in is signed out, and nobody can sign in until your organisation admin or ChainTrack support unlocks it.",
+    "submit": "Lock my account",
+    "submitting": "Locking…",
+    "doneTitle": "Your account is locked",
+    "done": "Nobody can sign in to it now. Contact your organisation admin or ChainTrack support to unlock it.",
+    "expiredTitle": "This link no longer works",
+    "expired": "Lock links work once, for 7 days. Contact your organisation admin if you still need to lock the account.",
+    "toSignIn": "Back to sign in"
+  },
+  "signup": {
+    "eyebrow": "Create account",
+    "title": "Create your organisation's account",
+    "sub": "You'll need your business registration and any operating licences. Verification takes about 2 working days.",
+    "haveAccount": "Already have an account?",
+    "signIn": "Sign in",
+    "steps": [
+      "Account",
+      "Organisation",
+      "Documents",
+      "Review"
+    ],
+    "fullName": "Full name",
+    "email": "Email",
+    "password": "Password",
+    "passwordHelp": {
+      "$template": "At least {min} characters."
+    },
+    "confirmPassword": "Confirm password",
+    "consent": "I am authorised to register this organisation, and I agree that its documents will be checked.",
+    "next": "Continue",
+    "back": "Back",
+    "legalName": "Legal name",
+    "legalNameHelp": "Exactly as on your registration certificate.",
+    "slug": "Organisation address",
+    "slugHelp": "Your team signs in at this name, in front of this site's address. Lowercase letters, digits and hyphens.",
+    "kind": "What does your organisation do?",
+    "submit": "Create account",
+    "submitting": "Creating account…",
+    "notCreated": "Your account was not created.",
+    "created": "Account created",
+    "createdSub": "Your organisation has its own address. Sign in there to upload your documents.",
+    "goSignIn": "Sign in and upload documents"
+  },
+  "validation": {
+    "pin": "Enter exactly 6 digits.",
+    "samePassword": "Choose a password different from your current one.",
+    "passwordConfirm": "Type the password again.",
+    "passwordsDiffer": "The two passwords don't match. Type the same password twice.",
+    "lotCode": "Enter the lot code printed under the QR code.",
+    "email": "Enter your Email, like name@company.com.",
+    "emailLong": "Use a shorter email address.",
+    "passwordEmpty": "Enter your password.",
+    "code": "Enter the 6 digits shown in your authenticator app.",
+    "fullName": "Enter your full name.",
+    "tooLong": {
+      "$template": "Use {n} characters or fewer."
+    },
+    "passwordShort": {
+      "$template": "Use at least {n} characters."
+    },
+    "consent": "Tick the box to confirm you may register this organisation.",
+    "legalName": "Enter the legal name, exactly as on your registration certificate.",
+    "slug": "Use lowercase letters, digits and hyphens, like kitabi-washing.",
+    "slugReserved": "That address is reserved. Choose another.",
+    "kind": "Choose what your organisation does.",
+    "fileType": "This file type can't be used. Choose a PDF, PNG or JPEG.",
+    "fileSize": "This file is larger than 10 MB. Choose a smaller file or a lower-quality scan.",
+    "reason": "Say what is wrong, so the organisation knows what to fix.",
+    "accreditationTypes": "Choose at least one certificate type.",
+    "date": "Enter a date.",
+    "dateOrder": "The end date must be after the start date.",
+    "quantity": "Enter how much.",
+    "quantityPositive": "Enter a whole number above zero.",
+    "note": "Say something, so the next person knows what happened.",
+    "stage": "Choose the event that happens.",
+    "handoverStage": "Choose the stage the lot goes into.",
+    "facilityLocation": "Drop a pin or draw the boundary on the map.",
+    "licenceExpired": "The licence must still be valid: choose a date after today.",
+    "facility": "Choose where this comes from.",
+    "template": "Choose a template.",
+    "facilityName": "Enter the facility's name.",
+    "facilityKind": "Choose what kind of facility this is.",
+    "licence": "Enter the licence number, as printed on the certificate.",
+    "capacity": "Enter the capacity, as a whole number above zero.",
+    "capacityUnit": "Enter the unit, like kg or bags.",
+    "capacityPeriod": "Choose the period the capacity is for.",
+    "latitude": "Enter the latitude, between -90 and 90.",
+    "longitude": "Enter the longitude, between -180 and 180.",
+    "subjectId": "Enter the lot code this certificate is for.",
+    "certType": "Choose what this certificate attests.",
+    "outcome": "Choose what happens to this flag.",
+    "reasonRequired": "Say why, so the record is complete.",
+    "templateName": "Enter the template's name.",
+    "commodity": "Enter the commodity, like coffee or cassava.",
+    "unit": "Enter the unit, like kg or bags.",
+    "stages": "Each template needs at least one stage.",
+    "events": "Choose at least one event."
+  },
+  "onboarding": {
+    "eyebrow": "Organisation verification",
+    "pendingTitle": "Pending verification",
+    "uploadTitle": "Upload your documents",
+    "pendingSub": {
+      "$template": "We're checking {name}. Most organisations are verified within 2 working days."
+    },
+    "uploadSub": "Clear photos or PDFs. We check them against the national registry.",
+    "notVerifiedYet": "You can't issue or receive passports until verification is done.",
+    "rejected": {
+      "$template": "{name} was not verified."
+    },
+    "changesRequested": "Changes requested.",
+    "noReason": "The reviewer gave no reason.",
+    "uploadAgain": "Upload a corrected document below and it goes back to the reviewer.",
+    "submitted": {
+      "$template": "Submitted {when}"
+    },
+    "progress": {
+      "account": "Account created",
+      "documents": "Documents received",
+      "stillNeeded": {
+        "$template": "Still needed: {list}"
+      },
+      "registry": "Registry check",
+      "registryNote": "We are checking your documents against the national registry.",
+      "approval": "Approval",
+      "approvalNote": "This page shows the outcome as soon as the review is done."
+    },
+    "licencesLater": "Facility licences are added later, when you register each farm plot or site."
+  },
+  "documents": {
+    "required": "Required",
+    "optional": "Optional",
+    "uploaded": "Uploaded",
+    "uploading": "Uploading…",
+    "addAnother": "Add another file",
+    "choose": "Tap to take a photo or choose a file",
+    "hint": "PDF, PNG or JPEG · up to 10 MB",
+    "unreadable": "This file can't be read as a PDF, PNG or JPEG. Choose another file.",
+    "failed": "The upload didn't finish. Nothing was saved. Try again.",
+    "offline": "The upload didn't finish. Nothing was saved. Check your connection and try again.",
+    "open": "Open"
+  },
+  "orgStatus": {
+    "pending": "Pending verification",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "changes_requested": "Changes requested"
+  },
+  "admin": {
+    "title": "Verification queue",
+    "notAllowedTitle": "You can't review organisations.",
+    "notAllowedBody": "Only the platform's reviewers can open this page. Ask a platform admin if you need access.",
+    "tabs": {
+      "organisations": "Organisations",
+      "issuers": "Certificate issuers",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "empty": {
+      "organisations": "No organisations are waiting for review.",
+      "issuers": "No verified certifiers or regulators yet.",
+      "approved": "No organisations have been approved yet.",
+      "rejected": "No organisations have been rejected or asked for changes."
+    },
+    "selectOne": "Choose an organisation from the list to review it.",
+    "tabCount": {
+      "$template": "{label} ({n})"
+    },
+    "queueLabel": {
+      "$template": "{label}: organisations"
+    },
+    "submitted": {
+      "$template": "Submitted {when}"
+    },
+    "facts": {
+      "name": "Legal name",
+      "slug": "Organisation address",
+      "kind": "Type",
+      "submitted": "Submitted",
+      "waiting": "Waiting",
+      "reason": "Reviewer's note"
+    },
+    "documents": "Documents",
+    "noDocuments": "No documents uploaded yet. It can't be approved until it has at least one.",
+    "review": {
+      "title": "Decision",
+      "note": "Decision note",
+      "noteHelp": "Required to reject or ask for changes. The organisation sees it.",
+      "reject": "Reject",
+      "changes": "Ask for changes",
+      "approve": "Approve organisation",
+      "saving": "Saving…"
+    },
+    "accreditation": {
+      "title": "Accreditation",
+      "sub": "Choose which certificates this organisation may issue, and for how long.",
+      "types": "Certificate types they may issue",
+      "noTypes": "No templates ask for any evidence yet, so there are no certificate types to choose.",
+      "from": "Accredited from",
+      "until": "Accredited until",
+      "notice": "Accreditation is shown with every certificate they issue. Ending it doesn't cancel certificates they already issued.",
+      "decline": "Decline",
+      "accredit": "Accredit issuer",
+      "saving": "Saving…"
+    }
+  },
+  "verification": {
+    "kicker": "Product passport check",
+    "publicLabel": "Public verification",
+    "resultEyebrow": "Verification result",
+    "checkedOn": "Checked on",
+    "recordsLabel": "Records checked",
+    "scanAnother": "Scan another",
+    "businessSignIn": "Business sign in",
+    "lotCode": "Lot code",
+    "copyCode": "Copy lot code",
+    "copied": "Lot code copied",
+    "tabs": {
+      "journey": "Journey",
+      "genealogy": "Genealogy"
+    },
+    "genealogyTitle": "Product genealogy",
+    "currentLot": "This lot",
+    "originLot": "Origin lot",
+    "inputLot": "Earlier lot",
+    "via": {
+      "$template": "{stage} · {used} used"
+    },
+    "integrity": "Integrity summary",
+    "documentation": "Documentation",
+    "passedOf": {
+      "$template": "{n} of {total} passed"
+    },
+    "originEyebrow": "Verified origin",
+    "originMap": {
+      "$template": "Map of {name}"
+    },
+    "operator": "Operator",
+    "capacityCheck": "Capacity check",
+    "help": {
+      "title": "How verification works",
+      "body": "Every time this page opens, ChainTrack compares each signed business record with the copy sealed when it was signed. A signed record can't be edited afterwards."
+    },
+    "tagline": "Transparent journeys. Trusted goods.",
+    "route": {
+      "label": "Drawing of the lot's route, from its origin to its current holder",
+      "origin": "Origin",
+      "now": "Now with"
+    },
+    "passportStatus": {
+      "active": "Active passport",
+      "consumed": "Used in a new lot",
+      "retired": "Journey complete",
+      "revoked": "Revoked"
+    },
+    "checking": "Checking this lot's records…",
+    "notFoundTitle": "We can't find this lot code",
+    "notFoundBody": "Check the code on the label and scan it again. If the label is damaged, ask the holder for the lot code.",
+    "errorTitle": "We couldn't check this lot just now",
+    "errorBody": "The records could not be reached. Nothing about the lot has changed. Try again in a moment.",
+    "verdict": {
+      "verified": "Verified",
+      "warning": "Warning",
+      "failed": "Failed"
+    },
+    "alert": {
+      "lead": "Do not accept, pay for or ship this lot.",
+      "rest": "One or more of its records failed verification. The reasons are listed below."
+    },
+    "sections": {
+      "origin": "Origin",
+      "journey": "Journey",
+      "madeFrom": "Made from",
+      "certificates": "Certificates",
+      "checks": "What we checked",
+      "technical": "Technical details"
+    },
+    "facts": {
+      "facility": "Facility",
+      "type": "Type",
+      "operatedBy": "Operated by",
+      "commodity": "Commodity",
+      "quantity": "Quantity",
+      "holder": "Current holder",
+      "status": "Status",
+      "updated": "Last updated"
+    },
+    "technicalIntro": "When a record is signed, its fingerprint is sealed on a public ledger (a blockchain), where it cannot be changed. We compare each record with its sealed fingerprint every time this page is opened.",
+    "noCertificates": "No certificates are attached to this lot or its origin.",
+    "notSealed": "Not sealed yet",
+    "signedByBoth": "Signed by both parties",
+    "originMark": "Origin",
+    "revoked": "Revoked",
+    "unknownOrg": "Unknown organisation",
+    "footer": "ChainTrack product passport · The page reflects records sealed up to the time of your scan.",
+    "certificate": {
+      "valid": "Valid",
+      "expiring": "Expiring soon",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "validTo": "to",
+    "result": {
+      "verified": "Passed",
+      "warning": "Warning",
+      "failed": "Failed"
+    },
+    "checks": {
+      "record_intact": {
+        "label": "Records unchanged since signing",
+        "pass": "Every passport in this lot's history reads exactly as it did when it was signed.",
+        "reason": "Records unchanged since signing"
+      },
+      "anchored": {
+        "label": "Records match their sealed copies",
+        "pass": "Each record, its holder and its quantity match the copy sealed when it was signed.",
+        "reason": "Records match their sealed copies"
+      },
+      "origin": {
+        "label": "Origin is registered and licensed",
+        "pass": "Every branch of this lot's history ends at a registered facility owned by a verified organisation.",
+        "reason": "Origin facility verified"
+      },
+      "capacity": {
+        "label": "Within declared capacity",
+        "pass": "No more was issued from the origin than its declared capacity for the period.",
+        "reason": "Origin within declared capacity"
+      },
+      "mass_balance": {
+        "label": "Quantities balance",
+        "pass": "At every processing step, what came out is no more than the inputs could yield.",
+        "reason": "Quantities balance at every step"
+      },
+      "certificates": {
+        "label": "Certificates valid",
+        "pass": "Every certificate is in date, unrevoked, from an accredited issuer, and unchanged since it was issued.",
+        "reason": "Certificates valid"
+      },
+      "status": {
+        "label": "No open concerns or revocations",
+        "pass": "Nothing in this lot's history has been revoked or is being looked into.",
+        "reason": "No open concerns"
+      }
+    },
+    "eventTitles": {
+      "ISSUE": "Issued at origin",
+      "HANDOVER": "Handed over",
+      "TRANSFORM": "Processed",
+      "FLAG": "Concern raised",
+      "REVOKE": "Revoked"
+    },
+    "summary": {
+      "from": {
+        "$template": "This {product} comes from {places}."
+      },
+      "verified": "Every record in its history matches the copy sealed when it was signed, and nothing has changed since.",
+      "warning": {
+        "$template": "Its records are intact, but {points} attention. Read them before you rely on this passport."
+      },
+      "failed": "This passport failed verification. Do not rely on it until the points below are resolved."
+    },
+    "meta": {
+      "checked": {
+        "$template": "Checked {when}"
+      }
+    },
+    "issued": {
+      "$template": "Passport issued {when}"
+    },
+    "certificateNote": {
+      "expired": {
+        "$template": "Expired {when}. Ask the holder for a current one before you rely on it."
+      }
+    },
+    "technical": {
+      "fingerprint": "Passport record · fingerprint",
+      "sealedIn": "Passport record · sealed in transaction",
+      "eventSealed": {
+        "$template": "{title} · {when} · sealed in transaction"
+      },
+      "certificateFingerprint": {
+        "$template": "{type} · fingerprint"
+      }
+    }
+  }
+}

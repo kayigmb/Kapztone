@@ -37,7 +37,7 @@ export function SignOutButton({ onNavy }: { onNavy?: boolean }) {
     <Button
       variant={onNavy ? "ghost" : "secondary"}
       onClick={ask}
-      disabled={signOut.isPending}
+      loading={signOut.isPending}
       className={
         onNavy
           ? "justify-start text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg"

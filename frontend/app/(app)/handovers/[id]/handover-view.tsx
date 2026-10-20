@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { HandoverStatusChip } from "@/components/chaintrack/handover-status";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
@@ -457,11 +458,7 @@ function Reject({ hv, sender }: { hv: HandoverDetail; sender: string }) {
             </button>
           ))}
         </div>
-        {errors.reasons && (
-          <p className="text-small font-semibold text-danger">
-            {errors.reasons.message}
-          </p>
-        )}
+        <FieldNote error={errors.reasons?.message} />
       </fieldset>
       <TextField
         label={t.rejectNote}
@@ -521,7 +518,7 @@ function Cancel({ hv }: { hv: HandoverDetail }) {
         <Button
           variant="danger"
           onClick={() => cancel.mutate()}
-          disabled={cancel.isPending}
+          loading={cancel.isPending}
         >
           {h.cancelConfirm}
         </Button>

@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, OctagonX, Undo2, X } from "lucide-react";
+import { MapPin, Undo2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { MapView } from "@/components/chaintrack/map";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
@@ -205,15 +206,7 @@ export function Register() {
               </Button>
             </div>
           </div>
-          {errors.location && (
-            <p
-              role="alert"
-              className="flex gap-1.5 text-small font-semibold text-danger"
-            >
-              <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-              {errors.location.message}
-            </p>
-          )}
+          <FieldNote error={errors.location?.message} />
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
@@ -318,22 +311,18 @@ export function Register() {
                 </Select>
               )}
             />
-            {errors.capacity_period && (
-              <p className="flex gap-1.5 text-small font-semibold text-danger">
-                <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-                {errors.capacity_period.message}
-              </p>
-            )}
+            <FieldNote error={errors.capacity_period?.message} />
           </div>
         </section>
 
         <Notice kind="info">{t.approvalNote}</Notice>
         <Button
           type="submit"
-          disabled={save.isPending}
+          loading={save.isPending}
+          loadingText={t.saving}
           className="w-full lg:w-auto"
         >
-          {save.isPending ? t.saving : t.save}
+          {t.save}
         </Button>
       </form>
     </main>

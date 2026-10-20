@@ -19,12 +19,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
 import { ChecksList } from "@/components/chaintrack/checks-list";
 import { ListToolbar, Pager } from "@/components/chaintrack/list-controls";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { PageState } from "@/components/chaintrack/page-state";
 import { KeyValue, type Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
@@ -239,18 +241,11 @@ function Flow() {
         />
       </PageHeader>
 
-      {facilities.isError && (
-        <Notice kind="blocking">{problemOf(facilities.error)}</Notice>
-      )}
-      {templates.isError && (
-        <Notice kind="blocking">{problemOf(templates.error)}</Notice>
-      )}
-      {!facilities.data || !templates.data ? (
-        facilities.isError || templates.isError ? null : (
-          <Loading />
-        )
-      ) : (
-        <>
+      <DataWidget query={facilities}>
+        {() => (
+          <DataWidget query={templates}>
+            {() => (
+              <>
           {step === 0 && (
             <section className="grid gap-6">
               <div className="grid gap-3">
@@ -325,14 +320,24 @@ function Flow() {
               <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
                 <h2 className="text-section">{t.evidence}</h2>
                 <p className="text-small text-ink-subtle">{t.evidenceHelp}</p>
-                {evidence.isPending ? (
-                  <Loading />
-                ) : evidence.isError ? (
-                  <Notice kind="blocking">{problemOf(evidence.error)}</Notice>
-                ) : required.length === 0 ? (
-                  <p className="text-sm text-ink-muted">{t.evidenceNone}</p>
+                {!facilityId ? (
+                  required.length === 0 ? (
+                    <p className="text-sm text-ink-muted">{t.evidenceNone}</p>
+                  ) : (
+                    <ChecksList checks={checks} />
+                  )
                 ) : (
-                  <ChecksList checks={checks} />
+                  <DataWidget query={evidence}>
+                    {() =>
+                      required.length === 0 ? (
+                        <p className="text-sm text-ink-muted">
+                          {t.evidenceNone}
+                        </p>
+                      ) : (
+                        <ChecksList checks={checks} />
+                      )
+                    }
+                  </DataWidget>
                 )}
                 {required.length > 0 && missing.length > 0 && (
                   <Notice kind="blocking">
@@ -387,8 +392,11 @@ function Flow() {
               />
             </section>
           )}
-        </>
-      )}
+              </>
+            )}
+          </DataWidget>
+        )}
+      </DataWidget>
     </main>
   );
 }
@@ -430,12 +438,7 @@ function PickerFrame({
         total={total}
         onPage={(page) => onPicking({ ...picking, page })}
       />
-      {error && (
-        <p className="flex gap-1.5 text-small font-semibold text-danger">
-          <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-          {error}
-        </p>
-      )}
+      <FieldNote error={error} />
     </fieldset>
   );
 }
@@ -513,12 +516,7 @@ function FacilityPicker({
             {copy.facilities.register}
           </Link>
         </Notice>
-        {error && (
-          <p className="flex gap-1.5 text-small font-semibold text-danger">
-            <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-            {error}
-          </p>
-        )}
+        <FieldNote error={error} />
       </div>
     );
   }

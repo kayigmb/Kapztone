@@ -9,13 +9,13 @@ import {
   NotificationItem,
   useOpenNotification,
 } from "@/components/chaintrack/notification-item";
-import { Loading } from "@/components/chaintrack/page-state";
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { endpoints, problemOf } from "@/lib/api";
+import { endpoints } from "@/lib/api";
 import { copy, notificationRefetchMs, queryKeys, routes } from "@/lib/consts";
 
 const t = copy.notifications;
@@ -57,27 +57,25 @@ export function NotificationsBell() {
           {t.title}
         </h2>
         <div className="max-h-[60vh] overflow-y-auto">
-          {list.isPending ? (
-            <Loading className="p-4" />
-          ) : list.isError ? (
-            <p role="alert" className="p-4 text-sm text-danger-ink">
-              {problemOf(list.error)}
-            </p>
-          ) : list.data.length === 0 ? (
-            <p className="p-4 text-sm text-ink-muted">{t.empty}</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {list.data.slice(0, 6).map((n) => (
-                <NotificationItem
-                  key={n.id}
-                  n={n}
-                  onOpen={item.open}
-                  onMarkRead={item.markRead}
-                  busy={item.busy}
-                />
-              ))}
-            </ul>
-          )}
+          <DataWidget query={list}>
+            {(rows) =>
+              rows.length === 0 ? (
+                <p className="p-4 text-sm text-ink-muted">{t.empty}</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {rows.slice(0, 6).map((n) => (
+                    <NotificationItem
+                      key={n.id}
+                      n={n}
+                      onOpen={item.open}
+                      onMarkRead={item.markRead}
+                      busy={item.busy}
+                    />
+                  ))}
+                </ul>
+              )
+            }
+          </DataWidget>
         </div>
         <Link
           href={routes.notifications}

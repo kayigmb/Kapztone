@@ -1,0 +1,154 @@
+{
+  "templateDetail": {
+    "back": "Back to templates",
+    "title": "Product template",
+    "sub": "Edit the template and its stages.",
+    "notAllowedTitle": "You can't manage templates.",
+    "notAllowedBody": "Only the platform admin can manage product templates.",
+    "name": "Name",
+    "commodity": "Commodity",
+    "unit": "Unit",
+    "originFacilityKind": "Origin facility kind",
+    "any": "Any",
+    "capacityRule": "Capacity rule",
+    "none": "None",
+    "perArea": "Per area (yield per hectare per season)",
+    "facilityCapacity": "Facility capacity",
+    "kgPerHaPerSeason": "Kg per ha per season",
+    "stages": "Stages",
+    "addStage": "Add stage",
+    "stageKey": "Stage key",
+    "events": "Events",
+    "maxYield": "Max yield (%)",
+    "requiredEvidence": "Required evidence (comma separated)",
+    "removeStage": "Remove",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Template saved",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "id": "ID"
+  },
+  "templates": {
+    "title": "Product templates",
+    "sub": "Define how a commodity moves: stages, events, evidence and capacity rule.",
+    "new": "New template",
+    "name": "Name",
+    "commodity": "Commodity",
+    "unit": "Unit",
+    "originFacilityKind": "Origin facility kind",
+    "any": "Any",
+    "capacityRule": "Capacity rule",
+    "none": "None",
+    "perArea": "Per area (yield per hectare per season)",
+    "facilityCapacity": "Facility capacity",
+    "kgPerHaPerSeason": "Kg per ha per season",
+    "stages": "Stages",
+    "addStage": "Add stage",
+    "stageKey": "Stage key",
+    "events": "Events",
+    "maxYield": "Max yield (%)",
+    "requiredEvidence": "Required evidence (comma separated)",
+    "removeStage": "Remove",
+    "atLeastOneEvent": "At least one event",
+    "listName": "Name",
+    "listCommodity": "Commodity",
+    "listUnit": "Unit",
+    "listOrigin": "Origin facility",
+    "listStageCount": "Stage count",
+    "listUpdated": "Updated",
+    "noTemplates": "No templates yet.",
+    "notAllowedTitle": "You can't manage templates.",
+    "notAllowedBody": "Only the platform admin can manage product templates.",
+    "created": "Template created",
+    "open": "Open template"
+  },
+  "issue": {
+    "back": "Back",
+    "next": "Continue",
+    "whatNext": "What happens next",
+    "notAllowedTitle": "You can't issue passports.",
+    "notAllowedBody": "Ask an admin of your organisation for the issue-passports permission.",
+    "evidenceCount": {
+      "$template": "{have} of {total} on file"
+    },
+    "evidenceRowMissing": "Not on file yet.",
+    "nextSteps": [
+      "Print a QR label for each bag or crate.",
+      "Collectors and inspectors add their records against this lot.",
+      "Hand the lot over when it leaves this site."
+    ]
+  },
+  "facilities": {
+    "cancel": "Cancel",
+    "closeDetail": "Close facility details",
+    "emptyTitle": "No facilities yet",
+    "selectPrompt": "Choose a facility to see its details.",
+    "noPoint": "No point recorded yet.",
+    "areaLabel": "Area",
+    "registeredLabel": "Registered",
+    "issuedLabel": "Issued"
+  },
+  "scan": {
+    "check": "Check this lot",
+    "lotCode": "Lot code",
+    "created": "Created",
+    "openRecord": "Open the full record",
+    "again": "Scan another",
+    "emptyTitle": "No lot checked yet",
+    "emptyBody": "Scan a QR label or type a lot code above. The lot's records are checked as soon as the code is read."
+  },
+  "passportDetail": {
+    "stagesLabel": "Stages",
+    "upstream": "Upstream",
+    "downstream": "Downstream",
+    "flagsTitle": "Flags on this lot",
+    "flagsEmpty": "No flags on this lot.",
+    "resolution": "Resolution note",
+    "edge": {
+      "$template": "{stage} · {used} used"
+    },
+    "technical": {
+      "fingerprint": "Record fingerprint",
+      "sealed": "Sealed in transaction",
+      "template": "Template",
+      "facility": "Facility",
+      "created": "Created",
+      "updated": "Updated"
+    },
+    "retireSign": "Sign and retire",
+    "retireMeaning": "Retiring closes this lot for good. It can't be handed over or transformed again, and this record can't be undone.",
+    "cancel": "Cancel",
+    "notFoundTitle": "Lot not found",
+    "notFoundBody": "Check the lot code, or go back to the passports your organisation holds."
+  },
+  "transform": {
+    "notAllowedTitle": "You can't transform lots.",
+    "notAllowedBody": "Turning lots into new lots is a processing action. Ask your organisation's admin for the transform permission.",
+    "addLot": "Add lot",
+    "massBalance": "Mass balance",
+    "pickStage": "Choose a stage to check the outputs against its allowed yield.",
+    "templateLine": {
+      "$template": "Template: {name}"
+    },
+    "noTemplate": "This lot has no product template, so its stages can't be listed.",
+    "noYieldShort": "No maximum yield recorded",
+    "allowedYield": {
+      "$template": "Allowed yield up to {max}%"
+    },
+    "totalTooHigh": "Total too high",
+    "alreadyAdded": "That lot is already in the inputs.",
+    "tooManyRows": {
+      "$template": "A transform takes up to {n} rows on each side."
+    },
+    "readyBlocked": "Fill in every input, the stage and the outputs before signing.",
+    "yieldLabel": "Yield",
+    "newLots": "New lots",
+    "overSaid": {
+      "$template": "Outputs total {out}; these inputs can yield at most {max} at this stage."
+    },
+    "formula": {
+      "$template": "Input {into} × allowed yield {pct}% = {max} maximum output"
+    }
+  }
+}

@@ -1,13 +1,13 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, WifiOff } from "lucide-react";
+import { ArrowRight, Building2 } from "lucide-react";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { Notice } from "@/components/chaintrack/notice";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { Button } from "@/components/ui/button";
-import { endpoints, problemOf, switchOrganisation } from "@/lib/api";
+import { endpoints, switchOrganisation } from "@/lib/api";
 import { copy, orgKinds, queryKeys } from "@/lib/consts";
 import { humanize } from "@/lib/verification";
 
@@ -23,33 +23,25 @@ export function WorkspacePicker() {
     mutationFn: (slug: string) => switchOrganisation(slug),
   });
 
-  if (orgs.isError)
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => orgs.refetch()}
-      >
-        {problemOf(orgs.error)}
-      </PageState>
-    );
-  const list = orgs.data ?? [];
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader
         title={t.title}
-        sub={orgs.isSuccess && list.length > 0 ? t.sub(list.length) : undefined}
+        sub={
+          orgs.isSuccess && (orgs.data ?? []).length > 0
+            ? t.sub(orgs.data!.length)
+            : undefined
+        }
       />
-      {orgs.isPending ? (
-        <Loading />
-      ) : list.length === 0 ? (
-        <Notice kind="info">
-          <strong>{t.noneTitle}</strong> {t.noneBody}
-        </Notice>
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {list.map((o) => (
+      <DataWidget query={orgs} retryLabel={copy.errors.tryAgain}>
+        {(list) =>
+          list.length === 0 ? (
+            <Notice kind="info">
+              <strong>{t.noneTitle}</strong> {t.noneBody}
+            </Notice>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {list.map((o) => (
             <li
               key={o.id}
               className="grid gap-4 rounded-lg border border-border bg-surface p-5 shadow-card"
@@ -70,15 +62,17 @@ export function WorkspacePicker() {
               <Button
                 variant="secondary"
                 onClick={() => open.mutate(o.slug)}
-                disabled={open.isPending}
+                loading={open.isPending}
               >
                 {t.open}
                 <ArrowRight className="size-4" aria-hidden />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+                </Button>
+              </li>
+            ))}
+            </ul>
+          )
+        }
+      </DataWidget>
     </main>
   );
 }

@@ -22,8 +22,8 @@ var linkToken = regexp.MustCompile(`/(?:reset|lock)/([A-Za-z0-9_-]+)`)
 
 func captureMail(e *env) mailbox {
 	box := make(mailbox, 8)
-	e.a.Mail = func(to, subject, body string) error {
-		box <- subject + "\n" + body
+	e.a.Mail = func(to, subject, text, _ string) error {
+		box <- subject + "\n" + text
 		return nil
 	}
 	return box

@@ -218,7 +218,7 @@ function Members({ list, myId }: { list: ListParamsState; myId: string }) {
         <Select
           items={roleItems}
           value={u.role}
-          disabled={act.isPending || u.status !== memberStatus.active}
+          disabled={act.isPending || u.status !== memberStatus.active || u.id === myId}
           onValueChange={(role) =>
             role &&
             role !== u.role &&
@@ -364,7 +364,7 @@ function Invite() {
             )}
           />
         </div>
-        <Button type="submit" disabled={send.isPending}>
+        <Button type="submit" loading={send.isPending}>
           {t.sendInvite}
         </Button>
       </form>

@@ -1,0 +1,329 @@
+{
+  "nav": {
+    "how": "How it works",
+    "solutions": "Solutions",
+    "trust": "Trust & compliance",
+    "signIn": "Sign in",
+    "getStarted": "Get started"
+  },
+  "anchors": {
+    "how": "how",
+    "solutions": "solutions",
+    "trust": "trust",
+    "security": "security",
+    "verify": "verify"
+  },
+  "hero": {
+    "kicker": "Trusted product journeys, from origin to buyer",
+    "title": "Know where it came from.",
+    "titleEm": "Prove every step.",
+    "body": "ChainTrack gives every commodity lot a trusted digital passport, so businesses can hand over custody with confidence and anyone can verify the full journey in seconds.",
+    "primary": "Create your first passport",
+    "secondary": "Verify a product",
+    "proof": [
+      "Verified organisations",
+      "Dual-signed handovers",
+      "Tamper-evident history"
+    ],
+    "photoAlt": "A farmer harvesting crops in a green field",
+    "example": "Example",
+    "originLabel": "Verified origin",
+    "originPlace": "Nyamagabe, Rwanda",
+    "active": "Active",
+    "passportLabel": "Digital product passport",
+    "passportName": "Example coffee lot",
+    "passportCode": "EXAMPLE-2026-0001",
+    "stops": [
+      "Origin",
+      "Process",
+      "Export",
+      "Buyer"
+    ],
+    "verified": "Verified",
+    "checks": "4 of 4 checks passed",
+    "signedTitle": "Custody accepted",
+    "signedSub": "Both parties signed"
+  },
+  "trustStrip": {
+    "label": "Built for trusted trade in",
+    "items": [
+      "Coffee",
+      "Minerals",
+      "Medicines",
+      "Agriculture",
+      "Logistics"
+    ]
+  },
+  "verify": {
+    "title": "Have a ChainTrack label?",
+    "body": "Scan the QR code, or type the lot code printed under it, to see its verified journey.",
+    "label": "Lot code",
+    "placeholder": "Lot code, e.g. ACME-2026-0412",
+    "submit": "Verify now"
+  },
+  "how": {
+    "eyebrow": "One trusted record",
+    "title": "From first mile to final buyer",
+    "body": "Every participant adds to the same product story, without changing what came before.",
+    "steps": [
+      {
+        "title": "Issue at origin",
+        "body": "A verified facility creates the passport, records the quantity and prints a QR label.",
+        "icon": "map"
+      },
+      {
+        "title": "Sign every handover",
+        "body": "Sender and receiver both confirm the quantity, place and condition.",
+        "icon": "route"
+      },
+      {
+        "title": "Transform with control",
+        "body": "Capacity and yield rules keep unexplained goods out of the chain.",
+        "icon": "layers"
+      },
+      {
+        "title": "Verify anywhere",
+        "body": "One scan shows origin, journey, certificates and any open concerns.",
+        "icon": "shield"
+      }
+    ]
+  },
+  "roles": {
+    "eyebrow": "A clear first step for every role",
+    "title": "See how ChainTrack fits your work",
+    "body": "Choose your role for a short introduction. The workspace only shows what your organisation is allowed to do.",
+    "tabs": {
+      "producer": "Producer",
+      "logistics": "Logistics & trade",
+      "certifier": "Certifier",
+      "regulator": "Regulator"
+    },
+    "cta": "Set up this workspace",
+    "tipTitle": "Checked before you sign",
+    "tipBody": "Capacity, licence, evidence and quantity checks run before you can sign. When something is wrong, ChainTrack says what to fix.",
+    "guides": {
+      "producer": {
+        "title": "Start at the verified origin",
+        "body": "Register your licensed facility, declare its capacity for the period and issue a passport when a real lot is ready.",
+        "steps": [
+          [
+            "Register your facility",
+            "Add the licensed location and its capacity."
+          ],
+          [
+            "Issue a passport",
+            "Record the quantity and evidence, then print the QR label."
+          ],
+          [
+            "Hand over securely",
+            "Choose a verified receiver and sign the transfer."
+          ]
+        ]
+      },
+      "logistics": {
+        "title": "Move goods with shared accountability",
+        "body": "Scan before collection, record the quantity and condition, then ask the receiver to weigh, inspect and countersign.",
+        "steps": [
+          [
+            "Scan the label",
+            "Confirm the lot before it enters your custody."
+          ],
+          [
+            "Record the handover",
+            "Add the quantity, place and evidence photos."
+          ],
+          [
+            "Get both signatures",
+            "The holder changes only once the receiver signs."
+          ]
+        ]
+      },
+      "certifier": {
+        "title": "Attach evidence buyers can trust",
+        "body": "Find the right lot or facility, choose a certificate type you're accredited for and issue it with its validity dates.",
+        "steps": [
+          [
+            "Choose the subject",
+            "Find the exact lot or licensed facility."
+          ],
+          [
+            "Upload evidence",
+            "Add the validity dates and the signed file."
+          ],
+          [
+            "Issue or revoke",
+            "Publish valid evidence, or revoke it for good."
+          ]
+        ]
+      },
+      "regulator": {
+        "title": "Investigate risk across the full journey",
+        "body": "Work through open flags, raised by businesses or by the rules, compare the signed records and see every lot made from a flagged one.",
+        "steps": [
+          [
+            "Review the queue",
+            "Start with open flags and who raised them."
+          ],
+          [
+            "Inspect evidence",
+            "Compare quantities, documents and affected lots."
+          ],
+          [
+            "Record a decision",
+            "Clear the concern, or confirm it with a reason."
+          ]
+        ]
+      }
+    }
+  },
+  "showcase": {
+    "eyebrow": "For every participant",
+    "title": "One view of the truth.",
+    "titleLine": "Built for real operations.",
+    "body": "From farms and mines to ports, processors and regulators, ChainTrack makes trusted records part of the work, not extra work.",
+    "points": [
+      [
+        "Businesses",
+        "Issue passports, manage handovers and keep compliant records."
+      ],
+      [
+        "Certifiers",
+        "Attach valid, revocable evidence to the right lot or facility."
+      ],
+      [
+        "Regulators",
+        "Investigate exceptions and trace every affected product."
+      ],
+      [
+        "Buyers & consumers",
+        "Scan once and see what was independently checked."
+      ]
+    ],
+    "cta": "Open the business workspace",
+    "window": "ChainTrack verification",
+    "result": "Verification result",
+    "verdict": "Verified",
+    "verdictSub": "Origin and journey confirmed",
+    "timeline": [
+      "Origin facility verified",
+      "Washed and processed",
+      "Custody accepted",
+      "Export cleared"
+    ],
+    "signed": "Signed"
+  },
+  "trust": {
+    "eyebrow": "Trust by design",
+    "title": "Evidence you can act on.",
+    "body": "ChainTrack checks records, quantities, facility capacity and certificate validity, then gives a clear verdict with its reasons.",
+    "cta": "Verify a product",
+    "verdicts": [
+      {
+        "tone": "verified",
+        "label": "Verified",
+        "body": "Every required check passed"
+      },
+      {
+        "tone": "warning",
+        "label": "Warning",
+        "body": "Review before accepting"
+      },
+      {
+        "tone": "danger",
+        "label": "Failed",
+        "body": "Do not accept this product"
+      }
+    ],
+    "note": "A clear label, icon and explanation"
+  },
+  "security": {
+    "eyebrow": "Security & privacy",
+    "title": "Protected at every handover.",
+    "titleLine": "Private by default.",
+    "body": "Built for regulated trade: commercial details stay private, every important action is signed with the person's own PIN, and recorded history can't be changed without it showing.",
+    "assuranceTitle": "No personal or price data is published",
+    "assuranceBody": "Public verification shows where a product came from and whether it checks out, not contracts, people's details or prices.",
+    "cards": [
+      {
+        "icon": "shield",
+        "title": "Strong account protection",
+        "body": "Two-factor sign-in, signing PINs and recovery codes protect every user."
+      },
+      {
+        "icon": "link",
+        "title": "Two-party confirmation",
+        "body": "Custody changes only after sender and receiver both sign the same details."
+      },
+      {
+        "icon": "file",
+        "title": "Change detection",
+        "body": "Recorded fingerprints expose altered records, quantities or certificates."
+      },
+      {
+        "icon": "layers",
+        "title": "Least-privilege access",
+        "body": "Roles decide who may issue, sign, certify, investigate or administer."
+      },
+      {
+        "icon": "clock",
+        "title": "Complete audit trail",
+        "body": "Every change records who did it, for which organisation, and when."
+      },
+      {
+        "icon": "check",
+        "title": "Rules checked before signing",
+        "body": "Capacity, yield, evidence and licence rules are checked before anything is accepted."
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "Questions",
+    "title": "Questions before you begin?",
+    "body": "Short answers to what new teams ask most.",
+    "items": [
+      [
+        "Do people need an account to verify a product?",
+        "No. Anyone can scan a ChainTrack QR label and see the verification without signing in."
+      ],
+      [
+        "Who can create a product passport?",
+        "Only verified organisations, from a licensed facility the platform has approved."
+      ],
+      [
+        "Can a handover happen without the receiver?",
+        "No. The sender starts it, but custody moves only once the verified receiver inspects and signs."
+      ],
+      [
+        "What if a certificate is no longer valid?",
+        "The verification shows expired or revoked evidence and says whether the product needs a closer look."
+      ],
+      [
+        "Can we add our own commodity?",
+        "Yes. A platform admin adds a commodity template (unit, stages, yield limits, required evidence) with no change to the software."
+      ],
+      [
+        "What does a buyer see?",
+        "Origin, journey, certificates and a verdict with its reasons. Never prices, contracts or personal details."
+      ]
+    ]
+  },
+  "cta": {
+    "title": "Make every journey accountable.",
+    "body": "Start with one facility, one product and one trusted passport.",
+    "primary": "Get started with ChainTrack",
+    "secondary": "Verify a product"
+  },
+  "footer": {
+    "tagline": "Transparent journeys. Trusted goods.",
+    "product": "Product",
+    "verify": "Verify a passport",
+    "workspace": "Business workspace",
+    "how": "How it works",
+    "trustTitle": "Trust",
+    "security": "Security",
+    "guide": "How verification works",
+    "rights": {
+      "$template": "© {year} ChainTrack"
+    }
+  }
+}

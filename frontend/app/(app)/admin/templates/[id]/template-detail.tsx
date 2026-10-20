@@ -8,6 +8,7 @@ import { use, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -88,21 +89,15 @@ export function TemplateDetail({
       </PageState>
     );
   }
-  if (tpl.isPending) return <Loading className="px-4 py-8 lg:px-8" />;
-  if (tpl.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => tpl.refetch()}
-      >
-        {problemOf(tpl.error)}
-      </PageState>
-    );
-  }
-
-  return <EditForm tpl={tpl.data} id={id} />;
+  return (
+    <DataWidget
+      query={tpl}
+      className="px-4 py-8 lg:px-8"
+      page={{ icon: WifiOff, title: copy.errors.loadTitle }}
+    >
+      {(data) => <EditForm tpl={data} id={id} />}
+    </DataWidget>
+  );
 }
 
 function EditForm({ tpl, id }: { tpl: Template; id: string }) {

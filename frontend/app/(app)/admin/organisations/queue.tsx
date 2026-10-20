@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { parseAsString, parseAsStringLiteral } from "nuqs";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
@@ -108,8 +109,6 @@ export function Queue() {
       </PageState>
     );
 
-  const failed = list.isError ? list : undefined;
-  const loading = list.isPending;
   const waiting = counts[0].data;
   const oldest = waiting?.data[0];
   const selected = picked.data;
@@ -147,36 +146,27 @@ export function Queue() {
 
         {adminTabs.map((x) => (
           <TabsContent key={x.value} value={x.value} className="mt-4">
-            {failed ? (
-              <PageState
-                icon={WifiOff}
-                tone="danger"
-                title={copy.errors.loadTitle}
-                retry={() => list.refetch()}
-              >
-                {problemOf(failed.error)}
-              </PageState>
-            ) : loading ? (
-              <Loading />
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-[--spacing(95)_1fr] lg:gap-6">
-                <div className="grid content-start gap-3">
-                  <OrgList
-                    tab={x.value}
-                    orgs={list.data!.data}
-                    selectedId={selectedId}
-                  />
-                  <ListPager list={state} total={list.data!.total} />
+            <DataWidget query={list} retryLabel={copy.errors.tryAgain}>
+              {(page) => (
+                <div className="grid gap-4 lg:grid-cols-[--spacing(95)_1fr] lg:gap-6">
+                  <div className="grid content-start gap-3">
+                    <OrgList
+                      tab={x.value}
+                      orgs={page.data}
+                      selectedId={selectedId}
+                    />
+                    <ListPager list={state} total={page.total} />
+                  </div>
+                  {selected ? (
+                    <OrgDetail key={selected.id} org={selected} />
+                  ) : (
+                    <p className="hidden rounded-lg border border-dashed border-border-strong p-6 text-ink-muted lg:block">
+                      {t.selectOne}
+                    </p>
+                  )}
                 </div>
-                {selected ? (
-                  <OrgDetail key={selected.id} org={selected} />
-                ) : (
-                  <p className="hidden rounded-lg border border-dashed border-border-strong p-6 text-ink-muted lg:block">
-                    {t.selectOne}
-                  </p>
-                )}
-              </div>
-            )}
+              )}
+            </DataWidget>
           </TabsContent>
         ))}
       </Tabs>
@@ -283,19 +273,17 @@ function OrgDetail({ org }: { org: Organisation }) {
 
       <div className="grid gap-3">
         <h3 className="text-title">{t.documents}</h3>
-        {docs.isPending ? (
-          <Loading />
-        ) : docs.isError ? (
-          <Notice kind="blocking">{problemOf(docs.error)}</Notice>
-        ) : docs.data.length === 0 ? (
-          <Notice kind="warning">{t.noDocuments}</Notice>
-        ) : (
-          <ul className="grid gap-3 md:grid-cols-2">
-            {docs.data.map((d) => (
-              <li
-                key={d.id}
-                className="grid gap-2 rounded-md border border-border p-3"
-              >
+        <DataWidget query={docs}>
+          {(rows) =>
+            rows.length === 0 ? (
+              <Notice kind="warning">{t.noDocuments}</Notice>
+            ) : (
+              <ul className="grid gap-3 md:grid-cols-2">
+                {rows.map((d) => (
+                  <li
+                    key={d.id}
+                    className="grid gap-2 rounded-md border border-border p-3"
+                  >
                 {upload.imageTypes.includes(d.content_type) && (
                   // Opens full size in a new tab to zoom.
                   <a
@@ -320,13 +308,15 @@ function OrgDetail({ org }: { org: Organisation }) {
                   <FileText className="size-4 shrink-0" aria-hidden />
                   <span className="min-w-0 truncate">{d.file_name}</span>
                 </a>
-                <p className="text-small text-ink-muted">
-                  {copy.documentTypeLabel(d.type)} · {formatDate(d.created_at)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
+                    <p className="text-small text-ink-muted">
+                      {copy.documentTypeLabel(d.type)} · {formatDate(d.created_at)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        </DataWidget>
       </div>
 
       {org.status !== orgStatus.verified && <ReviewForm orgId={org.id} />}

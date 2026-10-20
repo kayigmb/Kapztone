@@ -1,10 +1,5 @@
 "use client";
 
-// Draft 3g: hand a lot over to another organisation. Lot → what leaves (how
-// much, into which stage, where, photos) → receiver → sign. Sending less than
-// the whole passport splits it (the API does that); the sender stays the
-// holder until the receiver signs.
-
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, Clock, Search } from "lucide-react";
@@ -13,9 +8,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+
 import {
   PlaceAndPhotos,
   type Place,
@@ -61,7 +58,6 @@ export function HandoverFlow() {
     queryFn: () => endpoints.passport(ref),
     enabled: !!ref,
   });
-  const p = passport.data;
 
   const pick = (id: string) => {
     setRef(id);
@@ -70,35 +66,25 @@ export function HandoverFlow() {
   };
 
   if (step === 0 || !ref) return <PickLot onPick={pick} />;
-  if (passport.isPending) return <Loading className="p-4 lg:p-8" />;
-  if (passport.isError || !p) {
-    return (
-      <PageState
-        icon={Search}
-        title={copy.errors.loadTitle}
-        retry={() => passport.refetch()}
-      >
-        {problemOf(passport.error)}
-      </PageState>
-    );
-  }
-  if (
-    p.organisation_id !== me.organisation?.id ||
-    p.status !== passportStatus.active
-  ) {
-    return (
-      <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-        <Notice kind="blocking">{t.notHolder}</Notice>
-      </main>
-    );
-  }
 
   return (
-    <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <PageHeader title={t.title}>
-        <Stepper steps={[...t.steps]} current={step} />
-      </PageHeader>
-      <LotSummary p={p} />
+    <DataWidget
+      query={passport}
+      className="p-4 lg:p-8"
+      page={{ icon: Search, title: copy.errors.loadTitle }}
+    >
+      {(p) =>
+        p.organisation_id !== me.organisation?.id ||
+        p.status !== passportStatus.active ? (
+          <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+            <Notice kind="blocking">{t.notHolder}</Notice>
+          </main>
+        ) : (
+          <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+            <PageHeader title={t.title}>
+              <Stepper steps={[...t.steps]} current={step} />
+            </PageHeader>
+            <LotSummary p={p} />
       {step === 1 && (
         <Details
           p={p}
@@ -121,17 +107,20 @@ export function HandoverFlow() {
           onNext={() => setStep(3)}
         />
       )}
-      {step === 3 && details && receiver && (
-        <Sign
-          p={p}
-          details={details}
-          receiver={receiver}
-          place={place}
-          photos={photos}
-          onBack={() => setStep(2)}
-        />
-      )}
-    </main>
+            {step === 3 && details && receiver && (
+              <Sign
+                p={p}
+                details={details}
+                receiver={receiver}
+                place={place}
+                photos={photos}
+                onBack={() => setStep(2)}
+              />
+            )}
+          </main>
+        )
+      }
+    </DataWidget>
   );
 }
 
@@ -163,35 +152,37 @@ function PickLot({ onPick }: { onPick: (id: string) => void }) {
         <p className="text-sm text-ink-muted">{t.pickHint}</p>
       </header>
       <LotScanner onCode={onPick} />
-      {held.isPending ? (
-        <Loading />
-      ) : held.data?.length ? (
-        <ul className="grid gap-2">
-          {held.data.map((x) => (
-            <li key={x.id}>
-              <button
-                type="button"
-                onClick={() => onPick(x.id)}
-                className="grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left hover:border-primary"
-              >
-                <span className="grid gap-0.5">
-                  <span className="font-mono text-sm font-semibold">
-                    {x.code}
-                  </span>
-                  <span className="text-small text-ink-muted">
-                    {humanize(x.commodity)}
-                  </span>
-                </span>
-                <span className="font-mono text-sm">
-                  {formatQuantity(x.remaining, x.unit)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Notice kind="info">{t.pickEmpty}</Notice>
-      )}
+      <DataWidget query={held}>
+        {(lots) =>
+          lots.length ? (
+            <ul className="grid gap-2">
+              {lots.map((x) => (
+                <li key={x.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(x.id)}
+                    className="grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left hover:border-primary"
+                  >
+                    <span className="grid gap-0.5">
+                      <span className="font-mono text-sm font-semibold">
+                        {x.code}
+                      </span>
+                      <span className="text-small text-ink-muted">
+                        {humanize(x.commodity)}
+                      </span>
+                    </span>
+                    <span className="font-mono text-sm">
+                      {formatQuantity(x.remaining, x.unit)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Notice kind="info">{t.pickEmpty}</Notice>
+          )
+        }
+      </DataWidget>
     </main>
   );
 }
@@ -288,32 +279,37 @@ function Details({
 
       <label className="grid gap-1.5">
         <span className="text-sm font-semibold">{t.stage}</span>
-        {template.isPending && p.template_id ? (
-          <Loading />
-        ) : stages.length === 0 ? (
+        {!p.template_id ? (
           <Notice kind="warning">{t.noStages}</Notice>
         ) : (
-          <Controller
-            control={control}
-            name="stage"
-            render={({ field }) => (
-              <SelectInput
-                label={t.stage}
-                placeholder={t.stagePlaceholder}
-                value={field.value ?? ""}
-                onChange={field.onChange}
-                invalid={!!errors.stage}
-                options={stages.map((st) => ({
-                  value: st.key,
-                  label: humanize(st.key),
-                }))}
-              />
-            )}
-          />
+          <DataWidget query={template}>
+            {(tpl) => {
+              const pickStages = handoverStages(tpl.stages ?? []);
+              return pickStages.length === 0 ? (
+                <Notice kind="warning">{t.noStages}</Notice>
+              ) : (
+                <Controller
+                  control={control}
+                  name="stage"
+                  render={({ field }) => (
+                    <SelectInput
+                      label={t.stage}
+                      placeholder={t.stagePlaceholder}
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      invalid={!!errors.stage}
+                      options={pickStages.map((st) => ({
+                        value: st.key,
+                        label: humanize(st.key),
+                      }))}
+                    />
+                  )}
+                />
+              );
+            }}
+          </DataWidget>
         )}
-        <span className="text-small text-ink-muted">
-          {errors.stage?.message ?? t.stageHelp}
-        </span>
+        <FieldNote error={errors.stage?.message} help={t.stageHelp} />
       </label>
 
       <TextField
@@ -363,44 +359,44 @@ function PickReceiver({
           onChange={(e) => setSearch(e.target.value)}
         />
       </label>
-      {found.isPending ? (
-        <Loading />
-      ) : found.isError ? (
-        <Notice kind="blocking">{problemOf(found.error)}</Notice>
-      ) : found.data.length === 0 ? (
-        <Notice kind="info">
-          {search ? t.receiverEmpty : t.receiverEmptyAll}
-        </Notice>
-      ) : (
-        <ul className="grid gap-2" role="radiogroup" aria-label={t.receiver}>
-          {found.data.map((o) => (
-            <li key={o.id}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selected?.id === o.id}
-                onClick={() => onPick(o)}
-                className={cn(
-                  "grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg border px-4 py-3 text-left",
-                  selected?.id === o.id
-                    ? "border-primary bg-primary-soft"
-                    : "border-border bg-surface hover:border-primary",
-                )}
-              >
-                <span className="grid gap-0.5">
-                  <span className="text-sm font-semibold">{o.name}</span>
-                  <span className="text-small text-ink-muted">
-                    {humanize(o.kind)}
-                  </span>
-                </span>
-                <StatusChip tone="verified" icon={CircleCheck}>
-                  {t.verified}
-                </StatusChip>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <DataWidget query={found}>
+        {(orgs) =>
+          orgs.length === 0 ? (
+            <Notice kind="info">
+              {search ? t.receiverEmpty : t.receiverEmptyAll}
+            </Notice>
+          ) : (
+            <ul className="grid gap-2" role="radiogroup" aria-label={t.receiver}>
+              {orgs.map((o) => (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={selected?.id === o.id}
+                    onClick={() => onPick(o)}
+                    className={cn(
+                      "grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg border px-4 py-3 text-left",
+                      selected?.id === o.id
+                        ? "border-primary bg-primary-soft"
+                        : "border-border bg-surface hover:border-primary",
+                    )}
+                  >
+                    <span className="grid gap-0.5">
+                      <span className="text-sm font-semibold">{o.name}</span>
+                      <span className="text-small text-ink-muted">
+                        {humanize(o.kind)}
+                      </span>
+                    </span>
+                    <StatusChip tone="verified" icon={CircleCheck}>
+                      {t.verified}
+                    </StatusChip>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </DataWidget>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="secondary" onClick={onBack}>
           {t.back}
@@ -517,7 +513,7 @@ function Sign({
         variant="secondary"
         className="w-fit"
         onClick={onBack}
-        disabled={send.isPending}
+        loading={send.isPending}
       >
         {t.back}
       </Button>

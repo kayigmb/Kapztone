@@ -7,9 +7,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading } from "@/components/chaintrack/page-state";
+
 import { SelectInput } from "@/components/chaintrack/select-input";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
@@ -134,13 +136,17 @@ export function IssueCertificate() {
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
         <section className="grid gap-5 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
           <FindLot onFound={setLotRef} />
-          {lot.isPending && lotRef ? (
-            <Loading />
-          ) : lot.isError ? (
-            <Notice kind="blocking">{problemOf(lot.error)}</Notice>
-          ) : lotRef && !v ? (
-            <Notice kind="warning">{copy.verification.notFoundTitle}</Notice>
-          ) : null}
+          {lotRef && (
+            <DataWidget query={lot}>
+              {(found) =>
+                !found ? (
+                  <Notice kind="warning">
+                    {copy.verification.notFoundTitle}
+                  </Notice>
+                ) : null
+              }
+            </DataWidget>
+          )}
 
           {v && (
             <fieldset className="grid gap-2">
@@ -169,11 +175,7 @@ export function IssueCertificate() {
                   </button>
                 );
               })}
-              {errors.subject_id && (
-                <p className="text-small font-semibold text-danger">
-                  {errors.subject_id.message}
-                </p>
-              )}
+              <FieldNote error={errors.subject_id?.message} />
             </fieldset>
           )}
 
@@ -206,9 +208,7 @@ export function IssueCertificate() {
                   )}
                 />
               )}
-              <span className="text-small text-ink-muted">
-                {errors.type?.message ?? t.typeHelp}
-              </span>
+              <FieldNote error={errors.type?.message} help={t.typeHelp} />
             </label>
             <div className="grid gap-4 md:grid-cols-2">
               <TextField
@@ -240,11 +240,7 @@ export function IssueCertificate() {
                   if (f) setValue("file", f, { shouldValidate: true });
                 }}
               />
-              {errors.file && (
-                <span className="text-small font-semibold text-danger">
-                  {errors.file.message ?? t.documentMissing}
-                </span>
-              )}
+              <FieldNote error={errors.file?.message ?? (errors.file ? t.documentMissing : undefined)} />
             </label>
           </form>
         </section>

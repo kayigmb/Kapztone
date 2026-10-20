@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
 import { Stepper } from "@/components/chaintrack/stepper";
 import { TextField } from "@/components/chaintrack/text-field";
@@ -171,11 +172,7 @@ export function SignUpForm() {
             />
             {t.consent}
           </label>
-          {errors.consent && (
-            <p className="text-small font-semibold text-danger">
-              {errors.consent.message}
-            </p>
-          )}
+          <FieldNote error={errors.consent?.message} />
         </div>
         <Button type="button" block onClick={next}>
           {t.next}
@@ -215,8 +212,8 @@ export function SignUpForm() {
             <ArrowLeft aria-hidden />
             {t.back}
           </Button>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? t.submitting : t.submit}
+          <Button type="submit" loading={create.isPending} loadingText={t.submitting}>
+            {t.submit}
           </Button>
         </div>
       </div>

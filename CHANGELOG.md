@@ -60,6 +60,17 @@ What has been built and what is left. Every finished piece of work adds an entry
 
 ## Done
 
+### 2026-10-20 — Branded sender, background invites, HTML mail
+- **Sender identity:** new required `MAIL_FROM` (fail-fast `mail.ParseAddress`, e.g. `"ChainTrack <noreply@chaintrack.digital>"`); envelope keeps the bare address, the `From:` header shows the display name. `SMTP_USER` is login-only now (docs + `.env.example` updated, Gmail alias/SPF note).
+- **Background invites:** `POST /invites` returns immediately; the e-mail sends in a `go` routine like `sendLink`, failures only logged (re-invite makes a new link). Response semantics (`emailed` = queued) and frontend unchanged.
+- **HTML mail:** new leaf package `mailtmpl` (table layout, inline styles, navy header, teal action button, optional `MAIL_LOGO_URL` mark, else text wordmark); `compose` builds `multipart/alternative`, plain-text part byte-identical so existing body assertions hold; 4-arg `Mail` func threaded through `auth`/`user`/`mailer.SendOne`; logo file lives at `frontend/public/brand/chaintrack-mark.svg`, app icon at `frontend/app/icon.svg` (staging `frontend/images/` removed).
+- **Tests:** mailtmpl unit test (escaping, button, no-image fallback), config tests for `MAIL_FROM`/`MAIL_LOGO_URL`, mailer From-header assertions, async invite poll; full `make test-db` green.
+
+### 2026-10-20 — No self role change (UI gate + API 409)
+- **Users page:** the role control is disabled on your own row (same pattern as suspend); the existing "Make X Y?" confirm dialog is unchanged for everyone else.
+- **API:** `PUT /users/{id}/role` refuses your own id with 409 `you cannot change your own role` (new `MsgSelfRole`), mirroring the suspend self-check. Last-admin rule untouched.
+- **Test:** self-demotion attempt with two admins present returns 409 and the role stays `org_admin` (`access_db_test.go`).
+
 ### 2026-10-20 — Dev master plan: saved reports in bucket, outcomes, route points, baseline, OWASP hardening
 - **Saved reports in bucket** (migration 000020): `saved_reports` + `report_files`, `POST/GET /reports/saved`, `POST /reports/saved/{id}/run` renders CSV/PDF and keeps it via `upload.Bucket.SaveBytes`, `GET /reports/saved/{id}/files`, `GET /reports/files/{id}` streams permission-checked. Frontend tiles + save/run in `admin/reports`.
 - **Verification outcomes** `GET /reports/verification-outcomes`: revoked is failed, open flag is warning, rest verified, per month; CSV/PDF + tile.

@@ -2,9 +2,12 @@ package notify
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/mailtmpl"
 
 	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
@@ -26,24 +30,34 @@ type Mailer struct {
 	Pool *pgxpool.Pool
 	Addr string // host:port
 	Auth smtp.Auth
-	From string
+	// From is the envelope sender (a bare address); FromHeader is what the
+	// recipient sees, e.g. ChainTrack <noreply@chaintrack.digital>.
+	From       string
+	FromHeader string
+	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
+	// mail; empty means the header shows the name as text.
+	LogoURL string
 	// Send delivers one message; NewMailer sets it, tests replace it.
 	Send func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
-// SMTP is a mail server and the account notifications are sent from.
+// SMTP is a mail server and the login it needs; the sender every recipient
+// sees comes from MAIL_FROM instead (a display name and address).
 type SMTP struct {
 	Host     string
 	Port     string
-	User     string // also the sender address
-	Password string // empty: the server needs no sign-in
-	// TLS requires the connection to be encrypted (STARTTLS). Without it a
+	User     string // the login; empty with Password means no sign-in
+	Password string
+	FromName string // display name, e.g. ChainTrack
+	FromAddr string // envelope sender, e.g. noreply@chaintrack.digital
+	// TLS requires the connection to be encrypted (STARTTLS). Without a
 	// server that offers no encryption is written to in plain text.
 	TLS bool
 }
 
 func NewMailer(pool *pgxpool.Pool, s SMTP) *Mailer {
-	m := &Mailer{Pool: pool, Addr: net.JoinHostPort(s.Host, s.Port), From: s.User}
+	header := (&mail.Address{Name: s.FromName, Address: s.FromAddr}).String()
+	m := &Mailer{Pool: pool, Addr: net.JoinHostPort(s.Host, s.Port), From: s.FromAddr, FromHeader: header}
 	if s.Password != "" {
 		m.Auth = smtp.PlainAuth("", s.User, s.Password, s.Host)
 	}
@@ -160,24 +174,40 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
-// message builds a plain-text e-mail. Line breaks are stripped from the
-// body's first line so nothing in a notification can add a header.
+// message builds a notification e-mail: the plain-text body the app already
+// showed, plus its HTML twin. Line breaks are stripped from the body's first
+// line so nothing in a notification can add a header.
 func (m *Mailer) message(to []string, body string) []byte {
 	clean := strings.NewReplacer("\r", " ", "\n", " ").Replace
-	return m.compose(to, mailSubject, clean(body))
+	text := clean(body)
+	html := mailtmpl.Render(mailtmpl.Page{
+		Subject:    mailSubject,
+		Preheader:  text,
+		Paragraphs: mailtmpl.Split(body),
+		LogoURL:    m.LogoURL,
+	})
+	return m.compose(to, mailSubject, text, html)
 }
 
-// compose builds a plain-text e-mail; the subject cannot carry a line break.
-func (m *Mailer) compose(to []string, subject, body string) []byte {
+// compose builds a multipart e-mail: the plain-text body every client reads
+// plus an HTML twin. The subject cannot carry a line break.
+func (m *Mailer) compose(to []string, subject, text, html string) []byte {
 	subject = strings.NewReplacer("\r", " ", "\n", " ").Replace(subject)
-	return []byte("From: " + m.From + "\r\n" +
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		copy(raw, []byte("chaintrack-fallback-boundary"))
+	}
+	boundary := hex.EncodeToString(raw)
+	return []byte("From: " + m.FromHeader + "\r\n" +
 		"To: " + strings.Join(to, ", ") + "\r\n" +
 		"Subject: " + subject + "\r\n" +
-		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" +
-		body + "\r\n")
+		"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=" + boundary + "\r\n\r\n" +
+		"--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
+		"--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
+		"--" + boundary + "--\r\n")
 }
 
 // SendOne e-mails one person now, outside the notification queue (an invitation).
-func (m *Mailer) SendOne(to, subject, body string) error {
-	return m.Send(m.Addr, m.Auth, m.From, []string{to}, m.compose([]string{to}, subject, body))
+func (m *Mailer) SendOne(to, subject, text, html string) error {
+	return m.Send(m.Addr, m.Auth, m.From, []string{to}, m.compose([]string{to}, subject, text, html))
 }

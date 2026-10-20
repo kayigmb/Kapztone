@@ -1,8 +1,8 @@
-import { OctagonX } from "lucide-react";
-
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { cn } from "@/lib/utils";
+
+import { FieldNote } from "./field-note";
 
 /**
  * One labelled input with its help or its error (components.md → Form fields).
@@ -44,21 +44,7 @@ export function TextField({
         type={type}
         {...props}
       />
-      {error ? (
-        <p
-          id={noteId}
-          className="flex gap-1.5 text-small font-semibold text-danger"
-        >
-          <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-          {error}
-        </p>
-      ) : (
-        help && (
-          <p id={noteId} className="text-small text-ink-subtle">
-            {help}
-          </p>
-        )
-      )}
+      <FieldNote id={noteId} error={error} help={help} />
     </div>
   );
 }

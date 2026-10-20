@@ -112,9 +112,11 @@ func main() {
 		retrier := &attestation.Retrier{Store: certificates.Store, Files: files, Pin: certificates.Pin}
 		go retrier.Run(ctx)
 	}
-	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, Dev: cfg.Dev}
+	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, Dev: cfg.Dev, LogoURL: cfg.MailLogoURL}
+	a.LogoURL = cfg.MailLogoURL
 	if cfg.SMTP != nil {
 		mailer := notify.NewMailer(pool, *cfg.SMTP)
+		mailer.LogoURL = cfg.MailLogoURL
 		users.Mail = mailer.SendOne
 		a.Mail = mailer.SendOne
 		go mailer.Run(ctx)

@@ -42,6 +42,7 @@ const (
 	MsgAlreadyMember  = "this person already belongs to the organisation"
 	MsgLastAdmin      = "the organisation must keep at least one admin"
 	MsgSelf           = "you cannot suspend yourself"
+	MsgSelfRole       = "you cannot change your own role"
 	MsgNotMember      = "this person does not belong to the organisation"
 	MsgNotSuspended   = "this person is not suspended"
 	MsgInviteBodyFmt  = "You have been invited to join %s on ChainTrack as %s.\n\nOpen this link within 24 hours to accept:\n%s\n"

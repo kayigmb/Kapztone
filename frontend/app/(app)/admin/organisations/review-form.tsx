@@ -2,11 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { OctagonX } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, endpoints, problemOf } from "@/lib/api";
@@ -89,25 +89,13 @@ export function ReviewForm({ orgId }: { orgId: string }) {
           aria-describedby={noteId}
           {...register("reason")}
         />
-        {errors.reason ? (
-          <p
-            id={noteId}
-            className="flex gap-1.5 text-small font-semibold text-danger"
-          >
-            <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-            {errors.reason.message}
-          </p>
-        ) : (
-          <p id={noteId} className="text-small text-ink-subtle">
-            {t.noteHelp}
-          </p>
-        )}
+        <FieldNote id={noteId} error={errors.reason?.message} help={t.noteHelp} />
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="button"
           variant="danger-outline"
-          disabled={review.isPending}
+          loading={review.isPending}
           onClick={decide(orgStatus.rejected)}
         >
           {t.reject}
@@ -115,17 +103,18 @@ export function ReviewForm({ orgId }: { orgId: string }) {
         <Button
           type="button"
           variant="secondary"
-          disabled={review.isPending}
+          loading={review.isPending}
           onClick={decide(orgStatus.changesRequested)}
         >
           {t.changes}
         </Button>
         <Button
           type="button"
-          disabled={review.isPending}
+          loading={review.isPending}
+          loadingText={t.saving}
           onClick={decide(orgStatus.verified)}
         >
-          {review.isPending ? t.saving : t.approve}
+          {t.approve}
         </Button>
       </div>
     </form>

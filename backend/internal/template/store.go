@@ -23,7 +23,6 @@ var (
 )
 
 // Template is a stored commodity template: the published rules plus the base
-// fields. Edits wait in Draft until published; every publish is a new Version.
 type Template struct {
 	ID string `json:"id"`
 	Input

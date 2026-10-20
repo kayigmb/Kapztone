@@ -375,6 +375,13 @@
 }
 
 /* ---------- Two helpers used everywhere ---------- */
+/* Hide the scrollbar while keeping the scroll itself (tab rows, chip lists). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 @utility label {
   @apply text-label uppercase text-ink-muted;
 } /* field and key-value labels */

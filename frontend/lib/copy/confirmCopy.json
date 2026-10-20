@@ -1,0 +1,45 @@
+{
+  "cancel": "Cancel",
+  "signOut": {
+    "title": "Sign out of ChainTrack?",
+    "body": "You'll need your password to sign in again on this device.",
+    "label": "Sign out"
+  },
+  "review": {
+    "verified": {
+      "title": "Approve this organisation?",
+      "body": "It can issue, hand over and receive passports straight away, and its signing key is created. The decision and your note are recorded.",
+      "label": "Approve organisation"
+    },
+    "changes_requested": {
+      "title": "Ask for changes?",
+      "body": "The organisation sees your note and can upload new documents. It stays unable to trade until it is approved.",
+      "label": "Ask for changes"
+    },
+    "rejected": {
+      "title": "Reject this organisation?",
+      "body": "The organisation sees your note. It can't trade; it may upload new documents to be reviewed again.",
+      "label": "Reject organisation"
+    }
+  },
+  "accredit": {
+    "title": "Save these accreditations?",
+    "body": "The organisation may issue exactly the certificate types ticked, within the dates given. The ledger records the change.",
+    "label": "Save accreditations"
+  },
+  "decline": {
+    "title": "Remove every accreditation?",
+    "body": "The organisation can no longer issue certificates. Certificates it already issued stay valid.",
+    "label": "Remove accreditations"
+  },
+  "flagAssign": {
+    "title": "Take this flag?",
+    "body": "You become its investigator; others see it's yours.",
+    "label": "Assign to me"
+  },
+  "flagUnassign": {
+    "title": "Let go of this flag?",
+    "body": "It goes back to the queue without an investigator.",
+    "label": "Unassign"
+  }
+}

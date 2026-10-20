@@ -34,14 +34,13 @@ import {
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { MapView, type Shape } from "@/components/chaintrack/map";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip } from "@/components/chaintrack/status";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   endpoints,
   facilityLicenceURL,
-  problemOf,
   useMe,
   usePaged,
   type Facility,
@@ -165,21 +164,6 @@ export function Facilities() {
     enabled: !!selectedId,
   });
 
-  if (q.isPending) return <Loading className="px-4 py-8 lg:px-8" />;
-  if (q.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => q.refetch()}
-      >
-        {problemOf(q.error)}
-      </PageState>
-    );
-  }
-
-  const { data: rows, total } = q.data;
   const selected = picked.data;
   const mayManage = me.permissions.includes(permissions.facilityManage);
   const maySuspend = me.permissions.includes(permissions.facilitySuspend);
@@ -187,10 +171,16 @@ export function Facilities() {
   const filtered = !!(list.search || kind);
 
   return (
-    <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <PageHeader
-        title={t.title}
-        sub={t.sub(total, org)}
+    <DataWidget
+      query={q}
+      className="px-4 py-8 lg:px-8"
+      page={{ icon: WifiOff, title: copy.errors.loadTitle }}
+    >
+      {({ data: rows, total }) => (
+        <main className="grid w-full content-start gap-6 p-4 lg:p-8">
+          <PageHeader
+            title={t.title}
+            sub={t.sub(total, org)}
         actions={
           mayManage && (
             <Link href={routes.facilityNew} className={buttonVariants()}>
@@ -274,12 +264,16 @@ export function Facilities() {
                   {t.legend.inactive}
                 </li>
               </ul>
-              <p className="text-small text-ink-subtle">{local.selectPrompt}</p>
+                <p className="text-small text-ink-subtle">
+                {local.selectPrompt}
+              </p>
             </section>
           )}
         </div>
       )}
-    </main>
+        </main>
+      )}
+    </DataWidget>
   );
 }
 
@@ -519,7 +513,7 @@ function Detail({
           {mayManage && (
             <Button
               variant="danger-outline"
-              disabled={remove.isPending}
+              loading={remove.isPending}
               onClick={() =>
                 ask(
                   {
@@ -538,7 +532,7 @@ function Detail({
           )}
           {maySuspend && pending && (
             <Button
-              disabled={approve.isPending}
+              loading={approve.isPending}
               onClick={() =>
                 ask(confirmCopy.facilityApprove(f.name), () => approve.mutate())
               }
@@ -552,7 +546,7 @@ function Detail({
             (active ? (
               <Button
                 variant="secondary"
-                disabled={set.isPending}
+                loading={set.isPending}
                 onClick={() =>
                   ask(
                     {
@@ -570,7 +564,7 @@ function Detail({
             ) : (
               <Button
                 variant="secondary"
-                disabled={set.isPending}
+                loading={set.isPending}
                 onClick={() =>
                   ask(confirmCopy.facilityReinstate(f.name), () =>
                     set.mutate(facilityStatus.active),

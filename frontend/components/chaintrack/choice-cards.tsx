@@ -1,4 +1,6 @@
-import { OctagonX, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { FieldNote } from "@/components/chaintrack/field-note";
 
 /**
  * A radio group shown as cards (components.md → Choice cards). Spread
@@ -48,12 +50,7 @@ export function ChoiceCards({
           </label>
         ))}
       </div>
-      {error && (
-        <p className="flex gap-1.5 text-small font-semibold text-danger">
-          <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-          {error}
-        </p>
-      )}
+      <FieldNote error={error} />
     </fieldset>
   );
 }

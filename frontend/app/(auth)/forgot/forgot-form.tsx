@@ -93,8 +93,8 @@ export function ForgotForm() {
           error={errors.email?.message}
           {...register("email")}
         />
-        <Button type="submit" block disabled={send.isPending}>
-          {send.isPending ? t.submitting : t.submit}
+        <Button type="submit" block loading={send.isPending} loadingText={t.submitting}>
+          {t.submit}
         </Button>
       </form>
       <p className="text-small text-ink-muted">{t.note}</p>

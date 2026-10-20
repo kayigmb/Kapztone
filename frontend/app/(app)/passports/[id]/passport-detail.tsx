@@ -26,6 +26,7 @@ import { useState } from "react";
 import { CertificateTile } from "@/components/chaintrack/certificate-tile";
 import { JourneyTimeline } from "@/components/chaintrack/journey-timeline";
 import { Notice } from "@/components/chaintrack/notice";
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { PassportCard, type Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
@@ -363,52 +364,57 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
       </Card>
 
       <Card title={t.certificates}>
-        {certificatesQuery.isPending ? (
-          <Loading />
-        ) : certificatesQuery.isError ? (
-          <Notice kind="blocking">{problemOf(certificatesQuery.error)}</Notice>
-        ) : certificates.length === 0 ? (
-          <p className="text-sm text-ink-muted">{t.certificatesEmpty}</p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-3">
-            {certificates.map((c) => (
-              <CertificateTile key={c.id} certificate={c} />
-            ))}
-          </div>
-        )}
+        <DataWidget query={certificatesQuery}>
+          {() =>
+            certificates.length === 0 ? (
+              <p className="text-sm text-ink-muted">{t.certificatesEmpty}</p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-3">
+                {certificates.map((c) => (
+                  <CertificateTile key={c.id} certificate={c} />
+                ))}
+              </div>
+            )
+          }
+        </DataWidget>
       </Card>
 
       <Card title={local.flagsTitle}>
-        {flagsQuery.isPending ? (
-          <Loading />
-        ) : flags.length === 0 ? (
-          <p className="text-sm text-ink-muted">{local.flagsEmpty}</p>
-        ) : (
-          <ul className="grid divide-y divide-border rounded-lg border border-border bg-surface shadow-card">
-            {flags.map((f: Flag) => {
-              const look = flagLook[f.status] ?? flagLook.open;
-              return (
-                <li key={f.id} className="grid gap-2 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <StatusChip tone={look.tone} icon={look.icon}>
-                      {look.label}
-                    </StatusChip>
-                    <span className="text-small text-ink-subtle">
-                      {copy.flags.raised(formatDateTime(f.created_at))}
-                    </span>
-                  </div>
-                  <p className="text-sm">{f.reason}</p>
-                  {f.resolution_note && (
-                    <p className="text-small text-ink-muted">
-                      <span className="font-semibold">{local.resolution}:</span>{" "}
-                      {f.resolution_note}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <DataWidget query={flagsQuery}>
+          {(rows) => {
+            const mine = rows.filter((f) => f.passport_id === p.id);
+            return mine.length === 0 ? (
+              <p className="text-sm text-ink-muted">{local.flagsEmpty}</p>
+            ) : (
+              <ul className="grid divide-y divide-border rounded-lg border border-border bg-surface shadow-card">
+                {mine.map((f: Flag) => {
+                  const look = flagLook[f.status] ?? flagLook.open;
+                  return (
+                    <li key={f.id} className="grid gap-2 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <StatusChip tone={look.tone} icon={look.icon}>
+                          {look.label}
+                        </StatusChip>
+                        <span className="text-small text-ink-subtle">
+                          {copy.flags.raised(formatDateTime(f.created_at))}
+                        </span>
+                      </div>
+                      <p className="text-sm">{f.reason}</p>
+                      {f.resolution_note && (
+                        <p className="text-small text-ink-muted">
+                          <span className="font-semibold">
+                            {local.resolution}:
+                          </span>{" "}
+                          {f.resolution_note}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }}
+        </DataWidget>
       </Card>
 
       <Genealogy id={p.id} unit={p.unit} />
@@ -505,11 +511,6 @@ function Genealogy({ id, unit }: { id: string; unit: string }) {
     queryFn: () => endpoints.genealogy(id, direction),
   });
 
-  const nodes = query.data?.nodes ?? [];
-  const edges = query.data?.edges ?? [];
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const empty = nodes.every((n) => n.id === id) && edges.length === 0;
-
   return (
     <Card title={direction === "upstream" ? t.madeFrom : t.madeInto}>
       <div
@@ -535,96 +536,101 @@ function Genealogy({ id, unit }: { id: string; unit: string }) {
         ))}
       </div>
 
-      {query.isPending ? (
-        <Loading />
-      ) : query.isError ? (
-        <Notice kind="blocking">{problemOf(query.error)}</Notice>
-      ) : empty ? (
-        <p className="text-sm text-ink-muted">{t.noGenealogy}</p>
-      ) : (
-        <div className="grid gap-4">
-          <ul className="grid gap-2">
-            {nodes.map((n) => {
-              const look = statusLook[n.status] ?? statusLook.active;
-              const self = n.id === id;
-              return (
-                <li
-                  key={n.id}
-                  className={cn(
-                    "grid min-w-0 grid-cols-[auto_1fr] items-center gap-3 rounded-md px-3 py-2 md:grid-cols-[auto_1fr_auto]",
-                    self
-                      ? "border-2 border-primary bg-primary-soft"
-                      : "border border-border-strong bg-surface",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "grid size-8 place-items-center rounded-sm",
-                      self
-                        ? "bg-primary text-on-primary"
-                        : "bg-surface-sunken text-ink-muted",
-                    )}
-                  >
-                    <Layers className="size-4" aria-hidden />
-                  </span>
-                  <div className="min-w-0">
-                    <Link
-                      href={routes.passportDetail(n.id)}
+      <DataWidget query={query}>
+        {(g) => {
+          const ns = g.nodes ?? [];
+          const es = g.edges ?? [];
+          const byId = new Map(ns.map((n) => [n.id, n]));
+          const isEmpty =
+            ns.every((n) => n.id === id) && es.length === 0;
+          return isEmpty ? (
+            <p className="text-sm text-ink-muted">{t.noGenealogy}</p>
+          ) : (
+              <div className="grid gap-4">
+              <ul className="grid gap-2">
+                {ns.map((n) => {
+                  const look = statusLook[n.status] ?? statusLook.active;
+                  const self = n.id === id;
+                  return (
+                    <li
+                      key={n.id}
                       className={cn(
-                        "font-mono text-sm font-medium break-all",
-                        self ? "text-primary" : "hover:text-primary",
+                        "grid min-w-0 grid-cols-[auto_1fr] items-center gap-3 rounded-md px-3 py-2 md:grid-cols-[auto_1fr_auto]",
+                        self
+                          ? "border-2 border-primary bg-primary-soft"
+                          : "border border-border-strong bg-surface",
                       )}
                     >
-                      {n.code}
-                    </Link>
-                    <p className="text-small text-ink-muted">
-                      {humanize(n.commodity)}
-                    </p>
-                  </div>
-                  <div className="col-start-2 flex flex-wrap items-center gap-3 md:col-start-3">
-                    <span className="fig text-sm">
-                      {formatQuantity(n.quantity, n.unit)}
-                    </span>
-                    <StatusChip tone={look.tone} icon={look.icon}>
-                      {look.label}
-                    </StatusChip>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {edges.length > 0 && (
-            <ul className="grid gap-2">
-              {edges.map((e, i) => (
-                <li
-                  key={i}
-                  className="flex flex-wrap items-center gap-2 rounded-md bg-surface-sunken px-3 py-2 text-small"
-                >
-                  <span className="font-mono text-sm break-all">
-                    {byId.get(e.parent_id)?.code ?? e.parent_id}
-                  </span>
-                  <ArrowLeftRight
-                    className="size-4 shrink-0 text-ink-subtle"
-                    aria-hidden
-                  />
-                  <span className="font-mono text-sm break-all">
-                    {byId.get(e.child_id)?.code ?? e.child_id}
-                  </span>
-                  <span className="text-ink-muted">
-                    {local.edge(
-                      humanize(e.stage),
-                      formatQuantity(
-                        e.quantity_used,
-                        byId.get(e.child_id)?.unit ?? unit,
-                      ),
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+                      <span
+                        className={cn(
+                          "grid size-8 place-items-center rounded-sm",
+                          self
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface-sunken text-ink-muted",
+                        )}
+                      >
+                        <Layers className="size-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0">
+                        <Link
+                          href={routes.passportDetail(n.id)}
+                          className={cn(
+                            "font-mono text-sm font-medium break-all",
+                            self ? "text-primary" : "hover:text-primary",
+                          )}
+                        >
+                          {n.code}
+                        </Link>
+                        <p className="text-small text-ink-muted">
+                          {humanize(n.commodity)}
+                        </p>
+                      </div>
+                      <div className="col-start-2 flex flex-wrap items-center gap-3 md:col-start-3">
+                        <span className="fig text-sm">
+                          {formatQuantity(n.quantity, n.unit)}
+                        </span>
+                        <StatusChip tone={look.tone} icon={look.icon}>
+                          {look.label}
+                        </StatusChip>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              {es.length > 0 && (
+                <ul className="grid gap-2">
+                  {es.map((e, i) => (
+                    <li
+                      key={i}
+                      className="flex flex-wrap items-center gap-2 rounded-md bg-surface-sunken px-3 py-2 text-small"
+                    >
+                      <span className="font-mono text-sm break-all">
+                        {byId.get(e.parent_id)?.code ?? e.parent_id}
+                      </span>
+                      <ArrowLeftRight
+                        className="size-4 shrink-0 text-ink-subtle"
+                        aria-hidden
+                      />
+                      <span className="font-mono text-sm break-all">
+                        {byId.get(e.child_id)?.code ?? e.child_id}
+                      </span>
+                      <span className="text-ink-muted">
+                        {local.edge(
+                          humanize(e.stage),
+                          formatQuantity(
+                            e.quantity_used,
+                            byId.get(e.child_id)?.unit ?? unit,
+                          ),
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        }}
+      </DataWidget>
     </Card>
   );
 }

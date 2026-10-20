@@ -15,10 +15,11 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading } from "@/components/chaintrack/page-state";
+
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
@@ -97,7 +98,6 @@ export function FlagQueue() {
     queryFn: () => endpoints.flag(selected),
     enabled: !!selected,
   });
-  const rows = list.data?.data ?? [];
   const open = openCount.data ?? 0;
   const go = (q: { flag: string }) => state.setFilters(q, { keepPage: true });
   const current = picked.data;
@@ -124,19 +124,15 @@ export function FlagQueue() {
             </Tabs>
             <ListBar className="mt-3" list={state} sorts={listSorts.date} />
           </div>
-          {list.isPending ? (
-            <Loading className="p-5" />
-          ) : list.isError ? (
-            <p role="alert" className="p-5 text-sm text-danger-ink">
-              {problemOf(list.error)}
-            </p>
-          ) : rows.length === 0 ? (
-            <p className="p-5 text-sm text-ink-muted">
-              {tab === "open" ? t.empty : t.emptyResolved}
-            </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {rows.map((f) => (
+          <DataWidget query={list}>
+            {(page) =>
+              page.data.length === 0 ? (
+                <p className="p-5 text-sm text-ink-muted">
+                  {tab === "open" ? t.empty : t.emptyResolved}
+                </p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {page.data.map((f) => (
                 <li key={f.id}>
                   <button
                     type="button"
@@ -168,11 +164,13 @@ export function FlagQueue() {
                         {formatDate(f.created_at)}
                       </span>
                     </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </DataWidget>
           <div className="border-t border-border px-4 py-2 empty:hidden">
             <ListPager list={state} total={list.data?.total ?? 0} />
           </div>
@@ -295,7 +293,7 @@ function Investigation({ f }: { f: Flag }) {
                   )
                     assign.mutate(null);
                 }}
-                disabled={assign.isPending}
+                loading={assign.isPending}
               >
                 {t.unassign}
               </Button>
@@ -313,7 +311,7 @@ function Investigation({ f }: { f: Flag }) {
                   )
                     assign.mutate(me.user.id);
                 }}
-                disabled={assign.isPending}
+                loading={assign.isPending}
               >
                 {t.assignMe}
               </Button>

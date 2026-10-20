@@ -3,7 +3,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Eye, Flag, Package, Users } from "lucide-react";
 
-import { Bars, LinesOverTime } from "@/components/chaintrack/charts";
+import dynamic from "next/dynamic";
+
+// Recharts is heavy and needs the browser: it ships in its own chunk behind
+// a skeleton instead of weighing down the dashboard route (map.tsx precedent).
+const Bars = dynamic(
+  () => import("@/components/chaintrack/charts").then((m) => m.Bars),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+);
+const LinesOverTime = dynamic(
+  () => import("@/components/chaintrack/charts").then((m) => m.LinesOverTime),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+);
+
+function ChartSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      className="grid h-48 place-items-center rounded-md bg-surface-sunken"
+    >
+      <span className="text-sm text-ink-muted">{t.chartsLoading}</span>
+    </div>
+  );
+}
 import {
   ClientTable,
   RowAction,

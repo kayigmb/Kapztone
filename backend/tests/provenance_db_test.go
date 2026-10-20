@@ -669,11 +669,15 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	sent := map[string]int{} // recipient → messages
 	var failing bool
 	mailer := &notify.Mailer{Pool: e.pool, From: "no-reply@chaintrack.test",
+		FromHeader: `"ChainTrack" <no-reply@chaintrack.test>`,
 		Send: func(_ string, _ smtp.Auth, from string, to []string, msg []byte) error {
 			if failing {
 				return errors.New("mail server is down")
 			}
-			if !strings.Contains(string(msg), "From: "+from) || len(to) == 0 {
+			if from != "no-reply@chaintrack.test" {
+				t.Errorf("envelope sender should be the bare address, got %q", from)
+			}
+			if !strings.Contains(string(msg), `From: "ChainTrack" <no-reply@chaintrack.test>`) || len(to) == 0 {
 				t.Errorf("malformed e-mail to %v: %s", to, msg)
 			}
 			for _, addr := range to {
@@ -870,8 +874,9 @@ func TestPinataPin(t *testing.T) {
 }
 
 func TestMailerAddress(t *testing.T) {
-	m := notify.NewMailer(nil, notify.SMTP{Host: "mail.test", Port: "587", User: "no-reply@chaintrack.test", Password: "secret", TLS: true})
-	if m.Addr != "mail.test:587" || m.From != "no-reply@chaintrack.test" || m.Auth == nil || m.Send == nil {
+	m := notify.NewMailer(nil, notify.SMTP{Host: "mail.test", Port: "587", User: "no-reply@chaintrack.test", Password: "secret", TLS: true,
+		FromName: "ChainTrack", FromAddr: "no-reply@chaintrack.test"})
+	if m.Addr != "mail.test:587" || m.From != "no-reply@chaintrack.test" || m.FromHeader != `"ChainTrack" <no-reply@chaintrack.test>` || m.Auth == nil || m.Send == nil {
 		t.Fatalf("mail settings read wrongly: %+v", m)
 	}
 	if m := notify.NewMailer(nil, notify.SMTP{Host: "localhost", Port: "1025", User: "dev@chaintrack.test"}); m.Auth != nil {

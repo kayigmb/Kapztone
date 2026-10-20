@@ -224,6 +224,7 @@ Print layout, always light: white background, `#0f1a2c` ink, 2 px border. Grid `
 - Loading: say what is being checked ("Checking 15 records…") with a spinner (`size-5 rounded-full border-[2.5px] border-border border-t-primary animate-spin`) plus skeleton blocks shaped like the content (`bg-surface-sunken rounded-sm`). `aria-busy="true"`.
 - Error: icon in `bg-danger-soft text-danger`; say what failed, whether anything was lost, and what happens next. Offline is common at mines and ports: queue signatures locally and say "Your signature is saved on this phone and will be sent when you're back online. Nothing has been lost." Action: "Try again" (`RefreshCw`).
 - No illustrations, no jokes.
+- In code these are never hand-written: `DataWidget` (`components/chaintrack/data-widget.tsx`, `query` + render fn — pending → `Loading`, failure → blocking `Notice` with retry), `FieldNote` (`components/chaintrack/field-note.tsx`, a field's error or its help), `PageSuspense` (`components/chaintrack/page-state.tsx`, the one `page.tsx` fallback). `Notice` kinds stay `info | success | warning | blocking`; section failures are always `blocking`. Static copy lives in `lib/copy/*.json` (`{placeholders}` filled by `fill()` in `lib/format.ts`); only plurals, conditions and locale formatting are functions in `lib/consts.ts`.
 
 ### Notice (inline) (Figma `.notice`)
 

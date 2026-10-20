@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/mailtmpl"
 
 	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
@@ -78,7 +79,7 @@ func linkHash(token string) string {
 // sendLink stores a one-use link and emails it. In dev the link is also
 // logged (never returned: the reset form must not say whether an account
 // exists). A mail failure is logged, not returned, for the same reason.
-func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time.Duration, subject, bodyFmt string) error {
+func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time.Duration, subject, bodyFmt, actionLabel, footnote string) error {
 	token, hash, err := newLinkToken()
 	if err != nil {
 		return err
@@ -93,8 +94,18 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 	if a.Mail != nil {
 		// Sent in the background so a slow mail server doesn't make an existing
 		// account answer more slowly than an unknown email.
+		text := fmt.Sprintf(bodyFmt, link)
+		html := mailtmpl.Render(mailtmpl.Page{
+			Subject:     subject,
+			Preheader:   subject,
+			Paragraphs:  mailtmpl.Split(text),
+			ActionLabel: actionLabel,
+			ActionURL:   link,
+			Footnote:    footnote,
+			LogoURL:     a.LogoURL,
+		})
 		go func() {
-			if err := a.Mail(u.Email, subject, fmt.Sprintf(bodyFmt, link)); err != nil {
+			if err := a.Mail(u.Email, subject, text, html); err != nil {
 				logx.From(ctx).Error("mail link failed", "kind", kind, logx.KeyUser, u.ID, logx.KeyError, err)
 			}
 		}()
@@ -104,7 +115,8 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 
 // passwordChanged tells the user, with a link to lock the account if it wasn't them.
 func (a *Auth) passwordChanged(ctx context.Context, u User) {
-	if err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody); err != nil {
+	if err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody,
+		"Lock my account", "This link works once, for 7 days."); err != nil {
 		logx.From(ctx).Error("password changed notice failed", logx.KeyUser, u.ID, logx.KeyError, err)
 	}
 }
@@ -187,7 +199,8 @@ func (a *Auth) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		u, err := a.Store.UserByEmail(ctx, email)
 		if err == nil {
-			err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody)
+			err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody,
+				"Choose a new password", "This link works once, for 30 minutes. If you didn't ask for it, ignore this email.")
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logx.From(ctx).Error("reset link failed", logx.KeyError, err)

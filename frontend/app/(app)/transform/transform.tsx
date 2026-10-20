@@ -12,7 +12,6 @@ import {
   CircleCheck,
   Layers,
   Lock,
-  OctagonX,
   Plus,
   RefreshCcw,
   Ship,
@@ -24,6 +23,7 @@ import { useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { Notice } from "@/components/chaintrack/notice";
@@ -341,7 +341,8 @@ export function Transform() {
               <Button
                 type="submit"
                 variant="secondary"
-                disabled={atCap || add.isPending}
+                disabled={atCap}
+                loading={add.isPending}
               >
                 <Plus aria-hidden />
                 {local.addLot}
@@ -565,21 +566,7 @@ function QuantityField({
           </span>
         )}
       </div>
-      {error ? (
-        <p
-          id={noteId}
-          className="flex gap-1.5 text-small font-semibold text-danger"
-        >
-          <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-          {error}
-        </p>
-      ) : (
-        help && (
-          <p id={noteId} className="text-small text-ink-subtle">
-            {help}
-          </p>
-        )
-      )}
+      <FieldNote id={noteId} error={error} help={help} />
     </div>
   );
 }

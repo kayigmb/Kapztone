@@ -9,9 +9,11 @@ import { useForm } from "react-hook-form";
 import { parseAsStringLiteral } from "nuqs";
 
 import { CertificateTile } from "@/components/chaintrack/certificate-tile";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { ListBar, Pager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { PageState } from "@/components/chaintrack/page-state";
 import { Segmented } from "@/components/chaintrack/segmented";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -187,21 +189,6 @@ function CertificateList({
     ),
   });
 
-  if (query.isPending) return <Loading className="py-4" />;
-  if (query.isError) {
-    return (
-      <PageState
-        icon={FileText}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => query.refetch()}
-      >
-        {problemOf(query.error)}
-      </PageState>
-    );
-  }
-
-  const rows = query.data.data;
   const orgName = (id: string) => directory.data?.get(id) ?? id;
   const facilityName = (id: string) =>
     facilities.data?.find((f) => f.id === id)?.name ?? id;
@@ -210,48 +197,59 @@ function CertificateList({
       ? t.attachedLot(c.subject_id)
       : facilityName(c.subject_id);
 
-  if (rows.length === 0) {
-    return (
-      <div className="grid justify-items-center gap-2 py-8 text-center">
-        <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
-          <FileText className="size-7" aria-hidden />
-        </span>
-        <h2 className="text-title">
-          {list.search
-            ? copy.list.noMatch
-            : status === ALL
-              ? t.emptyTitle
-              : t.emptyType}
-        </h2>
-        <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
-      </div>
-    );
-  }
-
   return (
-    <>
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {rows.map((c) => (
-          <Row
-            key={c.id}
-            certificate={c}
-            issuer={orgName(c.issuer_org_id)}
-            subject={subject(c)}
-            canRevoke={canRevoke && (!myOrgId || c.issuer_org_id === myOrgId)}
-            onRevoke={onRevoke}
-          />
-        ))}
-      </ul>
-      <Pager
-        page={list.page}
-        size={tilesPerPage}
-        total={query.data.total}
-        onPage={list.setPage}
-      />
-      {revoking && (
-        <RevokeDialog certificate={revoking} onClose={() => onRevoke(null)} />
-      )}
-    </>
+    <DataWidget
+      query={query}
+      className="py-4"
+      page={{ icon: FileText, title: copy.errors.loadTitle }}
+    >
+      {(page) =>
+        page.data.length === 0 ? (
+          <div className="grid justify-items-center gap-2 py-8 text-center">
+            <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
+              <FileText className="size-7" aria-hidden />
+            </span>
+            <h2 className="text-title">
+              {list.search
+                ? copy.list.noMatch
+                : status === ALL
+                  ? t.emptyTitle
+                  : t.emptyType}
+            </h2>
+            <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
+          </div>
+        ) : (
+          <>
+            <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {page.data.map((c) => (
+                <Row
+                  key={c.id}
+                  certificate={c}
+                  issuer={orgName(c.issuer_org_id)}
+                  subject={subject(c)}
+                  canRevoke={
+                    canRevoke && (!myOrgId || c.issuer_org_id === myOrgId)
+                  }
+                  onRevoke={onRevoke}
+                />
+              ))}
+            </ul>
+            <Pager
+              page={list.page}
+              size={tilesPerPage}
+              total={page.total}
+              onPage={list.setPage}
+            />
+            {revoking && (
+              <RevokeDialog
+                certificate={revoking}
+                onClose={() => onRevoke(null)}
+              />
+            )}
+          </>
+        )
+      }
+    </DataWidget>
   );
 }
 
@@ -354,19 +352,11 @@ function RevokeDialog({
             aria-describedby={`${noteId}-note`}
             {...register("reason")}
           />
-          {errors.reason ? (
-            <p
-              id={`${noteId}-note`}
-              className="flex gap-1.5 text-small font-semibold text-danger"
-            >
-              <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-              {t.revokeReasonEmpty}
-            </p>
-          ) : (
-            <p id={`${noteId}-note`} className="text-small text-ink-subtle">
-              {t.revokeReasonHelp}
-            </p>
-          )}
+          <FieldNote
+            id={`${noteId}-note`}
+            error={errors.reason ? t.revokeReasonEmpty : undefined}
+            help={t.revokeReasonHelp}
+          />
         </div>
         <SigningPanel
           facts={[

@@ -1,6 +1,4 @@
-import { Suspense } from "react";
-
-import { Loading } from "@/components/chaintrack/page-state";
+import { PageSuspense } from "@/components/chaintrack/page-state";
 import { copy } from "@/lib/consts";
 import { Queue } from "./queue";
 
@@ -10,8 +8,8 @@ export const metadata = { title: copy.meta.adminOrgs };
 // organisation live in the address (?tab=&id=), so the queue reads them on the client.
 export default function Page() {
   return (
-    <Suspense fallback={<Loading className="px-4 py-8 lg:px-8" />}>
+    <PageSuspense>
       <Queue />
-    </Suspense>
+    </PageSuspense>
   );
 }

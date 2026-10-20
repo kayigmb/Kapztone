@@ -78,6 +78,8 @@ export function Templates() {
   const me = useMeGuard((me) => (me ? undefined : routes.signin));
   const allowed =
     me.ready && me.data!.permissions.includes(permissions.templateRead);
+  const canCreate =
+    me.ready && me.data!.permissions.includes(permissions.templateManage);
 
   const list = useListParams("name");
   const templates = usePaged(
@@ -123,10 +125,12 @@ export function Templates() {
         title={t.title}
         sub={t.sub}
         actions={
-          <Button onClick={() => setShowForm(!showForm)}>
-            <Plus aria-hidden />
-            {t.new}
-          </Button>
+          canCreate && (
+            <Button onClick={() => setShowForm(!showForm)}>
+              <Plus aria-hidden />
+              {t.new}
+            </Button>
+          )
         }
       />
 

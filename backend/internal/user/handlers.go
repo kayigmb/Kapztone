@@ -19,6 +19,7 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/logx"
+	"github.com/kayigmb/chaintrack/backend/internal/mailtmpl"
 )
 
 type Handlers struct {
@@ -26,7 +27,10 @@ type Handlers struct {
 	// InvalidateUser clears cached access after a membership change.
 	InvalidateUser func(ctx context.Context, userID string)
 	// Mail sends one e-mail; nil when e-mail is off.
-	Mail func(to, subject, body string) error
+	Mail func(to, subject, text, html string) error
+	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
+	// mail; empty means the header shows the name as text.
+	LogoURL string
 	// Dev also returns the invitation link (and logs it), since a developer
 	// usually has e-mail off. Never in production: the link is a credential.
 	Dev bool
@@ -158,12 +162,26 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	link := auth.FrontendOf(r.Context()).Origin + InvitePath + token
 	out := map[string]any{"invite": inv, "emailed": false}
 	if h.Mail != nil {
-		body := fmt.Sprintf(MsgInviteBodyFmt, o.Name, in.Role, link)
-		if err := h.Mail(in.Email, InviteSubject, body); err != nil {
-			logx.From(r.Context()).Error("invite e-mail failed", "invite_id", inv.ID, logx.KeyError, err)
-		} else {
-			out["emailed"] = true
-		}
+		// Queued, not sent: the invitation must not wait on the mail server
+		// (a slow or unreachable server must not slow this response down).
+		// A failure is logged; the admin re-invites and a new link is made.
+		text := fmt.Sprintf(MsgInviteBodyFmt, o.Name, in.Role, link)
+		html := mailtmpl.Render(mailtmpl.Page{
+			Subject:     InviteSubject,
+			Preheader:   "You have been invited to join " + o.Name + " on ChainTrack.",
+			Paragraphs:  mailtmpl.Split(text),
+			ActionLabel: "Accept invitation",
+			ActionURL:   link,
+			Footnote:    "This link works once, for 24 hours.",
+			LogoURL:     h.LogoURL,
+		})
+		mail, to := h.Mail, in.Email
+		go func() {
+			if err := mail(to, InviteSubject, text, html); err != nil {
+				logx.From(context.Background()).Error("invite e-mail failed", "invite_id", inv.ID, logx.KeyError, err)
+			}
+		}()
+		out["emailed"] = true
 	}
 	if h.Dev {
 		logx.From(r.Context()).Info("dev: invite link not e-mailed", "invite_id", inv.ID, "link", link)
@@ -217,6 +235,10 @@ func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	var in roleInput
 	if !httpx.DecodeJSON(w, r, &in) || !validRole(w, in.Role) {
+		return
+	}
+	if id == auth.CurrentUser(r.Context()).ID {
+		httpx.Error(w, http.StatusConflict, MsgSelfRole)
 		return
 	}
 	if err := h.Store.SetRole(r.Context(), o.ID, id, in.Role); err != nil {

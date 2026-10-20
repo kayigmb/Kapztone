@@ -21,7 +21,7 @@ export function ThemeToggle() {
   const [open, setOpen] = useState(false);
   const now = (themes as readonly string[]).includes(theme ?? "")
     ? (theme as ThemeChoice)
-    : "system";
+    : "light";
   const Icon = icon[now];
   return (
     <Popover open={open} onOpenChange={setOpen}>

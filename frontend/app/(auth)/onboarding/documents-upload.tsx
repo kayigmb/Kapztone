@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, OctagonX, Upload } from "lucide-react";
+import { CircleCheck, Upload } from "lucide-react";
 import { useState } from "react";
 
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { Status } from "@/components/chaintrack/status";
 import { ApiError, endpoints, type OrgDocument } from "@/lib/api";
 import {
@@ -134,16 +135,7 @@ export function DocumentsUpload({
                 }}
               />
             </label>
-            {problems[d.value] && (
-              <p
-                id={`${inputId}-problem`}
-                role="alert"
-                className="flex gap-1.5 text-small font-semibold text-danger"
-              >
-                <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
-                {problems[d.value]}
-              </p>
-            )}
+            <FieldNote id={`${inputId}-problem`} error={problems[d.value]} />
           </section>
         );
       })}

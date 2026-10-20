@@ -5,7 +5,7 @@
 // button that names the result.
 
 import { useRef, useState } from "react";
-import { LoaderCircle, PenLine } from "lucide-react";
+import { PenLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { copy } from "@/lib/consts";
@@ -127,10 +127,11 @@ export function SigningPanel({
       <div>
         <Button
           onClick={() => onSign(pin)}
-          disabled={!ready || busy || !!blocked}
+          disabled={!ready || !!blocked}
+          loading={busy}
+          loadingText={t.signing}
         >
-          {busy && <LoaderCircle className="animate-spin" aria-hidden />}
-          {busy ? t.signing : button}
+          {button}
         </Button>
       </div>
     </section>

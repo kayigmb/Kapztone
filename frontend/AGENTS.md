@@ -26,7 +26,7 @@ For visual design, load the `chaintrack-ui` skill before touching any page, comp
 | `make web` (repo root)           | Dev server on :3000 with the repo `.env` (needs `API_URL`)                                                                                                            |
 | `pnpm lint`                      | ESLint, must be clean                                                                                                                                                 |
 | `pnpm build`                     | Production build, must pass                                                                                                                                           |
-| `node --test "lib/**/*.test.ts"` | Unit tests of the pure helpers                                                                                                                                        |
+| `node --test "__tests__/**/*.test.ts"` | Unit tests of the pure helpers (`__tests__/`, mirrored names; schema tests prefixed `schemas-`)                              |
 | `make e2e` (repo root)           | Playwright happy path (`e2e/coffee.spec.ts`) against the running API and web app; needs `SUPERADMIN_*` in `.env`. First time: `pnpm exec playwright install chromium` |
 
 The browser never calls the API directly. Every call goes to `/api/...`, and `app/api/[...path]/route.ts` passes it to `API_URL` with the session cookie, `Origin`, `X-Forwarded-Host/For` and `X-Signing-PIN`. That's what keeps the session cookie on this host only.
@@ -41,23 +41,28 @@ The browser never calls the API directly. Every call goes to `/api/...`, and `ap
 | `app/providers.tsx`                                         | TanStack Query, next-themes (`data-theme`), tooltips, toaster                                                  |
 | `components/ui/`                                            | shadcn/ui primitives (Base UI). Owned here, restyled to ChainTrack                                             |
 | `components/chaintrack/`                                    | Domain components: StatTile, CapacityMeter, PassportCard, JourneyTimeline, VerdictBadge, AppShell, ScanButton… |
+| `components/chaintrack/data-widget.tsx`                     | `DataWidget`: the one pending / error / data branch for every section (`query` + render fn)                   |
+| `components/chaintrack/field-note.tsx`                      | `FieldNote`: the one error-or-help line under every field; used inside `TextField`                            |
+| `components/chaintrack/page-state.tsx`                      | `Loading`, `PageState`, `PageSuspense`: the one Suspense wrapper for every `page.tsx`                          |
 | `lib/api.ts`                                                | Every API call (`endpoints.*`), its zod schema, `ApiError`, `problemOf`, `useMe`, `useMeGuard`                 |
-| `lib/consts.ts`                                             | Every status, kind, permission, route, API path, query key, nav item, dashboard layout and all UI copy         |
+| `lib/consts.ts`                                             | Every status, kind, permission, route, API path, query key, nav item, dashboard layout; copy re-exported      |
+| `lib/copy/*.json`                                           | All UI copy (second-language-ready JSON; `{placeholders}` filled by `fill()` in `lib/format.ts`)              |
+| `lib/format.ts`                                             | `fill()` for copy templates, `formatDate`; pure, with `format.test.ts`                                        |
 | `lib/schemas/*.ts`                                          | Form schemas (zod), mirroring the backend's `Validate()`                                                       |
-| `lib/dashboard.ts`, `lib/address.ts`, `lib/verification.ts` | Pure helpers, each with a `*.test.ts` beside it                                                                |
+| `lib/dashboard.ts`, `lib/address.ts`, `lib/verification.ts` | Pure helpers, each with a test in `__tests__/` (`schemas-` prefix for `lib/schemas/`)                          |
 
 ## Rules
 
 0. **Pages and lists:** every `<main>` is `grid w-full content-start gap-6 p-4 lg:p-8` and starts with `PageHeader`. Lists are paged, searched and sorted by the API, with one address scheme everywhere: `page`, `perPage` (10 / 20 / 50), `sort=name.asc`, `q`, `view`, plus each screen's filters (`useListParams(defaultSort, filters)` in `lib/list-params.ts`, nuqs). **Tables** are tablecn (`components/data-table/`, vendored from tablecn's Base UI registry) through `ListTable` (one API page) or `ClientTable` (a short list on the page) in `components/chaintrack/list-table.tsx`: columns from `column(id, label, cell, { sortable })` (a sortable id is the API's sort column), row actions from `actionsColumn(...)` with icon `RowAction`s, always pinned to the end; a Table | Cards toggle (cards by default below `md`) and a View menu (columns). Card lists use `ListBar` + `ListPager`. Every select is `SelectInput` (shadcn Select), never a native `<select>`. Tabs, filters and sorts are `as const` in `lib/consts.ts`.
 
 1. **Data:** every call is an `endpoints.*` function in `lib/api.ts` that parses the answer with a zod schema. Components read with `useQuery` and write with `useMutation`, then invalidate the query keys the write changed. Never `fetch` in a component.
-2. **Errors:** every failure is an `ApiError` carrying the API's message. Mutations get the toast for free (rule 11); a query shows `problemOf(err)` in a `Notice` / `PageState` when the page can't go on. A 400 about one field becomes that field's error.
-3. **Copy and values:** no user-facing string, API path, query key, status or permission name is typed in a component. Add it to `lib/consts.ts` and import it.
-4. **Forms:** react-hook-form + zod (`zodResolver`) with `...liveValidation` (`lib/form.ts`: errors show on leaving a field, then update while typing); new passwords are typed twice. Every decision (approve, reject, suspend, delete, role change…) asks first with `useConfirm()`. with fields built from `TextField` (`type="password"` gets the show / hide button). The schema lives in `lib/schemas/`, and the API stays the authority.
-5. **Pages:** `page.tsx` only exports `metadata` and mounts a client component. Pages read search params on the client, inside `<Suspense>`.
+2. **Errors:** every failure is an `ApiError` carrying the API's message. Mutations get the toast for free (rule 11). A section waiting on a query renders `<DataWidget query={q}>{(data) => …}</DataWidget>` — pending → `Loading`, failure → the API's message in a blocking `Notice` with retry; empty stays the table's own `empty` state. `PageState` is for whole pages that can't go on. A 400 about one field becomes that field's error.
+3. **Copy and values:** no user-facing string, API path, query key, status or permission name is typed in a component. Static copy lives in `lib/copy/*.json` (translated as whole files, never edited per page); plurals, conditions and locale formatting stay as functions in `lib/consts.ts`, and `{placeholder}` templates are filled by `fill()` in `lib/format.ts`. Paths, keys, statuses and permission names stay in `lib/consts.ts` — import them from there, never from the JSON directly.
+4. **Forms:** react-hook-form + zod (`zodResolver`) with `...liveValidation` (`lib/form.ts`: errors show on leaving a field, then update while typing); new passwords are typed twice. Every decision (approve, reject, suspend, delete, role change…) asks first with `useConfirm()`. with fields built from `TextField` (`type="password"` gets the show / hide button); a bare help-or-error line is `<FieldNote error={…} help={…}>` — never a hand-written `errors.x?.message` paragraph. The schema lives in `lib/schemas/`, and the API stays the authority.
+5. **Pages:** `page.tsx` only exports `metadata` and mounts a client component inside `<PageSuspense>` (the one fallback, in `page-state.tsx`). Pages read search params on the client.
 6. **Access:** permissions come from `GET /me` (`permissions.*` in consts). The nav (`navItems`) lists **only built screens**, and quick actions follow the same rule. A new screen adds its line.
    6b. **Server errors** carry the request id (`X-Request-ID`, made by the pass-through, logged on the API's access line); `problemOf` shows it as a reference on 5xx.
-7. **Logic:** anything with a branch (who sees what, address building, parsing) goes in a pure `lib/*.ts` helper with a node test. Pure files import only with relative paths and `.ts` extensions, so `node --test` can load them.
+7. **Logic:** anything with a branch (who sees what, address building, parsing) goes in a pure `lib/*.ts` helper with a node test in `__tests__/` (same name; `lib/schemas/x.ts` → `__tests__/schemas-x.test.ts`). Pure files and tests import only with relative paths and `.ts` extensions, so `node --test` can load them.
 8. **Signing:** actions that sign (issue, handover start / accept / reject, transform, retire, certificate issue / revoke, flag resolve) send the person's 6-digit PIN as `X-Signing-PIN`. Follow `patterns.md` → Signing: summary first, then the PIN, then a button that names the result.
 9. **Data display:** lot codes are shown in full, in mono. Quantities always carry their unit. Statuses are an icon plus a word.
 10. **Organisation address:** the acting organisation is the first label of the host (`acme.localhost:3000`). Sessions are one per address; switching organisation hands the session over (`switchOrganisation` in `lib/api.ts` → `/handoff?code=`), no new sign-in. On the bare address a member acts for nobody and gets the workspace picker (`hasWorkspace`, `lib/dashboard.ts`).
@@ -88,6 +93,9 @@ The browser never calls the API directly. Every call goes to `/api/...`, and `ap
 
 - Run git commands. The learner handles git.
 - Use a native `<select>`, or a hand-written `<table>`: `SelectInput`, `ListTable` / `ClientTable`.
+- Write a new `isPending ? <Loading/> : isError ? …` ternary, a new `Suspense fallback={<Loading…>}`, or a hand-written error/help `<p>` with `OctagonX`: `DataWidget`, `PageSuspense`, `FieldNote` / `TextField` already do it.
+- Put a new user-facing string in a component or in `lib/consts.ts`: static copy goes in `lib/copy/*.json`, functions stay in `lib/consts.ts`.
+- Add another component or UI library (MUI, Chakra, Mantine…), or a library for what a few lines do.
 - Add another component or UI library (MUI, Chakra, Mantine…), or a library for what a few lines do.
 - Put an edit button on a signed record. Corrections are new, linked records.
 - Use `localStorage` for anything but per-browser preferences (sidebar folded, theme), and always inside try/catch.

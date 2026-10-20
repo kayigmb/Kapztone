@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
+import { LoaderCircle } from "lucide-react";
 import { cn } from "cn";
 
 // ChainTrack's buttons (chaintrack-ui → components.md → Button; Figma
@@ -37,19 +38,43 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * A busy button: `loading` disables it, spins a `LoaderCircle` and shows
+ * `loadingText` instead of the children. Never write
+ * `disabled={m.isPending}` + `{m.isPending ? t.submitting : t.submit}` again:
+ *
+ *   <Button type="submit" block loading={lock.isPending} loadingText={t.submitting}>
+ *     {t.submit}
+ *   </Button>
+ */
 function Button({
   className,
   variant,
   size,
   block,
+  loading,
+  loadingText,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /** The mutation is running: disable, spin and show `loadingText`. */
+    loading?: boolean;
+    /** What to say while loading; the children when idle. */
+    loadingText?: React.ReactNode;
+  }) {
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, block, className }))}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {loading && <LoaderCircle className="animate-spin" aria-hidden />}
+      {loading && loadingText !== undefined ? loadingText : children}
+    </ButtonPrimitive>
   );
 }
 

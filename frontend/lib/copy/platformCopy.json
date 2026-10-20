@@ -1,0 +1,61 @@
+{
+  "title": "Platform overview",
+  "updated": {
+    "$template": "Updated {when}"
+  },
+  "loadFailed": "The platform figures didn't load.",
+  "chartsLoading": "Loading charts…",
+  "tiles": {
+    "organisations": {
+      "label": "Organisations"
+    },
+    "users": {
+      "label": "People",
+      "note": "Accounts on the platform"
+    },
+    "passports": {
+      "label": "Passports"
+    },
+    "flags": {
+      "label": "Open flags",
+      "note": "Waiting for an investigator"
+    }
+  },
+  "activity": {
+    "title": "Activity, last 30 days",
+    "sub": "Per day, UTC"
+  },
+  "series": {
+    "passports": "Passports issued",
+    "handovers": "Handovers completed",
+    "transforms": "Transforms",
+    "flags": "Flags raised",
+    "signups": "Sign-ups"
+  },
+  "volume": {
+    "title": "Lots issued at origin",
+    "sub": "By commodity, all time (units differ, so lots are compared)",
+    "lots": "Lots"
+  },
+  "breakdowns": {
+    "organisations": "Organisations by status",
+    "facilities": "Facilities by status",
+    "certificates": "Certificates by status",
+    "passports": "Passports by status"
+  },
+  "topOrgs": {
+    "title": "Top organisations by volume",
+    "name": "Organisation",
+    "quantity": "Quantity",
+    "lots": "Lots",
+    "open": "Open organisation"
+  },
+  "outbox": {
+    "title": "Ledger sealing",
+    "pending": "Waiting to be sealed",
+    "failed": "Failed",
+    "clear": "Everything is sealed."
+  },
+  "value": "Count",
+  "none": "Nothing yet."
+}

@@ -110,7 +110,8 @@ function Details({ me }: { me: Me }) {
         <Button
           type="submit"
           variant="secondary"
-          disabled={!isDirty || save.isPending}
+          disabled={!isDirty}
+          loading={save.isPending}
         >
           {t.saveName}
         </Button>
@@ -167,7 +168,7 @@ function Password() {
         <Button
           type="submit"
           className="justify-self-start"
-          disabled={change.isPending}
+          loading={change.isPending}
         >
           {t.changePassword}
         </Button>
@@ -236,7 +237,7 @@ function Pin({ set }: { set: boolean }) {
         <Button
           type="submit"
           className="justify-self-start"
-          disabled={save.isPending}
+          loading={save.isPending}
         >
           {set ? t.changePin : t.setPin}
         </Button>
@@ -296,7 +297,7 @@ function TwoFactor({ on }: { on: boolean | undefined }) {
         <Button
           className="justify-self-start"
           onClick={() => start.mutate()}
-          disabled={start.isPending}
+          loading={start.isPending}
         >
           {t.startSetup}
         </Button>

@@ -12,6 +12,7 @@ import {
 import { parseAsString } from "nuqs";
 import { useState } from "react";
 
+import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar } from "@/components/chaintrack/list-controls";
 import {
   ClientTable,
@@ -266,22 +267,18 @@ export function Reports() {
             params={{ start_date: volumeStart, end_date: volumeEnd }}
           />
         </div>
-        {volume.isPending ? (
-          <Loading />
-        ) : volume.isError ? (
-          <p role="alert" className="text-sm text-danger-ink">
-            {problemOf(volume.error)}
-          </p>
-        ) : (
-          <ClientTable
-            id="volume"
-            label={t.volume}
-            columns={volumeColumns}
-            rows={volume.data}
-            rowKey={(v) => `${v.month}|${v.commodity}|${v.unit}`}
-            empty={t.noData}
-          />
-        )}
+        <DataWidget query={volume}>
+          {(rows) => (
+            <ClientTable
+              id="volume"
+              label={t.volume}
+              columns={volumeColumns}
+              rows={rows}
+              rowKey={(v) => `${v.month}|${v.commodity}|${v.unit}`}
+              empty={t.noData}
+            />
+          )}
+        </DataWidget>
       </Section>
 
       <Section title={t.outcomes}>
@@ -293,22 +290,18 @@ export function Reports() {
             params={{ start_date: outStart, end_date: outEnd }}
           />
         </div>
-        {outcomes.isPending ? (
-          <Loading />
-        ) : outcomes.isError ? (
-          <p role="alert" className="text-sm text-danger-ink">
-            {problemOf(outcomes.error)}
-          </p>
-        ) : (
-          <ClientTable
-            id="outcomes"
-            label={t.outcomes}
-            columns={outcomeColumns}
-            rows={outcomes.data}
-            rowKey={(o) => o.period}
-            empty={t.noData}
-          />
-        )}
+        <DataWidget query={outcomes}>
+          {(rows) => (
+            <ClientTable
+              id="outcomes"
+              label={t.outcomes}
+              columns={outcomeColumns}
+              rows={rows}
+              rowKey={(o) => o.period}
+              empty={t.noData}
+            />
+          )}
+        </DataWidget>
       </Section>
 
       <Section title={t.saved}>
@@ -364,22 +357,18 @@ export function Reports() {
             {t.save}
           </Button>
         </div>
-        {saved.isPending ? (
-          <Loading />
-        ) : saved.isError ? (
-          <p role="alert" className="text-sm text-danger-ink">
-            {problemOf(saved.error)}
-          </p>
-        ) : (
-          <ClientTable
-            id="saved"
-            label={t.saved}
-            columns={savedColumns}
-            rows={saved.data}
-            rowKey={(s) => s.id}
-            empty={t.noData}
-          />
-        )}
+        <DataWidget query={saved}>
+          {(rows) => (
+            <ClientTable
+              id="saved"
+              label={t.saved}
+              columns={savedColumns}
+              rows={rows}
+              rowKey={(s) => s.id}
+              empty={t.noData}
+            />
+          )}
+        </DataWidget>
         <p className="text-sm text-ink-muted">
           Running a saved report keeps its CSV/PDF in the bucket; open it from its files.
         </p>

@@ -130,7 +130,10 @@ type Auth struct {
 	// RememberTTL is how long a sign-in lasts with "keep me signed in".
 	RememberTTL time.Duration
 	// Mail sends one email now; nil when e-mail is off (links are then only logged in dev).
-	Mail    func(to, subject, body string) error
+	Mail func(to, subject, text, html string) error
+	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
+	// mail; empty means the header shows the name as text.
+	LogoURL string
 	Dev     bool             // accept ?pslug= in place of the frontend subdomain
 	Secrets *secret.Box      // seals 2FA secrets
 	Limiter *Limiter         // nil disables rate limiting

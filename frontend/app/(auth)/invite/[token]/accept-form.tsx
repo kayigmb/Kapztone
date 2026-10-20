@@ -85,8 +85,8 @@ export function AcceptForm({ token }: { token: string }) {
         error={errors.password?.message}
         {...register("password")}
       />
-      <Button type="submit" block disabled={accept.isPending}>
-        {accept.isPending ? t.submitting : t.submit}
+      <Button type="submit" block loading={accept.isPending} loadingText={t.submitting}>
+        {t.submit}
       </Button>
     </form>
   );
