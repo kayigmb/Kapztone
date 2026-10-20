@@ -35,12 +35,15 @@ type Input struct {
 	Type        string // an evidence key such as "export_permit"
 	ValidFrom   time.Time
 	ValidTo     time.Time
+	CertNumber  string
+	Notes       string
 }
 
 // ParseInput reads and checks the form fields. get returns one field's
 // value. It returns the first problem as a message that is safe to show, or "".
 func ParseInput(get func(string) string) (Input, string) {
-	in := Input{SubjectType: get(FormSubjectType), SubjectID: get(FormSubjectID), Type: strings.TrimSpace(get(FormType))}
+	in := Input{SubjectType: get(FormSubjectType), SubjectID: get(FormSubjectID), Type: strings.TrimSpace(get(FormType)),
+		CertNumber: strings.TrimSpace(get("cert_number")), Notes: strings.TrimSpace(get("notes"))}
 	from, okFrom := httpx.ParseTime(get(FormValidFrom))
 	to, okTo := httpx.ParseTime(get(FormValidTo))
 	in.ValidFrom, in.ValidTo = from, to
@@ -53,6 +56,10 @@ func ParseInput(get func(string) string) (Input, string) {
 		return in, FormType + " must be " + template.KeyRule
 	case !okFrom || !okTo || !to.After(from) || from.Unix() < 0: // the chain holds times as unsigned seconds
 		return in, MsgDates
+	case len(in.CertNumber) > 64:
+		return in, "cert_number may be up to 64 characters"
+	case len(in.Notes) > 2000:
+		return in, "notes may be up to 2000 characters"
 	}
 	return in, ""
 }

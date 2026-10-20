@@ -39,6 +39,8 @@ type Attestation struct {
 	StorageKey  string `json:"-"`
 	// IPFSCID is set when the file was also pinned to IPFS.
 	IPFSCID      *string    `json:"ipfs_cid"`
+	CertNumber   *string    `json:"cert_number,omitempty"`
+	Notes        *string    `json:"notes,omitempty"`
 	Status       string     `json:"status"`
 	RevokeReason *string    `json:"revoke_reason"`
 	RevokedAt    *time.Time `json:"revoked_at"`
@@ -61,7 +63,7 @@ const (
 	shownStatusFmt = `CASE WHEN a.status = $%[1]d AND a.valid_to < now() THEN $%[2]d ELSE a.status END`
 	columnsFmt     = `a.id::text, a.issuer_org_id::text, a.subject_type, a.subject_id::text, a.type,
 	                  a.valid_from, a.valid_to, a.doc_hash, a.file_name, a.content_type, a.size_bytes,
-	                  a.storage_key, a.ipfs_cid, ` + shownStatusFmt + `, a.revoke_reason, a.revoked_at,
+	                  a.storage_key, a.ipfs_cid, a.cert_number, a.notes, ` + shownStatusFmt + `, a.revoke_reason, a.revoked_at,
 	                  a.tx_hash, a.revoke_tx_hash, a.anchored_at, a.created_at, a.updated_at`
 )
 
@@ -70,7 +72,7 @@ func columns(validArg, expiredArg int) string { return fmt.Sprintf(columnsFmt, v
 func scan(row pgx.CollectableRow) (Attestation, error) {
 	var a Attestation
 	err := row.Scan(&a.ID, &a.IssuerOrgID, &a.SubjectType, &a.SubjectID, &a.Type, &a.ValidFrom, &a.ValidTo,
-		&a.DocHash, &a.FileName, &a.ContentType, &a.SizeBytes, &a.StorageKey, &a.IPFSCID, &a.Status,
+		&a.DocHash, &a.FileName, &a.ContentType, &a.SizeBytes, &a.StorageKey, &a.IPFSCID, &a.CertNumber, &a.Notes, &a.Status,
 		&a.RevokeReason, &a.RevokedAt, &a.TxHash, &a.RevokeTxHash, &a.AnchoredAt, &a.CreatedAt, &a.UpdatedAt)
 	return a, err
 }
@@ -89,6 +91,8 @@ func one(rows pgx.Rows, err error) (Attestation, error) {
 type Store struct {
 	Pool *pgxpool.Pool
 }
+
+func nilIfEmpty(s string) string { return s }
 
 // tellOwner notifies whoever holds the subject, unless they are the issuer.
 func tellOwner(ctx context.Context, tx pgx.Tx, a Attestation, kind, message string) error {
@@ -129,13 +133,15 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 	}
 
 	docHash := "0x" + f.SHA256
+	certNumber := nilIfEmpty(in.CertNumber)
+	notes := nilIfEmpty(in.Notes)
 	a, err := one(tx.Query(ctx,
 		`INSERT INTO attestations AS a (issuer_org_id, subject_type, subject_id, type, valid_from, valid_to, doc_hash,
-		                                storage_key, file_name, content_type, size_bytes, status, issued_by)
-		 VALUES ($3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, $1, $14::uuid)
+		                                storage_key, file_name, content_type, size_bytes, cert_number, notes, status, issued_by)
+		 VALUES ($3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($15,''), NULLIF($16,''), $1, $14::uuid)
 		 RETURNING `+columns(1, 2),
 		StatusValid, StatusExpired, orgID, in.SubjectType, in.SubjectID, in.Type, in.ValidFrom, in.ValidTo, docHash,
-		f.Key, f.Name, f.ContentType, f.Size, userID))
+		f.Key, f.Name, f.ContentType, f.Size, userID, certNumber, notes))
 	if err != nil {
 		return Attestation{}, err
 	}

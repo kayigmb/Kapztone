@@ -2,7 +2,7 @@
 
 ## Reset a user's two-factor sign-in (lost device)
 
-There are no recovery codes yet. Until user management lands, a platform operator resets 2FA by hand, after confirming the person's identity out of band:
+Enabling 2FA returns 10 recovery codes (shown once); each signs in once in place of the app code. `POST /auth/2fa/recovery` (with a current app code) replaces them. If the codes are also lost, a platform operator resets 2FA by hand, after confirming the person's identity out of band:
 
 ```sql
 UPDATE users SET totp_enabled = false, totp_secret = '', totp_last_step = 0
@@ -99,9 +99,9 @@ After changing a contract: `make bindings` regenerates the Go bindings, and the 
 - **Rejecting** takes `reasons` (one or more of `weight_short`, `damaged`, `wrong_product`, `seal_broken`, `not_expected`), an optional `note`, and `also_flag`, which raises a flag about the passport in the same transaction.
 - **Facilities.** A new facility needs `licence_valid_to` and waits as `pending_approval`; it is put on the ledger only when approved (`POST /facilities/{id}/approve`, permission `facility:suspend`). It cannot originate goods while pending or after its licence's last day. The licence document: `POST /facilities/{id}/licence` (multipart `file`, optional new `licence_valid_to`), `GET` to download. A boundary that touches another live facility is refused with 409: the caller's own facility is named (`{error: "overlaps <name>", facility_id}`), another organisation's is not (`facility_id: null`).
 - **Rules flags.** The rules raise a flag (`raised_by: "rules"`) on a transform at 98% or more of the maximum yield at a stage that loses mass, and on an accepted handover whose difference exceeds half the tolerance. They are notified like any flag. Investigators set who looks into one with `PUT /flags/{id}/assignee {"user_id": "…" | null}`; the assignee must be a platform admin or a member of a verified regulator.
-- **Accreditation.** `POST /orgs/{id}/accredit {"accredited": true}` (permission `org:verify`) lets a verified certifier or regulator issue certificates.
+- **Accreditation.** `GET/PUT /orgs/{id}/accreditations` (full per-type set, permission `org:verify`) lets a verified certifier or regulator issue certificates of that type inside its window.
 - **Revocation.** Resolving a flag as `confirmed` revokes the passport and every passport made from it, each with its own chain transaction. It cannot be undone.
-- **Certificates on IPFS.** With `PINATA_JWT` set, a failed pin does not stop the certificate being issued; it is logged (`pin certificate <id>`) and `ipfs_cid` stays empty. Nothing retries it.
+- **Certificates on IPFS.** With `PINATA_JWT` set, a failed pin does not stop the certificate being issued; it is retried by the API with exponential back-off (1 min to 6 h, 10 tries).
 - **E-mail.** With `SMTP_HOST` set, the API sends each notification once to the organisation's active users. If the mail server is down they wait, for up to a day; older ones are shown in the app only.
 
 ```sql

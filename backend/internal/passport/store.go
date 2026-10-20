@@ -3,6 +3,7 @@ package passport
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -132,6 +133,8 @@ type Handover struct {
 	ChildPassportID *string `json:"child_passport_id"`
 	// Location is where the sender handed the goods over.
 	Location *Location `json:"location"`
+	SealNumber *string `json:"seal_number,omitempty"`
+	Checklist  map[string]bool `json:"checklist,omitempty"`
 	// ReceivedQuantity is what the receiver weighed on arrival, and where.
 	ReceivedQuantity *int64    `json:"received_quantity"`
 	ReceiverLocation *Location `json:"receiver_location"`
@@ -189,7 +192,7 @@ const (
 	           CASE WHEN h.status = $%[1]d AND h.deadline < now() THEN $%[2]d ELSE h.status END,
 	           true, h.sig_to IS NOT NULL, h.reject_reason, h.reject_reasons, h.responded_at, h.tx_hash, h.anchored_at,
 	           h.created_at, h.updated_at, h.split_from::text, h.lat, h.lon, h.received_quantity,
-	           h.receiver_lat, h.receiver_lon, h.template_version`
+	           h.receiver_lat, h.receiver_lon, h.template_version, h.seal_number, h.checklist`
 
 	// visibleFmt: who may see a passport. Its holder, anyone it passed through,
 	// and the receiver of a handover still awaiting an answer (they must be
@@ -216,11 +219,15 @@ func scanHandover(row pgx.CollectableRow) (Handover, error) {
 	var (
 		h                                  Handover
 		lat, lon, receiverLat, receiverLon *float64
+		checklistJSON                      []byte
 	)
 	err := row.Scan(&h.ID, &h.PassportID, &h.FromOrg, &h.ToOrg, &h.Stage, &h.Quantity, &h.Note, &h.DataHash,
 		&h.Deadline, &h.Status, &h.SignedByFrom, &h.SignedByTo, &h.RejectReason, &h.RejectReasons, &h.RespondedAt,
 		&h.TxHash, &h.AnchoredAt, &h.CreatedAt, &h.UpdatedAt, &h.SplitFrom, &lat, &lon, &h.ReceivedQuantity,
-		&receiverLat, &receiverLon, &h.TemplateVersion)
+		&receiverLat, &receiverLon, &h.TemplateVersion, &h.SealNumber, &checklistJSON)
+	if len(checklistJSON) > 0 {
+		_ = json.Unmarshal(checklistJSON, &h.Checklist)
+	}
 	if h.SplitFrom != nil {
 		h.ChildPassportID = &h.PassportID
 	}
@@ -589,13 +596,17 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 		return Handover{}, err
 	}
 
+	checklistJSON, _ := json.Marshal(in.Checklist)
+	if len(checklistJSON) == 0 {
+		checklistJSON = []byte(`{}`)
+	}
 	h, err := oneHandover(tx.Query(ctx,
 		`INSERT INTO handovers AS h (id, passport_id, from_org, to_org, quantity, note, data_hash, nonce,
-		                             deadline, sig_from, status, created_by, stage, split_from, lat, lon)
-		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14, $15::uuid, $16, $17)
+		                             deadline, sig_from, status, created_by, stage, split_from, lat, lon, seal_number, checklist)
+		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14, $15::uuid, $16, $17, NULLIF($18,''), $19::jsonb)
 		 RETURNING `+handoverColumns(1, 2),
 		HandoverAwaiting, HandoverExpired, id, handed, fromOrg, in.ToOrganisationID, quantity, in.Note,
-		dataHash, nonce, deadline, sigFrom, userID, in.Stage, splitFrom, in.Lat, in.Lon))
+		dataHash, nonce, deadline, sigFrom, userID, in.Stage, splitFrom, in.Lat, in.Lon, in.SealNumber, string(checklistJSON)))
 	if err != nil {
 		return Handover{}, err
 	}

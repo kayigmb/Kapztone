@@ -168,6 +168,12 @@ func Routes(d Deps) []Route {
 		{get, "/audit/verify", Permission, auth.AuditVerify, d.Audit.Verify},
 		{get, "/reports/volume", Permission, auth.ReportRead, d.Audit.Volume},
 		{get, "/reports/blocked", Permission, auth.ReportRead, d.Audit.Blocked},
+		{get, "/reports/verification-outcomes", Permission, auth.ReportRead, d.Audit.Outcomes},
+		{get, "/reports/saved", Permission, auth.ReportRead, d.Audit.ListSaved},
+		{post, "/reports/saved", Permission, auth.ReportRead, d.Audit.CreateSaved},
+		{post, "/reports/saved" + idPath + "/run", Permission, auth.ReportRead, d.Audit.RunSaved},
+		{get, "/reports/saved" + idPath + "/files", Permission, auth.ReportRead, d.Audit.ListFiles},
+		{get, "/reports/files" + idPath, Permission, auth.ReportRead, d.Audit.DownloadFile},
 		{get, "/stats", Permission, auth.AuditVerify, d.Stats.Get},
 	}
 }

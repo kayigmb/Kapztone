@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -174,6 +175,8 @@ func (s Store) Verify(ctx context.Context) (Check, error) {
 	return c, err
 }
 
+var errTooManySaved = errors.New("too many saved reports")
+
 // Volume is the quantity issued at origin in one month, per commodity and
 // unit, and the quantity exported that month.
 type Volume struct {
@@ -182,6 +185,40 @@ type Volume struct {
 	Unit      string `json:"unit"`
 	Quantity  int64  `json:"quantity"` // issued at origin
 	Exported  int64  `json:"exported"` // handed over, accepted, at a stage that allows EXPORT
+}
+
+// Outcome is the verification share for one period: revoked lots count as
+// failed, lots with an open flag as warning, the rest as verified. It is an
+// aggregate, not a re-verification of every ancestor.
+type Outcome struct {
+	Period      string `json:"period"` // YYYY-MM, in UTC
+	Verified    int64  `json:"verified"`
+	Warning     int64  `json:"warning"`
+	Failed      int64  `json:"failed"`
+	Total       int64  `json:"total"`
+	PctVerified int64  `json:"pct_verified"`
+}
+
+// Saved is one saved report definition; its generated files live in the bucket.
+type Saved struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Kind           string          `json:"kind"`
+	Params         json.RawMessage `json:"params"`
+	OrganisationID *string         `json:"organisation_id"`
+	CreatedBy      *string         `json:"created_by"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
+// SavedFile is one generated file for a saved report.
+type SavedFile struct {
+	ID        string    `json:"id"`
+	SavedID   string    `json:"saved_id"`
+	Format    string    `json:"format"`
+	BucketKey string    `json:"bucket_key"`
+	SHA256    string    `json:"sha256"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Volumes sums origin passports by month. Transform outputs are left out:
@@ -224,5 +261,146 @@ func (s Store) Volumes(ctx context.Context, gate string, start, end *time.Time) 
 	if out == nil {
 		out = []Volume{}
 	}
+	return out, err
+}
+
+// Outcomes aggregates issued lots per month: revoked is failed, open-flagged
+// is warning, the rest verified. Gated by the origin facility's organisation.
+func (s Store) Outcomes(ctx context.Context, gate string, start, end *time.Time, commodity string) ([]Outcome, error) {
+	rows, err := s.Pool.Query(ctx,
+		`WITH lots AS (
+		   SELECT to_char(date_trunc('month', p.created_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS period,
+		          p.id, p.status
+		   FROM passports p JOIN facilities f ON f.id = p.facility_id
+		   WHERE p.transform_id IS NULL AND NOT p.is_deleted AND `+auth.GateSQL("f.organisation_id", 1)+`
+		     AND ($2::timestamptz IS NULL OR p.created_at >= $2) AND ($3::timestamptz IS NULL OR p.created_at < $3)
+		     AND ($4 = '' OR p.commodity = $4)),
+		 flagged AS (
+		   SELECT DISTINCT fl.passport_id FROM flags fl
+		   WHERE fl.status = 'open' AND NOT fl.is_deleted)
+		 SELECT period,
+		        count(*)::bigint AS total,
+		        count(*) FILTER (WHERE lots.status = 'revoked')::bigint AS failed,
+		        count(*) FILTER (WHERE lots.status <> 'revoked' AND flagged.passport_id IS NOT NULL)::bigint AS warning
+		 FROM lots LEFT JOIN flagged ON flagged.passport_id = lots.id
+		 GROUP BY 1 ORDER BY 1`, gate, start, end, commodity)
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Outcome, error) {
+		var o Outcome
+		if err := row.Scan(&o.Period, &o.Total, &o.Failed, &o.Warning); err != nil {
+			return o, err
+		}
+		o.Verified = o.Total - o.Failed - o.Warning
+		if o.Verified < 0 {
+			o.Verified = 0
+		}
+		if o.Total > 0 {
+			o.PctVerified = o.Verified * 100 / o.Total
+		}
+		return o, nil
+	})
+	if out == nil {
+		out = []Outcome{}
+	}
+	return out, err
+}
+
+func scanSaved(row pgx.CollectableRow) (Saved, error) {
+	var s Saved
+	err := row.Scan(&s.ID, &s.Name, &s.Kind, &s.Params, &s.OrganisationID, &s.CreatedBy, &s.CreatedAt)
+	return s, err
+}
+
+// CreateSaved stores one saved report definition for this organisation scope.
+// OWASP A01/A05: capped at 50 definitions per scope so one writer cannot fill
+// the table; params stay JSON and are never interpolated into SQL.
+func (s Store) CreateSaved(ctx context.Context, gate, name, kind string, params json.RawMessage, actor *string) (Saved, error) {
+	var n int64
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM saved_reports WHERE NOT is_deleted AND `+auth.GateSQL("organisation_id", 1), gate).Scan(&n); err != nil {
+		return Saved{}, err
+	}
+	if n >= 50 {
+		return Saved{}, errTooManySaved
+	}
+	var out Saved
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO saved_reports (name, kind, params, organisation_id, created_by)
+		 VALUES (NULLIF($1,''), $2, COALESCE($3::jsonb, '{}'::jsonb),
+		         CASE WHEN $4 = '' THEN NULL ELSE $4::uuid END, $5::uuid)
+		 RETURNING id::text, name, kind, params, organisation_id::text, created_by::text, created_at`,
+		name, kind, string(params), gate, actor).Scan(
+		&out.ID, &out.Name, &out.Kind, &out.Params, &out.OrganisationID, &out.CreatedBy, &out.CreatedAt)
+	return out, err
+}
+
+// ListSaved lists this scope's saved reports, newest first.
+func (s Store) ListSaved(ctx context.Context, gate string) ([]Saved, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id::text, name, kind, params, organisation_id::text, created_by::text, created_at
+		 FROM saved_reports WHERE NOT is_deleted AND `+auth.GateSQL("organisation_id", 1)+`
+		 ORDER BY created_at DESC`, gate)
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, scanSaved)
+	if out == nil {
+		out = []Saved{}
+	}
+	return out, err
+}
+
+// GetSaved fetches one saved definition inside this scope.
+func (s Store) GetSaved(ctx context.Context, gate, id string) (Saved, error) {
+	var out Saved
+	err := s.Pool.QueryRow(ctx,
+		`SELECT id::text, name, kind, params, organisation_id::text, created_by::text, created_at
+		 FROM saved_reports WHERE NOT is_deleted AND id = $2::uuid AND `+auth.GateSQL("organisation_id", 1),
+		gate, id).Scan(&out.ID, &out.Name, &out.Kind, &out.Params, &out.OrganisationID, &out.CreatedBy, &out.CreatedAt)
+	return out, err
+}
+
+// AddFile records one generated file for a saved report.
+func (s Store) AddFile(ctx context.Context, savedID, format, key, sum string, size int64) (SavedFile, error) {
+	var out SavedFile
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO report_files (saved_id, format, bucket_key, sha256, size)
+		 VALUES ($1::uuid, $2, $3, $4, $5)
+		 RETURNING id::text, saved_id::text, format, bucket_key, sha256, size, created_at`,
+		savedID, format, key, sum, size).Scan(
+		&out.ID, &out.SavedID, &out.Format, &out.BucketKey, &out.SHA256, &out.Size, &out.CreatedAt)
+	return out, err
+}
+
+// ListFiles lists a saved report's files, newest first.
+func (s Store) ListFiles(ctx context.Context, gate, savedID string) ([]SavedFile, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT f.id::text, f.saved_id::text, f.format, f.bucket_key, f.sha256, f.size, f.created_at
+		 FROM report_files f JOIN saved_reports r ON r.id = f.saved_id
+		 WHERE NOT f.is_deleted AND NOT r.is_deleted AND f.saved_id = $2::uuid AND `+auth.GateSQL("r.organisation_id", 1)+`
+		 ORDER BY f.created_at DESC`, gate, savedID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (SavedFile, error) {
+		var f SavedFile
+		return f, row.Scan(&f.ID, &f.SavedID, &f.Format, &f.BucketKey, &f.SHA256, &f.Size, &f.CreatedAt)
+	})
+	if out == nil {
+		out = []SavedFile{}
+	}
+	return out, err
+}
+
+// GetFile fetches one generated file inside this scope.
+func (s Store) GetFile(ctx context.Context, gate, id string) (SavedFile, error) {
+	var out SavedFile
+	err := s.Pool.QueryRow(ctx,
+		`SELECT f.id::text, f.saved_id::text, f.format, f.bucket_key, f.sha256, f.size, f.created_at
+		 FROM report_files f JOIN saved_reports r ON r.id = f.saved_id
+		 WHERE NOT f.is_deleted AND NOT r.is_deleted AND f.id = $2::uuid AND `+auth.GateSQL("r.organisation_id", 1),
+		gate, id).Scan(&out.ID, &out.SavedID, &out.Format, &out.BucketKey, &out.SHA256, &out.Size, &out.CreatedAt)
 	return out, err
 }

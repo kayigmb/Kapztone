@@ -34,6 +34,9 @@ type Flag struct {
 	Reason         string `json:"reason"`
 	DataHash       string `json:"data_hash"`
 	Status         string `json:"status"`
+	Code           *string `json:"code,omitempty"`     // FLG-YEAR-NNNN, set on raise
+	Severity       string  `json:"severity"`           // low, medium, high
+	RequestInfo    *string `json:"request_info,omitempty"`
 	// RaisedBy is where it came from: SourceUser, SourceRules or SourcePublic.
 	RaisedBy string `json:"raised_by"`
 	// Who is looking into it; null until an investigator assigns someone.
@@ -49,15 +52,25 @@ type Flag struct {
 	Revoked int `json:"revoked,omitempty"`
 }
 
+// Severities for flags.
+const (
+	SeverityLow    = "low"
+	SeverityMedium = "medium"
+	SeverityHigh   = "high"
+)
+
+var Severities = []string{SeverityLow, SeverityMedium, SeverityHigh}
+
 // List is what the list endpoint lets callers search and sort by.
 var List = listq.Config{
 	Alias:  "f",
-	Search: []string{"reason", "status"},
-	Sort:   []string{"status", listq.ColCreatedAt},
+	Search: []string{"reason", "status", "severity", "code"},
+	Sort:   []string{"status", "severity", listq.ColCreatedAt},
 }
 
 const (
 	columns = `f.id::text, f.passport_id::text, f.organisation_id::text, f.reason, f.data_hash, f.status,
+	           f.code, f.severity, f.request_info,
 	           f.source, f.assignee_user_id::text, (SELECT u.name FROM users u WHERE u.id = f.assignee_user_id),
 	           f.resolution_note, f.resolved_at, f.tx_hash, f.anchored_at, f.created_at, f.updated_at`
 	gateColumn = "f.organisation_id"
@@ -66,6 +79,7 @@ const (
 func scan(row pgx.CollectableRow) (Flag, error) {
 	var f Flag
 	err := row.Scan(&f.ID, &f.PassportID, &f.OrganisationID, &f.Reason, &f.DataHash, &f.Status,
+		&f.Code, &f.Severity, &f.RequestInfo,
 		&f.RaisedBy, &f.AssigneeUserID, &f.AssigneeName, &f.ResolutionNote, &f.ResolvedAt, &f.TxHash, &f.AnchoredAt, &f.CreatedAt, &f.UpdatedAt)
 	return f, err
 }
@@ -85,12 +99,17 @@ func one(rows pgx.Rows, err error) (Flag, error) {
 type RaiseInput struct {
 	PassportID string `json:"passport_id"`
 	Reason     string `json:"reason"`
+	Severity   string `json:"severity"`
 	// Source is set by the code raising it, never by the caller; "" is SourceUser.
 	Source string `json:"-"`
 }
 
 func (in *RaiseInput) Validate() string {
 	in.Reason = strings.TrimSpace(in.Reason)
+	in.Severity = strings.TrimSpace(strings.ToLower(in.Severity))
+	if in.Severity == "" {
+		in.Severity = SeverityMedium
+	}
 	switch {
 	case !httpx.IsUUID(in.PassportID):
 		return "passport_id is required"
@@ -98,6 +117,8 @@ func (in *RaiseInput) Validate() string {
 		return MsgReasonNeeded
 	case len(in.Reason) > MaxTextLen:
 		return fmt.Sprintf("reason may be up to %d characters", MaxTextLen)
+	case !slices.Contains(Severities, in.Severity):
+		return "severity must be one of: " + strings.Join(Severities, ", ")
 	}
 	return ""
 }
@@ -163,10 +184,11 @@ func RaiseTx(ctx context.Context, tx pgx.Tx, orgID, userID, holder string, in Ra
 		in.Source = SourceUser
 	}
 
+	code := "FLG-" + time.Now().UTC().Format("2006") + "-" + strings.ToUpper(id[:8])
 	f, err := one(tx.Query(ctx,
-		`INSERT INTO flags AS f (id, passport_id, organisation_id, reason, data_hash, status, raised_by, source)
-		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::uuid, $8) RETURNING `+columns,
-		id, in.PassportID, orgID, in.Reason, dataHash, StatusOpen, userID, in.Source))
+		`INSERT INTO flags AS f (id, passport_id, organisation_id, reason, data_hash, status, code, severity, raised_by, source)
+		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::uuid, $10) RETURNING `+columns,
+		id, in.PassportID, orgID, in.Reason, dataHash, StatusOpen, code, in.Severity, userID, in.Source))
 	if err != nil {
 		return Flag{}, err
 	}

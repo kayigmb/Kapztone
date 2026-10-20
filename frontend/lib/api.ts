@@ -277,6 +277,21 @@ const verificationSchema: z.ZodType<ApiVerification> = z.object({
       organisation: named,
     }),
   ),
+  route: z
+    .array(
+      z.object({
+        facility_id: z.string(),
+        name: z.string(),
+        kind: z.string(),
+        location: z
+          .object({ type: z.string(), coordinates: z.unknown() })
+          .passthrough()
+          .nullable()
+          .optional(),
+        seq: z.number(),
+      }),
+    )
+    .optional(),
   organisations: z.array(named),
   genealogy: z.object({
     nodes: z.array(passport),
@@ -518,8 +533,41 @@ const volumeRow = z.object({
   commodity: z.string(),
   unit: z.string(),
   quantity: z.number(),
+  exported: z.number().optional(),
 });
 export type VolumeRow = z.infer<typeof volumeRow>;
+
+const outcomeRow = z.object({
+  period: z.string(),
+  verified: z.number(),
+  warning: z.number(),
+  failed: z.number(),
+  total: z.number(),
+  pct_verified: z.number(),
+});
+export type OutcomeRow = z.infer<typeof outcomeRow>;
+
+const savedReport = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  params: z.unknown().optional(),
+  organisation_id: z.string().nullable().optional(),
+  created_by: z.string().nullable().optional(),
+  created_at: z.string(),
+});
+export type SavedReport = z.infer<typeof savedReport>;
+
+const savedFile = z.object({
+  id: z.string(),
+  saved_id: z.string(),
+  format: z.string(),
+  bucket_key: z.string(),
+  sha256: z.string(),
+  size: z.number(),
+  created_at: z.string(),
+});
+export type SavedFile = z.infer<typeof savedFile>;
 
 const chainCheck = z.object({
   ok: z.boolean(),
@@ -998,6 +1046,25 @@ export const endpoints = {
       z.object({ data: z.array(volumeRow) }),
     ).then((r) => r.data);
   },
+  outcomesReport: (params: { startDate?: string; endDate?: string; commodity?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.startDate) q.set("start_date", params.startDate);
+    if (params.endDate) q.set("end_date", params.endDate);
+    if (params.commodity) q.set("commodity", params.commodity);
+    const suffix = q.size ? `?${q}` : "";
+    return api(
+      `${apiPaths.reportsOutcomes}${suffix}`,
+      z.object({ data: z.array(outcomeRow) }),
+    ).then((r) => r.data);
+  },
+  savedReports: () =>
+    api(apiPaths.reportsSaved, z.object({ data: z.array(savedReport) })).then((r) => r.data) as Promise<SavedReport[]>,
+  createSaved: (body: { name: string; kind: string; params: Record<string, string> }) =>
+    write(apiPaths.reportsSaved, savedReport, send("POST", body)),
+  runSaved: (id: string, format: string = "csv") =>
+    write(`${apiPaths.reportRun(id)}?format=${format}`, savedFile, { method: "POST" }),
+  savedFiles: (id: string) =>
+    api(apiPaths.reportFiles(id), z.object({ data: z.array(savedFile) })).then((r) => r.data),
 };
 
 // Where each counted tile's number comes from: a list and its filter.

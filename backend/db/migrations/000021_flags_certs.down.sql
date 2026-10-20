@@ -1,0 +1,10 @@
+ALTER TABLE handovers DROP COLUMN IF EXISTS checklist;
+ALTER TABLE handovers DROP COLUMN IF EXISTS seal_number;
+DROP INDEX IF EXISTS attestations_cert_number_idx;
+ALTER TABLE attestations DROP COLUMN IF EXISTS max_valid_days;
+ALTER TABLE attestations DROP COLUMN IF EXISTS notes;
+ALTER TABLE attestations DROP COLUMN IF EXISTS cert_number;
+DROP INDEX IF EXISTS flags_code_idx;
+ALTER TABLE flags DROP COLUMN IF EXISTS request_info;
+ALTER TABLE flags DROP COLUMN IF EXISTS severity;
+ALTER TABLE flags DROP COLUMN IF EXISTS code;

@@ -69,6 +69,13 @@ export type ApiVerification = {
     };
     organisation: Named;
   }[];
+  route?: {
+    facility_id: string;
+    name: string;
+    kind: string;
+    location?: { type: string; coordinates?: unknown } | null;
+    seq: number;
+  }[];
   organisations: Named[];
   genealogy: {
     nodes: ApiPassport[];

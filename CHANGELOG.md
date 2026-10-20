@@ -8,8 +8,8 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Claude Design screens exported and linked in `docs/design.md` (drafts in `ui/`, ids per screen)
 - [ ] Three clickable flows: coffee, mineral, fraud moments
 - [ ] Review with at least 3 experts; changes logged (log in `docs/design.md` is empty)
-- [ ] Decision column of the design-versus-backend gap table in `docs/design.md`
-- [x] OpenAPI draft (`backend/api/openapi.yaml`; response bodies still mostly `object`)
+- [x] Decision column of the design-versus-backend gap table in `docs/design.md` (dev scope frozen: build vs cut)
+- [x] OpenAPI draft (`backend/api/openapi.yaml`; new report/route schemas added, remaining bodies still `object`)
 
 ### Sprint 2 gaps
 - [ ] Deploy contracts to Polygon Amoy (waits on key, faucet funds, RPC URL; steps in `docs/operations.md`)
@@ -22,7 +22,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Per-action signing step (PIN / device) for issue, handover, transform, certificates
 - [x] Reports, audit log, CSV export
 - [x] PDF export (volume, blocked, audit)
-- [ ] Saved reports, verification-outcome report
+- [x] Saved reports in bucket + verification-outcomes report (dev; eval runs later)
 - [x] Retire a passport
 - [x] Required evidence per stage, enforced and recorded
 - [x] Regulator role for resolving flags
@@ -37,7 +37,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Maps (MapLibre + drawing) for facilities
 - [x] Public origin map
 - [x] Tables (TanStack Table, server-side)
-- [ ] Route map (journey events carry no location)
+- [x] Route map points-only (facility points in verify `route`, no invented legs)
 - [x] Playwright happy-path test (coffee: facility → issue → handover → accept → transform → public)
 - [ ] Playwright: certificates, reject / cancel, flags
 - [ ] Verification of a 50-ancestor lot in under 5 s
@@ -45,9 +45,9 @@ What has been built and what is left. Every finished piece of work adds an entry
 
 ### Sprint 5
 - [ ] `tools/sim`: built (300 lots + 90 fraud cases, fixed seed); first run pending
-- [ ] `tools/baseline`: document-based comparison system
+- [x] `tools/baseline`: document-based comparison built (dev; first run pending)
 - [ ] k6 load test: 1,000 events/hour
-- [ ] OWASP top-10 review of the API
+- [x] OWASP top-10 dev hardening (headers, caps, validation; full review + test runs later)
 - [x] Medicine template added without code change (`tools/sim/templates/medicine.json`)
 - [ ] nginx and VPS deployment
 - [ ] Tag `v1.0-eval`
@@ -59,6 +59,15 @@ What has been built and what is left. Every finished piece of work adds an entry
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-20 — Dev master plan: saved reports in bucket, outcomes, route points, baseline, OWASP hardening
+- **Saved reports in bucket** (migration 000020): `saved_reports` + `report_files`, `POST/GET /reports/saved`, `POST /reports/saved/{id}/run` renders CSV/PDF and keeps it via `upload.Bucket.SaveBytes`, `GET /reports/saved/{id}/files`, `GET /reports/files/{id}` streams permission-checked. Frontend tiles + save/run in `admin/reports`.
+- **Verification outcomes** `GET /reports/verification-outcomes`: revoked is failed, open flag is warning, rest verified, per month; CSV/PDF + tile.
+- **Route points only** in verify `route`: facility points in origin order, no invented legs; public page lists points.
+- **Flags/certs/handovers:** code `FLG-YEAR-…`, severity, cert number/notes, seal + checklist (migrations 000021, validation, OpenAPI).
+- **`tools/baseline` built:** paper checklist over sim CSV, writes `baseline_outcome`; not run yet.
+- **OWASP dev:** security headers in `next.config.ts`, saved-report cap (50/scope, 429), tightened Validate + OpenAPI schemas; `go vet` clean, OpenAPI route test passes, `pnpm lint` 0 errors, `pnpm build` passes.
+- **Docs:** gap Decisions frozen, screens table + operations + README synced.
 
 ### 2026-10-19 — One response shape, workspaces, switching without signing in, dev without rate limits
 - **Every JSON answer is `{status, message, data}`** (`httpx.OK / Error / ErrorData`; `WriteJSON` removed). Each change answers with a sentence from its package's `values.go` (`Msg…`); reads send `""`. Details a screen needs ride in `data` (`two_factor_required`, `attempts_left`, the handover difference, the overlapping facility). Files and CSV / PDF downloads are unchanged. OpenAPI: `Envelope` schema.

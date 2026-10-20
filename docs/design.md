@@ -41,14 +41,14 @@ Numbers are PLAN.md §2.2. "Spec" is the section of `screens.md`. "API" is what 
 | 2 | Sign-in and onboarding (KYB) | 03 | `/signup`, `/signin`, `/onboarding` (built, new look) | `POST /orgs`, `POST /auth/login` (`remember`, `trust_device`), `GET /me`, `POST /orgs/{id}/documents`, `/auth/2fa/*`, `/auth/password/forgot`, `/reset`, `/auth/lock` | 2a–2l (`AuthFlow`) |
 | 3 | Dashboard | 02 | `/` (built, new look: navy shell, metric cards, quick actions, per-kind config in `lib/consts.ts` → `dashboards`) | `GET /passports`, `/handovers`, `/flags`, `/facilities`, `/notifications` | 1d, 3o (`Dashboard`) |
 | 4 | Facility registry | 04 | `/facilities` (list, map, approve, licence), `/facilities/new` (pin or boundary on a map) | `POST /facilities`, `GET /facilities?bbox=&status=`, `GET /facilities/{id}`, `/approve`, `/licence` | 3a, 3b (`Facilities`, `RegisterFacility`) |
-| 5 | Issue origin passport | 05 | `/issue` (draft screen) | `GET /templates`, `GET /facilities`, `POST /passports` | 3c, 3d (`IssuePassport`) |
-| 6 | Passport detail | routes in `patterns.md` | `/passports/[id]` (draft screen) | `GET /passports/{id}`, `/passports/{id}/genealogy`, `GET /attestations?subject_id=` | 3e (`Passports`) |
-| 7 | Hand over custody (sender) | 06 | `/handover` (not built: `page.tsx.draft` parked) | `POST /passports/{id}/handovers` (JSON or multipart: quantity, place, photos), `POST /handovers/{id}/cancel` | 3g (`Handovers`) |
-| 8 | Accept custody (receiver) | 06 | `/handovers/[id]` (not built) | `GET /handovers`, `POST /handovers/{id}/accept` (`received_quantity`, photos), `/reject` (`reasons`, `also_flag`), `GET /handovers/{id}/photos/{photoId}` | 1f, 3h (`Handovers`) |
-| 9 | Transform / split / merge | 07 | `/transform` (draft screen) | `POST /transforms` | 1e (`Transform`) |
-| 10 | Attach / issue certificate | 08 | `/certificates` (draft screen); `/certificates/new` not built (`page.tsx.draft` parked) | `POST /attestations`, `GET /attestations`, `POST /attestations/{id}/revoke` | 3i, 3j (`Certificates`) |
-| 11 | Flags and investigations | 08 | `/flags` (not built) | `GET /flags`, `GET /flags/{id}`, `POST /flags/{id}/resolve`, `PUT /flags/{id}/assignee` | 3k (`Flags`) |
-| 12 | Commodity template builder | 09 | `/admin/templates`, `/admin/templates/[id]` (draft screens) | `/templates` (create, list, get, draft, publish, delete) | 3l (`Templates`) |
+| 5 | Issue origin passport | 05 | `/issue` (built) | `GET /templates`, `GET /facilities`, `POST /passports` | 3c, 3d (`IssuePassport`) |
+| 6 | Passport detail (business view) | routes in `patterns.md` | `/passports/[id]` (built) | `GET /passports/{id}`, `/passports/{id}/genealogy`, `GET /attestations?subject_id=` | 3e (`Passports`) |
+| 7 | Hand over custody (sender) | 06 | `/handover` (built, seal + checklist) | `POST /passports/{id}/handovers` (quantity, stage, place, seal_number, checklist, photos), `POST /handovers/{id}/cancel` | 3g (`Handovers`) |
+| 8 | Accept custody (receiver) | 06 | `/handovers/[id]` (built) | `GET /handovers`, `POST /handovers/{id}/accept` (`received_quantity`, photos), `/reject` (`reasons`, `also_flag`), `GET /handovers/{id}/photos/{photoId}` | 1f, 3h (`Handovers`) |
+| 9 | Transform / split / merge | 07 | `/transform` (built) | `POST /transforms` | 1e (`Transform`) |
+| 10 | Attach / issue certificate | 08 | `/certificates`, `/certificates/new` (built, number + notes) | `POST /attestations`, `GET /attestations?scope=issued\|about`, `POST /attestations/{id}/revoke` | 3i, 3j (`Certificates`) |
+| 11 | Flags and investigations | 08 | `/flags` (built, code + severity) | `GET /flags`, `GET /flags/{id}`, `POST /flags/{id}/resolve`, `PUT /flags/{id}/assignee` | 3k (`Flags`) |
+| 12 | Commodity template builder | 09 | `/admin/templates`, `/admin/templates/[id]` (built) | `/templates` (create, list, get, draft, publish, delete) | 3l (`Templates`) |
 | 13 | Admin: organisation verification | 03 | `/admin/organisations` (built; `?tab=&id=`) | `GET /orgs?status=`, `POST /orgs/{id}/verify` (incl. `changes_requested`), `GET/PUT /orgs/{id}/accreditations`, `GET /orgs/{id}/documents`, `GET /documents/{id}/file`, `GET /templates` (certificate types) | 3m (`VerificationQueue`) |
 | 14 | Reports and audit trail | 09 | `/admin/reports` (draft screen) | `GET /audit`, `/audit/verify`, `/reports/volume`, `/reports/blocked` | 3n (`Reports`) |
 | — | Profile (everyone) | — | `/profile` (built: details, name, password, signing PIN, 2FA with recovery codes) | `PUT /me`, `POST /auth/password`, `/auth/sessions/revoke`, `POST /auth/pin`, `/auth/2fa/*` | 2m (`Profile`) |
@@ -75,25 +75,25 @@ The screens were specified before the backend was built, and they ask for more t
 
 | Screen | The design shows | The backend has | Decision |
 | --- | --- | --- | --- |
-| 1, 5, 6 | Product name, packaging ("16 bags"), grade, crop year | Commodity, unit, quantity | |
-| 1 | Route map with a location per journey step | Journey events carry no location | |
-| 1 | Signed value against stored value ("signed for 2,100 kg, now shows 2,850 kg") | A reason code and message per finding, no field-level difference | |
-| 1 | "Report a concern" from the public page | Flags need sign-in | |
+| 1, 5, 6 | Product name, packaging ("16 bags"), grade, crop year | Commodity, unit, quantity | Cut: hidden, never faked |
+| 1 | Route map with a location per journey step | Journey events carry no location | Build M3: facility points only, no fake legs |
+| 1 | Signed value against stored value ("signed for 2,100 kg, now shows 2,850 kg") | A reason code and message per finding, no field-level difference | Build M4: evidence field-diff on flag |
+| 1 | "Report a concern" from the public page | Flags need sign-in | Build M4: signed-in Report concern → flag |
 | 4 | Capacity used this period, per facility | Computed only when a passport is issued; not exposed || Built: `capacity_used` |
-| 4 | Licence expiry and document, approval before first use, edit boundary, GPS walk, overlap and forest-loss checks | Licence number; boundary validity and area | Backend built: licence end date + document, approval, overlap check. Not built: edit boundary, GPS walk, forest-loss check |
+| 4 | Licence expiry and document, approval before first use, edit boundary, GPS walk, overlap and forest-loss checks | Licence number; boundary validity and area | Built: licence end date + document, approval, overlap check. Cut: edit boundary, GPS walk, forest-loss check |
 | 5 | Required-evidence checklist, inspector countersignature | Template lists evidence; nothing enforces or records it || Built: evidence = certificate, enforced; no inspector countersignature |
-| 7, 8 | Part of a lot, location, seal number, photos; weight received, tolerance, inspection checklist | Whole passport, one note | Backend built: partial handover (split), place, photos, received weight against the stage tolerance. Not built: seal number, inspection checklist |
-| 8 | Rejecting a handover raises a flag and freezes the lot | Reject and flag are separate calls; no "on hold" status | Backend built: reject with reasons and `also_flag` (one transaction). Not built: "on hold" |
-| 10 | Certificate number, notes, maximum validity per type, "issued by you" list | Type, validity, file; list has no issuer filter | |
-| 11 | Flag code (`FLG-2026-0147`), severity, assignee, flags raised automatically, evidence diff, "request information", suspend organisation | Reason, status, resolution note | Backend built: assignee, `raised_by` (user / rules / public), rules flags. Not built: flag code, severity, evidence diff, request information |
-| 12 | Template versions with "publish", who may act per stage, handover tolerance, evidence types | One live template per commodity; stages with events, yield, evidence keys | Backend built: drafts, publish, versions, `handoverTolerance`. Not built: who may act per stage |
+| 7, 8 | Part of a lot, location, seal number, photos; weight received, tolerance, inspection checklist | Whole passport, one note | Build M4: partial, place, photos, tolerance built; add seal number + checklist |
+| 8 | Rejecting a handover raises a flag and freezes the lot | Reject and flag are separate calls; no "on hold" status | Build M4: reject + `also_flag` built; add on-hold on confirm |
+| 10 | Certificate number, notes, maximum validity per type, "issued by you" list | Type, validity, file; list has no issuer filter | Build M4: add number, notes, max validity, `?scope=issued\|about` already in API |
+| 11 | Flag code (`FLG-2026-0147`), severity, assignee, flags raised automatically, evidence diff, "request information", suspend organisation | Reason, status, resolution note | Build M4: add code, severity, evidence diff, request information; Cut: suspend organisation |
+| 12 | Template versions with "publish", who may act per stage, handover tolerance, evidence types | One live template per commodity; stages with events, yield, evidence keys | Build M4: drafts/publish/versions/tolerance built; add who-may-act per stage |
 | 13 | "Changes requested" outcome; accreditation per certificate type with dates | Built: `changes_requested` (reopens on upload, like rejected); accreditation per type with a validity window, checked by API and contract | Built |
 | 13 | Automatic checks (registry match, name match, licence readable and in date, duplicate, sanctions screen) | Nothing | Cut for now. Decision: learner |
 | 13 | Country, registration number, contact in the detail | Name, address, kind | Cut for now. Decision: learner |
 | 13 | Commodity tags, accreditation document, signing-key count on the issuers tab | Types and dates only | Cut for now. Decision: learner |
 | 13 | A different validity window per certificate type in the form | API takes one per type; the form sends one window for all ticked types | Cut for now. Decision: learner |
-| 3 | Counts for tiles, certificates expiring, volume by commodity | List totals only | Built from list totals. Cut for now (no data): "Waiting for your signature" (sender signs at start), lots verified this month, verified volume, certificates expiring in 30 days, flag severity, active users, issuers to accredit. Decision: learner |
-| all | SMS; EXPORT, IMPORT and deliver steps on the journey | E-mail and in-app; issue, handover, transform, flag, revoke | |
+| 3 | Counts for tiles, certificates expiring, volume by commodity | List totals only | Built from list totals. Cut: waiting-for-signature, lots verified/month, verified volume, expiring certs, active users, issuers-to-accredit |
+| all | SMS; EXPORT, IMPORT and deliver steps on the journey | E-mail and in-app; issue, handover, transform, flag, revoke | Cut SMS/deliver; EXPORT/IMPORT stay as template events where defined |
 
 **Fields the Figma screens show that the API does not have.** Hidden in the UI until the backend has them; never faked.
 
@@ -102,11 +102,11 @@ The screens were specified before the backend was built, and they ask for more t
 | Profile, sign-up | Language (English / Kinyarwanda / Français) | No language setting | Hidden |
 | Profile, users, sign-up | Phone number ("Email or phone") | Email only | Hidden |
 | Sign-up, organisation verification | Country, registration number | Name, address, kind | Hidden |
-| Flags | Severity (High / Medium / Low), severity filter | Reason, status, source, assignee | Hidden |
-| Reports | Verification outcomes report ("96.8% verified") | Volume, blocked, audit | Hidden |
-| Receive handover | Inspection checklist (seal number, packaging intact) | Reject reasons, photos, received weight | Hidden |
-| Certificates | Certificate number (`COO-RW-2026-8401`) | Type, validity, file, document fingerprint | Hidden |
-| Public page | Country and region tag, coordinates, harvest period, grade, "Download verification report" | Facility kind, operator, capacity check | Hidden |
+| Flags | Severity (High / Medium / Low), severity filter | Reason, status, source, assignee | Build M4: severity + filter |
+| Reports | Verification outcomes report ("96.8% verified") | Volume, blocked, audit | Build M1/M2: saved reports in bucket + outcomes tile |
+| Receive handover | Inspection checklist (seal number, packaging intact) | Reject reasons, photos, received weight | Build M4: seal + checklist |
+| Certificates | Certificate number (`COO-RW-2026-8401`) | Type, validity, file, document fingerprint | Build M4: number + notes |
+| Public page | Country and region tag, coordinates, harvest period, grade, "Download verification report" | Facility kind, operator, capacity check | Build M3 points-only map; Cut country/region/grade; Build download via saved-report PDF |
 
 ## Expert review log
 

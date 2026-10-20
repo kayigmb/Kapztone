@@ -170,6 +170,23 @@ func (b *Bucket) Put(ctx context.Context, key string, content []byte) error {
 	return err
 }
 
+// SaveBytes stores generated content (saved reports) under a random key.
+func (b *Bucket) SaveBytes(ctx context.Context, content []byte, contentType string) (key, sum string, err error) {
+	raw := make([]byte, 16)
+	if _, err = rand.Read(raw); err != nil {
+		return "", "", err
+	}
+	key = hex.EncodeToString(raw)
+	hash := sha256.Sum256(content)
+	sum = hex.EncodeToString(hash[:])
+	_, err = b.client.PutObject(ctx, b.name, key, bytes.NewReader(content), int64(len(content)),
+		minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		return "", "", err
+	}
+	return key, sum, nil
+}
+
 // Remove deletes a stored file whose record could not be saved.
 func (b *Bucket) Remove(ctx context.Context, key string) {
 	b.client.RemoveObject(ctx, b.name, key, minio.RemoveObjectOptions{})

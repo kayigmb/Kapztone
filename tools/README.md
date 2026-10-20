@@ -1,6 +1,6 @@
 # Tools
 
-Evaluation tooling (PLAN.md §6.1). `baseline/` (the document-based comparison system) is not built yet.
+Evaluation tooling (PLAN.md §6.1). `baseline/` is built (dev; first run pending).
 
 ## `sim/` — dataset and fraud cases
 

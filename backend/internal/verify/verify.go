@@ -57,6 +57,16 @@ type Origin struct {
 	Organisation Named `json:"organisation"`
 }
 
+// RoutePoint is one facility on the map: points only, never an invented leg.
+// Old handovers without GPS still show their facilities.
+type RoutePoint struct {
+	FacilityID string          `json:"facility_id"`
+	Name       string          `json:"name"`
+	Kind       string          `json:"kind"`
+	Location   json.RawMessage `json:"location"` // GeoJSON
+	Seq        int             `json:"seq"`
+}
+
 // Result is everything the public verification page shows.
 type Result struct {
 	Verdict  string            `json:"verdict"`
@@ -64,6 +74,8 @@ type Result struct {
 	Checks   []Check           `json:"checks"`
 	Passport passport.Passport `json:"passport"`
 	Origins  []Origin          `json:"origins"`
+	// Route is the facility points in origin order for the map.
+	Route []RoutePoint `json:"route"`
 	// Organisations names every organisation the answer refers to by id.
 	Organisations []Named                   `json:"organisations"`
 	Genealogy     passport.Genealogy        `json:"genealogy"`
@@ -164,7 +176,7 @@ func (v *run) absent(check, subjectID string, anchored bool) {
 // ponytail: chain reads happen one after another. If a lot with many
 // ancestors is too slow on a real network, run them concurrently.
 func (h *Handlers) Run(ctx context.Context, id string) (Result, error) {
-	res := Result{Reasons: []Reason{}, Origins: []Origin{}}
+	res := Result{Reasons: []Reason{}, Origins: []Origin{}, Route: []RoutePoint{}}
 	v := &run{h: h, ctx: ctx, opts: &bind.CallOpts{Context: ctx}, res: &res}
 
 	var err error
@@ -353,6 +365,13 @@ func (v *run) origins(nodes []passport.Passport) ([]string, error) {
 		}
 		o.Facility.Location = json.RawMessage(location)
 		v.res.Origins = append(v.res.Origins, o)
+		v.res.Route = append(v.res.Route, RoutePoint{
+			FacilityID: o.Facility.ID,
+			Name:       o.Facility.Name,
+			Kind:       o.Facility.Kind,
+			Location:   json.RawMessage(location),
+			Seq:        len(v.res.Route),
+		})
 		capacity[id] = facilityCapacity
 
 		if status != facility.StatusActive {

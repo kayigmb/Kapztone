@@ -149,7 +149,7 @@ func main() {
 			Notify:      &notify.Handlers{Pool: pool},
 			Verify: &verify.Handlers{Pool: pool, Passports: passports, Certificates: certificates.Store,
 				Contracts: contracts, Files: files, Cache: c},
-			Audit: &audit.Handlers{Store: audit.Store{Pool: pool}},
+			Audit: &audit.Handlers{Store: audit.Store{Pool: pool}, Files: files},
 			Stats: &stats.Handlers{Store: stats.Store{Pool: pool}},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

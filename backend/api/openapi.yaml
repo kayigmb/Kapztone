@@ -881,7 +881,68 @@ paths:
         - $ref: "#/components/parameters/start_date"
         - $ref: "#/components/parameters/end_date"
       responses:
-        "200": { $ref: "#/components/responses/Object" }
+        "200": { $ref: "#/components/responses/Blocked" }
+  /reports/verification-outcomes:
+    get:
+      tags: [reports]
+      summary: Verified / warning / failed share per month (revoked is failed, open flag is warning)
+      x-permission: report:read
+      parameters:
+        - $ref: "#/components/parameters/format"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+        - name: commodity
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Outcomes" }
+  /reports/saved:
+    get:
+      tags: [reports]
+      summary: Saved report definitions (files live in the bucket)
+      x-permission: report:read
+      responses:
+        "200": { $ref: "#/components/responses/SavedList" }
+    post:
+      tags: [reports]
+      summary: Keep a report definition (kind volume, blocked, verification-outcomes or audit)
+      x-permission: report:read
+      requestBody: { $ref: "#/components/requestBodies/Saved" }
+      responses:
+        "201": { $ref: "#/components/responses/Saved" }
+        "400": { $ref: "#/components/responses/Error" }
+  /reports/saved/{id}/run:
+    post:
+      tags: [reports]
+      summary: Run a saved report now, keep the CSV/PDF in the bucket
+      x-permission: report:read
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/format"
+      responses:
+        "201": { $ref: "#/components/responses/SavedFile" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /reports/saved/{id}/files:
+    get:
+      tags: [reports]
+      summary: Files generated for one saved report, newest first
+      x-permission: report:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/SavedFiles" }
+  /reports/files/{id}:
+    get:
+      tags: [reports]
+      summary: Download one generated report file from the bucket
+      x-permission: report:read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: The CSV or PDF file
+          content:
+            text/csv: { schema: { type: string } }
+            application/pdf: { schema: { type: string, format: binary } }
 
   /stats:
     get:
@@ -940,6 +1001,10 @@ components:
       content:
         application/json:
           schema: { type: object }
+    Saved:
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SavedInput" }
 
   responses:
     Object:
@@ -955,6 +1020,70 @@ components:
             allOf:
               - { $ref: "#/components/schemas/Envelope" }
               - properties: { data: { $ref: "#/components/schemas/Page" } }
+    Blocked:
+      description: Rule refusal counts
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/BlockedRow" } }
+    Outcomes:
+      description: Verification share per month
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/Outcome" } }
+    SavedList:
+      description: Saved report definitions
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/Saved" } }
+    Saved:
+      description: One saved report definition
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties: { data: { $ref: "#/components/schemas/Saved" } }
+    SavedFile:
+      description: One generated file kept in the bucket
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties: { data: { $ref: "#/components/schemas/ReportFile" } }
+    SavedFiles:
+      description: Generated files, newest first
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/ReportFile" } }
     File:
       description: The stored file
       content:
@@ -1078,9 +1207,11 @@ components:
         to_org: { type: string, format: uuid }
         stage: { type: string }
         quantity: { type: integer, description: Unset means all that remains }
-        note: { type: string }
-        lat: { type: number }
-        lon: { type: number }
+        note: { type: string, maxLength: 2000 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        seal_number: { type: string, maxLength: 64 }
+        checklist: { type: object, description: Inspection checklist, up to 32 items }
     Accept:
       type: object
       required: [received_quantity]
@@ -1119,7 +1250,8 @@ components:
       required: [passport_id, reason]
       properties:
         passport_id: { type: string, format: uuid }
-        reason: { type: string }
+        reason: { type: string, maxLength: 2000 }
+        severity: { type: string, enum: [low, medium, high] }
     Resolve:
       type: object
       required: [outcome]
@@ -1147,7 +1279,88 @@ components:
             properties:
               name: { type: string }
               result: { type: string }
-        passport: { type: object }
-        origins: { type: array, items: { type: object } }
+        passport: { $ref: "#/components/schemas/Passport" }
+        origins: { type: array, items: { $ref: "#/components/schemas/Origin" } }
+        route:
+          type: array
+          description: Facility points only, in origin order; no leg is invented
+          items: { $ref: "#/components/schemas/RoutePoint" }
         genealogy: { type: object }
         certificates: { type: array, items: { type: object } }
+    Passport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, description: Readable lot code, e.g. ACME-2026-0412 }
+        commodity: { type: string }
+        unit: { type: string }
+        quantity: { type: integer }
+        remaining: { type: integer }
+        status: { type: string }
+    Origin:
+      type: object
+      properties:
+        facility:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            kind: { type: string }
+            location: { type: object, description: GeoJSON }
+        organisation:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+    RoutePoint:
+      type: object
+      required: [facility_id, name, kind, seq]
+      properties:
+        facility_id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string }
+        location: { type: object, description: GeoJSON facility point }
+        seq: { type: integer }
+    BlockedRow:
+      type: object
+      required: [rule, count]
+      properties:
+        rule: { type: string, enum: [capacity, mass_balance, evidence, tolerance, handover_rejected] }
+        count: { type: integer }
+    Outcome:
+      type: object
+      required: [period, verified, warning, failed, total, pct_verified]
+      properties:
+        period: { type: string, description: YYYY-MM in UTC }
+        verified: { type: integer }
+        warning: { type: integer }
+        failed: { type: integer }
+        total: { type: integer }
+        pct_verified: { type: integer }
+    SavedInput:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { type: string, enum: [volume, blocked, verification-outcomes, audit] }
+        params: { type: object, description: start_date, end_date, commodity, route, actor }
+    Saved:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string }
+        params: { type: object }
+        organisation_id: { type: string, format: uuid, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+    ReportFile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        saved_id: { type: string, format: uuid }
+        format: { type: string, enum: [csv, pdf] }
+        bucket_key: { type: string }
+        sha256: { type: string }
+        size: { type: integer }
+        created_at: { type: string, format: date-time }

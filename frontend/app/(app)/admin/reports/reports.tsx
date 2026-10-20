@@ -38,6 +38,8 @@ import {
   useMeGuard,
   usePaged,
   type AuditEntry,
+  type OutcomeRow,
+  type SavedReport,
   type VolumeRow,
 } from "@/lib/api";
 import {
@@ -85,6 +87,37 @@ const volumeColumns: ListColumn<VolumeRow>[] = [
     (v) => <span className="fig">{v.quantity.toLocaleString()}</span>,
     { value: (v) => v.quantity },
   ),
+];
+
+const outcomeColumns: ListColumn<OutcomeRow>[] = [
+  column("period", "Period", (o) => <span className="font-mono">{o.period}</span>, {
+    value: (o) => o.period,
+  }),
+  column("verified", "Verified", (o) => <span className="fig">{o.verified}</span>, {
+    value: (o) => o.verified,
+  }),
+  column("warning", "Warning", (o) => <span className="fig">{o.warning}</span>, {
+    value: (o) => o.warning,
+  }),
+  column("failed", "Failed", (o) => <span className="fig">{o.failed}</span>, {
+    value: (o) => o.failed,
+  }),
+  column("total", "Total", (o) => <span className="fig">{o.total}</span>, {
+    value: (o) => o.total,
+  }),
+  column("pct_verified", "% verified", (o) => <span className="fig">{o.pct_verified}</span>, {
+    value: (o) => o.pct_verified,
+  }),
+];
+
+const savedColumns: ListColumn<SavedReport>[] = [
+  column("name", "Name", (s) => s.name, { value: (s) => s.name }),
+  column("kind", "Kind", (s) => <span className="font-mono">{s.kind}</span>, {
+    value: (s) => s.kind,
+  }),
+  column("created_at", "Created", (s) => (
+    <span className="text-ink-muted">{formatDateTime(s.created_at)}</span>
+  )),
 ];
 
 const auditColumns: ListColumn<AuditEntry>[] = [
@@ -153,6 +186,25 @@ export function Reports() {
       }),
     enabled: allowed,
   });
+
+  const [outStart, setOutStart] = useState("");
+  const [outEnd, setOutEnd] = useState("");
+  const outcomes = useQuery({
+    queryKey: [...queryKeys.outcomes, outStart, outEnd],
+    queryFn: () =>
+      endpoints.outcomesReport({
+        startDate: outStart || undefined,
+        endDate: outEnd || undefined,
+      }),
+    enabled: allowed,
+  });
+  const saved = useQuery({
+    queryKey: queryKeys.saved,
+    queryFn: endpoints.savedReports,
+    enabled: allowed,
+  });
+  const [savedName, setSavedName] = useState("");
+  const [savedKind, setSavedKind] = useState("volume");
 
   const list = useListParams("-created_at", auditFilters);
   const f = list.filters;
@@ -230,6 +282,107 @@ export function Reports() {
             empty={t.noData}
           />
         )}
+      </Section>
+
+      <Section title={t.outcomes}>
+        <div className="flex flex-wrap items-end gap-3">
+          <DateField label={t.startDate} value={outStart} onChange={setOutStart} />
+          <DateField label={t.endDate} value={outEnd} onChange={setOutEnd} />
+          <Downloads
+            path={apiPaths.reportsOutcomes}
+            params={{ start_date: outStart, end_date: outEnd }}
+          />
+        </div>
+        {outcomes.isPending ? (
+          <Loading />
+        ) : outcomes.isError ? (
+          <p role="alert" className="text-sm text-danger-ink">
+            {problemOf(outcomes.error)}
+          </p>
+        ) : (
+          <ClientTable
+            id="outcomes"
+            label={t.outcomes}
+            columns={outcomeColumns}
+            rows={outcomes.data}
+            rowKey={(o) => o.period}
+            empty={t.noData}
+          />
+        )}
+      </Section>
+
+      <Section title={t.saved}>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1.5">
+            <span className="text-sm font-semibold">{t.savedName}</span>
+            <Input
+              value={savedName}
+              onChange={(e) => setSavedName(e.target.value)}
+              className="w-56"
+              placeholder="Volume by commodity · Monthly"
+            />
+          </label>
+          <div className="grid gap-1.5">
+            <span className="text-sm font-semibold">{t.savedKind}</span>
+            <Select
+              items={[
+                { value: "volume", label: "volume" },
+                { value: "blocked", label: "blocked" },
+                { value: "verification-outcomes", label: "verification-outcomes" },
+                { value: "audit", label: "audit" },
+              ]}
+              value={savedKind}
+              onValueChange={(v) => setSavedKind(v as string)}
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["volume", "blocked", "verification-outcomes", "audit"].map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {k}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            disabled={!savedName.trim()}
+            onClick={async () => {
+              await endpoints.createSaved({
+                name: savedName.trim(),
+                kind: savedKind,
+                params: {
+                  start_date: volumeStart,
+                  end_date: volumeEnd,
+                },
+              });
+              setSavedName("");
+              saved.refetch();
+            }}
+          >
+            {t.save}
+          </Button>
+        </div>
+        {saved.isPending ? (
+          <Loading />
+        ) : saved.isError ? (
+          <p role="alert" className="text-sm text-danger-ink">
+            {problemOf(saved.error)}
+          </p>
+        ) : (
+          <ClientTable
+            id="saved"
+            label={t.saved}
+            columns={savedColumns}
+            rows={saved.data}
+            rowKey={(s) => s.id}
+            empty={t.noData}
+          />
+        )}
+        <p className="text-sm text-ink-muted">
+          Running a saved report keeps its CSV/PDF in the bucket; open it from its files.
+        </p>
       </Section>
 
       <Section title={t.auditTrail}>

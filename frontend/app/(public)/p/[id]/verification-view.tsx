@@ -513,7 +513,19 @@ function JourneyCard({ v }: { v: View }) {
           <div className="p-5 lg:p-7">
             <JourneyTimeline steps={v.journey} />
           </div>
-          <RouteArt v={v} />
+          <div className="grid gap-4">
+            <RouteArt v={v} />
+            <ol className="grid gap-2 p-5 pt-0 lg:px-7" aria-label="Facility points">
+              {v.origins.map((o, i) => (
+                <li key={o.id} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="font-medium">{o.name}</span>
+                  <span className="text-ink-muted">· {o.kind}</span>
+                  <span className="text-ink-muted">· {o.owner}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </TabsContent>
         <TabsContent value="genealogy" className="p-5 lg:p-7">
           <Genealogy v={v} />
@@ -524,8 +536,8 @@ function JourneyCard({ v }: { v: View }) {
 }
 
 /**
- * A drawing of the route, origin to current holder (Figma .route-map). It is
- * art, not a map: the places are named in the labels, never located.
+ * Facility points only (M3): origin to current holder as named points.
+ * No leg is invented: old handovers without GPS still show their facilities.
  */
 function RouteArt({ v }: { v: View }) {
   const origin = v.origins[0]?.name;

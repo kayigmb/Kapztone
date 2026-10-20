@@ -41,10 +41,13 @@ type HandoverInput struct {
 	Note     string   `json:"note"` // where and how the goods were handed over
 	Lat      *float64 `json:"lat"`
 	Lon      *float64 `json:"lon"`
+	SealNumber string `json:"seal_number"`
+	Checklist  map[string]bool `json:"checklist"`
 }
 
 func (in *HandoverInput) Validate() string {
 	in.Note, in.Stage = strings.TrimSpace(in.Note), strings.TrimSpace(in.Stage)
+	in.SealNumber = strings.TrimSpace(in.SealNumber)
 	if in.ToOrganisationID == "" {
 		in.ToOrganisationID = in.ToOrg
 	}
@@ -57,6 +60,10 @@ func (in *HandoverInput) Validate() string {
 		return "quantity must be a whole number above 0"
 	case len(in.Note) > MaxNoteLen:
 		return fmt.Sprintf("note may be up to %d characters", MaxNoteLen)
+	case len(in.SealNumber) > 64:
+		return "seal_number may be up to 64 characters"
+	case len(in.Checklist) > 32:
+		return "checklist may hold up to 32 items"
 	}
 	return locationProblem(in.Lat, in.Lon)
 }

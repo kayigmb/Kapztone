@@ -22,16 +22,36 @@ var Formats = []string{FormatCSV, FormatPDF}
 
 // PDF titles.
 const (
-	TitleAudit   = "Audit log"
-	TitleVolume  = "Volume issued at origin"
-	TitleBlocked = "Actions the rules refused"
+	TitleAudit     = "Audit log"
+	TitleVolume    = "Volume issued at origin"
+	TitleBlocked   = "Actions the rules refused"
+	TitleOutcomes  = "Verification outcomes"
+	TitleSaved     = "Saved report"
 )
 
 // File names of downloads, without extension.
 const (
-	FileAudit   = "audit"
-	FileVolume  = "volume"
-	FileBlocked = "blocked"
+	FileAudit    = "audit"
+	FileVolume   = "volume"
+	FileBlocked  = "blocked"
+	FileOutcomes = "verification-outcomes"
+	FileSaved    = "saved-report"
+)
+
+// Saved report kinds.
+const (
+	SavedVolume   = "volume"
+	SavedBlocked  = "blocked"
+	SavedOutcomes = "verification-outcomes"
+	SavedAudit    = "audit"
+)
+
+var SavedKinds = []string{SavedVolume, SavedBlocked, SavedOutcomes, SavedAudit}
+
+// Messages for saved reports.
+const (
+	MsgBadSavedKind = "kind must be volume, blocked, verification-outcomes or audit"
+	MsgBadSavedName = "name must be 1 to 120 characters"
 )
 
 // Rules whose refusals are counted (rule_events.rule), declared once.
@@ -64,7 +84,8 @@ const chainLock = 7203115
 
 // CSV column headings.
 var (
-	AuditColumns   = []string{"seq", "created_at", "actor_user_id", "actor_email", "organisation_id", "method", "route", "subject_id", "status", "hash"}
-	VolumeColumns  = []string{"month", "commodity", "unit", "quantity", "exported"}
-	BlockedColumns = []string{"rule", "count"}
+	AuditColumns    = []string{"seq", "created_at", "actor_user_id", "actor_email", "organisation_id", "method", "route", "subject_id", "status", "hash"}
+	VolumeColumns   = []string{"month", "commodity", "unit", "quantity", "exported"}
+	BlockedColumns  = []string{"rule", "count"}
+	OutcomesColumns = []string{"period", "verified", "warning", "failed", "total", "pct_verified"}
 )
