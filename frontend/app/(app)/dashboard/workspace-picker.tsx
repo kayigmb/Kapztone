@@ -42,33 +42,33 @@ export function WorkspacePicker() {
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {list.map((o) => (
-            <li
-              key={o.id}
-              className="grid gap-4 rounded-lg border border-border bg-surface p-5 shadow-card"
-            >
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-md bg-primary-soft text-primary">
-                  <Building2 className="size-5" aria-hidden />
-                </span>
-                <div className="grid min-w-0">
-                  <span className="truncate font-semibold">{o.name}</span>
-                  <span className="truncate text-xs text-ink-muted">
-                    {orgKinds.find((k) => k.value === o.kind)?.label ??
-                      humanize(o.kind)}{" "}
-                    · {humanize(o.role)}
-                  </span>
-                </div>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => open.mutate(o.slug)}
-                loading={open.isPending}
-              >
-                {t.open}
-                <ArrowRight className="size-4" aria-hidden />
-                </Button>
-              </li>
-            ))}
+                <li
+                  key={o.id}
+                  className="grid gap-4 rounded-lg border border-border bg-surface p-5 shadow-card"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-md bg-primary-soft text-primary">
+                      <Building2 className="size-5" aria-hidden />
+                    </span>
+                    <div className="grid min-w-0">
+                      <span className="truncate font-semibold">{o.name}</span>
+                      <span className="truncate text-xs text-ink-muted">
+                        {orgKinds.find((k) => k.value === o.kind)?.label ??
+                          humanize(o.kind)}{" "}
+                        · {humanize(o.role)}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => open.mutate(o.slug)}
+                    loading={open.isPending}
+                  >
+                    {t.open}
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Button>
+                </li>
+              ))}
             </ul>
           )
         }

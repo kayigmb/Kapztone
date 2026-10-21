@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { raiseFlagFormSchema, resolveFlagFormSchema } from "../lib/schemas/flag.ts";
+import {
+  raiseFlagFormSchema,
+  resolveFlagFormSchema,
+} from "../lib/schemas/flag.ts";
 
 test("raising a flag: a lot and a reason, both required", () => {
   assert.ok(

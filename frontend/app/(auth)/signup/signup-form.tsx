@@ -1,10 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CircleCheck } from "lucide-react";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormRegisterReturn } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { FieldNote } from "@/components/chaintrack/field-note";
@@ -13,7 +13,7 @@ import { Stepper } from "@/components/chaintrack/stepper";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { ApiError, endpoints, problemOf, useMeGuard } from "@/lib/api";
-import { copy, limits, orgKinds, routes } from "@/lib/consts";
+import { copy, limits, orgKinds, queryKeys, routes } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import {
   accountSchema,
@@ -31,11 +31,23 @@ export function SignUpForm() {
   useMeGuard((me) => (me ? routes.home : undefined)); // already signed in here
   const [step, setStep] = useState(0);
   const [problem, setProblem] = useState<string>();
+  const [emailToCheck, setEmailToCheck] = useState("");
+  const [emailCheckFailed, setEmailCheckFailed] = useState(false);
+  const client = useQueryClient();
+  const emailAvailability = useQuery({
+    queryKey: queryKeys.emailAvailability(emailToCheck),
+    queryFn: () => endpoints.emailAvailability(emailToCheck),
+    enabled: emailToCheck.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
   const {
     register,
     handleSubmit,
     trigger,
+    getValues,
     setError,
+    clearErrors,
     setValue,
     getFieldState,
     formState: { errors },
@@ -53,7 +65,25 @@ export function SignUpForm() {
   });
 
   async function next() {
-    if (await trigger(accountFields, { shouldFocus: true })) setStep(1);
+    if (!(await trigger(accountFields, { shouldFocus: true }))) return;
+    const email = getValues("email");
+    setEmailCheckFailed(false);
+    try {
+      const available = await client.fetchQuery({
+        queryKey: queryKeys.emailAvailability(email),
+        queryFn: () => endpoints.emailAvailability(email),
+        staleTime: 30_000,
+      });
+      setEmailToCheck(email);
+      if (!available) {
+        setError("email", { message: t.emailTaken }, { shouldFocus: true });
+        return;
+      }
+      setStep(1);
+    } catch {
+      setEmailToCheck(email);
+      setEmailCheckFailed(true);
+    }
   }
 
   const create = useMutation({
@@ -140,19 +170,36 @@ export function SignUpForm() {
           error={errors.user_name?.message}
           {...register("user_name")}
         />
-        <TextField
-          label={t.email}
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          error={errors.email?.message}
-          {...register("email")}
+        <EmailField
+          register={register("email")}
+          error={
+            errors.email?.message ??
+            (emailAvailability.data === false ? t.emailTaken : undefined)
+          }
+          help={
+            emailCheckFailed || emailAvailability.isError
+              ? t.emailCheckFailed
+              : emailAvailability.isFetching
+                ? t.emailChecking
+                : emailAvailability.data
+                  ? t.emailAvailable
+                  : undefined
+          }
+          onChange={() => {
+            setEmailToCheck("");
+            setEmailCheckFailed(false);
+            if (errors.email?.message === t.emailTaken) clearErrors("email");
+          }}
+          onBlur={(email) => {
+            const parsed = accountSchema.shape.email.safeParse(email);
+            setEmailToCheck(parsed.success ? parsed.data : "");
+          }}
         />
         <TextField
           label={t.password}
           type="password"
           autoComplete="new-password"
-          help={t.passwordHelp(limits.password.min)}
+          help={t.passwordHelp(limits.password.min, limits.password.max)}
           error={errors.password?.message}
           {...register("password")}
         />
@@ -212,11 +259,49 @@ export function SignUpForm() {
             <ArrowLeft aria-hidden />
             {t.back}
           </Button>
-          <Button type="submit" loading={create.isPending} loadingText={t.submitting}>
+          <Button
+            type="submit"
+            loading={create.isPending}
+            loadingText={t.submitting}
+          >
             {t.submit}
           </Button>
         </div>
       </div>
     </form>
+  );
+}
+
+function EmailField({
+  register,
+  error,
+  help,
+  onChange,
+  onBlur,
+}: {
+  register: UseFormRegisterReturn<"email">;
+  error?: string;
+  help?: string;
+  onChange: () => void;
+  onBlur: (email: string) => void;
+}) {
+  return (
+    <TextField
+      label={t.email}
+      type="email"
+      inputMode="email"
+      autoComplete="email"
+      error={error}
+      help={help}
+      {...register}
+      onChange={(event) => {
+        register.onChange(event);
+        onChange();
+      }}
+      onBlur={(event) => {
+        register.onBlur(event);
+        onBlur(event.currentTarget.value.trim().toLowerCase());
+      }}
+    />
   );
 }

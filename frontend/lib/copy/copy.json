@@ -123,6 +123,8 @@
   "profile": {
     "title": "Your profile",
     "sub": "Your account and how you sign in and sign records.",
+    "accountTab": "Account",
+    "securityTab": "Security and signing",
     "details": "Details",
     "name": "Full name",
     "email": "Email",
@@ -132,6 +134,7 @@
     "password": "Password",
     "currentPassword": "Current password",
     "newPassword": "New password",
+    "passwordHelp": "Use 8 to 72 characters, including an uppercase letter, a lowercase letter, a number and a symbol.",
     "confirmPassword": "Confirm new password",
     "changePassword": "Change password",
     "pin": "Signing PIN",
@@ -204,7 +207,7 @@
     "name": "Full name",
     "nameHelp": "Leave empty if you already have a ChainTrack account.",
     "password": "Password",
-    "passwordHelp": "New account: choose one, 12 to 72 characters. Existing account: your current password.",
+    "passwordHelp": "New account: use 8 to 72 characters, including an uppercase letter, a lowercase letter, a number and a symbol. Existing account: enter your current password.",
     "submit": "Accept invitation",
     "submitting": "Accepting…",
     "done": "You're in.",
@@ -411,11 +414,7 @@
     "new": {
       "title": "Register facility",
       "sub": "A place where your goods originate or are handled. You need one before issuing passports.",
-      "steps": [
-        "Location",
-        "Details",
-        "Capacity"
-      ],
+      "steps": ["Location", "Details", "Capacity"],
       "name": "Facility name",
       "nameHelp": "What your team calls it, like Plot 14 · Kigoma Hill.",
       "kind": "Type",
@@ -435,6 +434,11 @@
         "pin": "Tap the map where the facility is.",
         "area": "Tap the map to add corners, at least 3. The shape closes itself."
       },
+      "search": "Find a place on the map",
+      "searchHelp": "Search for a village, town or landmark, then choose a result to centre the map. You can still adjust the pin or boundary.",
+      "searchNone": "No places found. Try a different name or place the pin on the map.",
+      "searchRetry": "Try search again",
+      "searchResults": "Place search results",
       "mapLabel": "Map: tap to place the facility",
       "centre": "Centre",
       "undo": "Undo",
@@ -453,11 +457,7 @@
   },
   "issue": {
     "title": "Issue passport",
-    "steps": [
-      "Facility",
-      "Quantity",
-      "Sign"
-    ],
+    "steps": ["Facility", "Quantity", "Sign"],
     "where": "Where was it produced?",
     "template": "Product template",
     "templateHelp": "Sets the unit, the stages your lot moves through and the evidence each stage needs.",
@@ -500,12 +500,7 @@
   },
   "handover": {
     "title": "Hand over a lot",
-    "steps": [
-      "Lot",
-      "Details",
-      "Receiver",
-      "Sign"
-    ],
+    "steps": ["Lot", "Details", "Receiver", "Sign"],
     "pickTitle": "Which lot is leaving?",
     "pickHint": "Scan the QR label on the bags, or choose a lot you hold.",
     "pickEmpty": "You don't hold any active passports. Issue a passport before handing a lot over.",
@@ -1086,7 +1081,8 @@
     "new": "New password",
     "confirm": "Confirm password",
     "rules": {
-      "match": "Passwords match"
+      "match": "Passwords match",
+      "length": "Use 8 to 72 characters, including an uppercase letter, a lowercase letter, a number and a symbol."
     },
     "signOutNote": "Every device signed in to your account will be signed out.",
     "submit": "Update password",
@@ -1121,17 +1117,16 @@
     "sub": "You'll need your business registration and any operating licences. Verification takes about 2 working days.",
     "haveAccount": "Already have an account?",
     "signIn": "Sign in",
-    "steps": [
-      "Account",
-      "Organisation",
-      "Documents",
-      "Review"
-    ],
+    "steps": ["Account", "Organisation", "Documents", "Review"],
     "fullName": "Full name",
     "email": "Email",
+    "emailAvailable": "This email can be used for the account.",
+    "emailTaken": "An account with this email already exists. Sign in or use another email.",
+    "emailChecking": "Checking email availability…",
+    "emailCheckFailed": "We couldn't check this email just now. Try again before continuing.",
     "password": "Password",
     "passwordHelp": {
-      "$template": "At least {min} characters."
+      "$template": "Use {min} to {max} characters, including an uppercase letter, a lowercase letter, a number and a symbol."
     },
     "confirmPassword": "Confirm password",
     "consent": "I am authorised to register this organisation, and I agree that its documents will be checked.",
@@ -1166,6 +1161,7 @@
     "passwordShort": {
       "$template": "Use at least {n} characters."
     },
+    "passwordComplexity": "Include an uppercase letter, a lowercase letter, a number and a symbol.",
     "consent": "Tick the box to confirm you may register this organisation.",
     "legalName": "Enter the legal name, exactly as on your registration certificate.",
     "slug": "Use lowercase letters, digits and hyphens, like kitabi-washing.",
@@ -1188,6 +1184,8 @@
     "template": "Choose a template.",
     "facilityName": "Enter the facility's name.",
     "facilityKind": "Choose what kind of facility this is.",
+    "facilityKindKey": "Use lowercase letters, digits and underscores; start with a letter.",
+    "facilityKindName": "Enter a name for this facility kind.",
     "licence": "Enter the licence number, as printed on the certificate.",
     "capacity": "Enter the capacity, as a whole number above zero.",
     "capacityUnit": "Enter the unit, like kg or bags.",

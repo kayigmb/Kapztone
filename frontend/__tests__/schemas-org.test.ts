@@ -16,8 +16,8 @@ const maxUploadBytes = upload.maxBytes;
 const good = {
   user_name: "Jeanne Mukamana",
   email: "Jeanne@Rukundo.Test ",
-  password: "correct-password",
-  confirm_password: "correct-password",
+  password: "Correct-password1!",
+  confirm_password: "Correct-password1!",
   consent: true,
   name: "Rukundo Farmers' Cooperative",
   slug: "rukundo",
@@ -40,6 +40,13 @@ test("registration: each backend rule has a refused case, on the right field", (
   assert.deepEqual(bad({ password: "short", confirm_password: "short" }), [
     "password",
   ]);
+  assert.deepEqual(
+    bad({
+      password: "lowercase-password1",
+      confirm_password: "lowercase-password1",
+    }),
+    ["password"],
+  );
   assert.deepEqual(bad({ confirm_password: "another-password" }), [
     "confirm_password",
   ]);

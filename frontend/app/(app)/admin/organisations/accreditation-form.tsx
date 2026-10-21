@@ -57,11 +57,7 @@ export function AccreditationForm({ orgId }: { orgId: string }) {
           <DataWidget query={current}>
             {() => (
               // Mounted once the current accreditation is known, so the form starts from it.
-              <Form
-                orgId={orgId}
-                types={types.data!}
-                current={current.data!}
-              />
+              <Form orgId={orgId} types={types.data!} current={current.data!} />
             )}
           </DataWidget>
         )}

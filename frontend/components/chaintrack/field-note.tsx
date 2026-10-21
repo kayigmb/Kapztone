@@ -16,10 +16,7 @@ export function FieldNote({
 }) {
   if (error)
     return (
-      <p
-        id={id}
-        className="flex gap-1.5 text-small font-semibold text-danger"
-      >
+      <p id={id} className="flex gap-1.5 text-small font-semibold text-danger">
         <OctagonX className="mt-px size-4 shrink-0" aria-hidden />
         {error}
       </p>

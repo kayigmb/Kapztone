@@ -6,11 +6,13 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import { useEffect, useRef } from "react";
 import Map, {
   Layer,
   Marker,
   NavigationControl,
   Source,
+  type MapRef,
 } from "react-map-gl/maplibre";
 
 import { useThemeTokens } from "@/components/chaintrack/use-theme-tokens";
@@ -30,6 +32,7 @@ export default function MapView({
   draft,
   onPick,
   selected,
+  focus,
   label,
   className,
 }: {
@@ -37,10 +40,12 @@ export default function MapView({
   draft?: { points: LonLat[]; geometry?: Geometry };
   onPick?: (p: LonLat) => void;
   selected?: string;
+  focus?: LonLat;
   label: string;
   className?: string;
 }) {
   const colours = useThemeTokens(tokenNames);
+  const mapRef = useRef<MapRef>(null);
   const all = [
     ...shapes.map((s) => s.geometry),
     ...(draft?.geometry ? [draft.geometry] : []),
@@ -62,9 +67,15 @@ export default function MapView({
   const areas = features(shapes.filter((s) => s.geometry.type === "Polygon"));
   const pins = shapes.filter((s) => s.geometry.type === "Point");
 
+  useEffect(() => {
+    if (focus)
+      mapRef.current?.flyTo({ center: focus, zoom: 14, duration: 800 });
+  }, [focus]);
+
   return (
     <div className={className} role="region" aria-label={label}>
       <Map
+        ref={mapRef}
         initialViewState={{
           longitude: lon,
           latitude: lat,

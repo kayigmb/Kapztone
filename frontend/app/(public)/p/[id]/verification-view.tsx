@@ -515,10 +515,15 @@ function JourneyCard({ v }: { v: View }) {
           </div>
           <div className="grid gap-4">
             <RouteArt v={v} />
-            <ol className="grid gap-2 p-5 pt-0 lg:px-7" aria-label="Facility points">
+            <ol
+              className="grid gap-2 p-5 pt-0 lg:px-7"
+              aria-label="Facility points"
+            >
               {v.origins.map((o, i) => (
                 <li key={o.id} className="flex items-center gap-2 text-sm">
-                  <span className="font-mono text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="font-mono text-ink-muted">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
                   <span className="font-medium">{o.name}</span>
                   <span className="text-ink-muted">· {o.kind}</span>
                   <span className="text-ink-muted">· {o.owner}</span>

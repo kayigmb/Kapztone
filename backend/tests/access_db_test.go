@@ -317,6 +317,7 @@ func TestUserManagement(t *testing.T) {
 	token := tokenOf(inv.Link)
 	want(t, "accept without a name", accept(token, "", testPassword), http.StatusBadRequest)
 	want(t, "accept with a short password", accept(token, "Nia", "short"), http.StatusBadRequest)
+	want(t, "accept with a weak password", accept(token, "Nia", "lowercase-password1"), http.StatusBadRequest)
 	rec := accept(token, "Nia", testPassword)
 	want(t, "accept", rec, http.StatusOK)
 	if got := decodeTo[user.Accepted](t, rec); !got.NewAccount || got.Organisation != slug {

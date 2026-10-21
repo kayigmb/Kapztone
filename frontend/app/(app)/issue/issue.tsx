@@ -246,152 +246,161 @@ function Flow() {
           <DataWidget query={templates}>
             {() => (
               <>
-          {step === 0 && (
-            <section className="grid gap-6">
-              <div className="grid gap-3">
-                <h2 className="text-2xl font-semibold">{t.where}</h2>
-                <TemplatePicker
-                  page={templates.data!}
-                  picking={tq}
-                  onPicking={setTq}
-                  error={errors.template_id?.message}
-                  {...register("template_id")}
-                />
-                <p className="text-small text-ink-subtle">{t.templateHelp}</p>
-              </div>
-              <FacilityPicker
-                page={facilities.data!}
-                picking={fq}
-                onPicking={setFq}
-                error={errors.facility_id?.message}
-                {...register("facility_id")}
-              />
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <Button onClick={toQuantity}>{local.next}</Button>
-              </div>
-            </section>
-          )}
-
-          {step === 1 && facility && template && (
-            <section className="grid gap-6">
-              <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-                <h2 className="text-section">{t.howMuch}</h2>
-                <TextField
-                  label={`${t.quantity} (${unit})`}
-                  mono
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step={1}
-                  help={`${humanize(template.commodity)} · ${facility.name}`}
-                  error={
-                    errors.quantity?.message ??
-                    (block
-                      ? t.blockedField(
-                          block.left,
-                          facility.capacity_unit,
-                          periodOf(facility),
-                        )
-                      : undefined)
-                  }
-                  {...register("quantity")}
-                />
-                <CapacityMeter
-                  title={facility.name}
-                  used={facility.capacity_used}
-                  max={facility.capacity}
-                  unit={facility.capacity_unit}
-                />
-                {quantity > 0 && !block && (
-                  <p className="text-small font-semibold text-ink-muted">
-                    {local.afterPassport(
-                      facility.capacity_used + quantity,
-                      facility.capacity_unit,
-                    )}
-                  </p>
+                {step === 0 && (
+                  <section className="grid gap-6">
+                    <div className="grid gap-3">
+                      <h2 className="text-2xl font-semibold">{t.where}</h2>
+                      <TemplatePicker
+                        page={templates.data!}
+                        picking={tq}
+                        onPicking={setTq}
+                        error={errors.template_id?.message}
+                        {...register("template_id")}
+                      />
+                      <p className="text-small text-ink-subtle">
+                        {t.templateHelp}
+                      </p>
+                    </div>
+                    <FacilityPicker
+                      page={facilities.data!}
+                      picking={fq}
+                      onPicking={setFq}
+                      error={errors.facility_id?.message}
+                      {...register("facility_id")}
+                    />
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                      <Button onClick={toQuantity}>{local.next}</Button>
+                    </div>
+                  </section>
                 )}
-                {block && (
-                  <Notice kind="blocking">
-                    {t.blockedNotice(block.left, facility.capacity_unit)}
-                  </Notice>
-                )}
-              </div>
 
-              <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-                <h2 className="text-section">{t.evidence}</h2>
-                <p className="text-small text-ink-subtle">{t.evidenceHelp}</p>
-                {!facilityId ? (
-                  required.length === 0 ? (
-                    <p className="text-sm text-ink-muted">{t.evidenceNone}</p>
-                  ) : (
-                    <ChecksList checks={checks} />
-                  )
-                ) : (
-                  <DataWidget query={evidence}>
-                    {() =>
-                      required.length === 0 ? (
-                        <p className="text-sm text-ink-muted">
-                          {t.evidenceNone}
+                {step === 1 && facility && template && (
+                  <section className="grid gap-6">
+                    <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
+                      <h2 className="text-section">{t.howMuch}</h2>
+                      <TextField
+                        label={`${t.quantity} (${unit})`}
+                        mono
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        step={1}
+                        help={`${humanize(template.commodity)} · ${facility.name}`}
+                        error={
+                          errors.quantity?.message ??
+                          (block
+                            ? t.blockedField(
+                                block.left,
+                                facility.capacity_unit,
+                                periodOf(facility),
+                              )
+                            : undefined)
+                        }
+                        {...register("quantity")}
+                      />
+                      <CapacityMeter
+                        title={facility.name}
+                        used={facility.capacity_used}
+                        max={facility.capacity}
+                        unit={facility.capacity_unit}
+                      />
+                      {quantity > 0 && !block && (
+                        <p className="text-small font-semibold text-ink-muted">
+                          {local.afterPassport(
+                            facility.capacity_used + quantity,
+                            facility.capacity_unit,
+                          )}
                         </p>
+                      )}
+                      {block && (
+                        <Notice kind="blocking">
+                          {t.blockedNotice(block.left, facility.capacity_unit)}
+                        </Notice>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
+                      <h2 className="text-section">{t.evidence}</h2>
+                      <p className="text-small text-ink-subtle">
+                        {t.evidenceHelp}
+                      </p>
+                      {!facilityId ? (
+                        required.length === 0 ? (
+                          <p className="text-sm text-ink-muted">
+                            {t.evidenceNone}
+                          </p>
+                        ) : (
+                          <ChecksList checks={checks} />
+                        )
                       ) : (
-                        <ChecksList checks={checks} />
-                      )
-                    }
-                  </DataWidget>
-                )}
-                {required.length > 0 && missing.length > 0 && (
-                  <Notice kind="blocking">
-                    {t.evidenceMissing(missing.map(humanize).join(", "))}
-                  </Notice>
-                )}
-              </div>
+                        <DataWidget query={evidence}>
+                          {() =>
+                            required.length === 0 ? (
+                              <p className="text-sm text-ink-muted">
+                                {t.evidenceNone}
+                              </p>
+                            ) : (
+                              <ChecksList checks={checks} />
+                            )
+                          }
+                        </DataWidget>
+                      )}
+                      {required.length > 0 && missing.length > 0 && (
+                        <Notice kind="blocking">
+                          {t.evidenceMissing(missing.map(humanize).join(", "))}
+                        </Notice>
+                      )}
+                    </div>
 
-              <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-                <h2 className="text-section">{t.review}</h2>
-                <KeyValue facts={facts} />
-                <p className="text-sm text-ink-muted">{t.meaning}</p>
-              </div>
+                    <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
+                      <h2 className="text-section">{t.review}</h2>
+                      <KeyValue facts={facts} />
+                      <p className="text-sm text-ink-muted">{t.meaning}</p>
+                    </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <Button variant="secondary" onClick={() => setStep(0)}>
-                  <ArrowLeft aria-hidden />
-                  {local.back}
-                </Button>
-                {cantSign && (
-                  <p className="text-small font-semibold text-danger">
-                    {t.blockedReason}
-                  </p>
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                      <Button variant="secondary" onClick={() => setStep(0)}>
+                        <ArrowLeft aria-hidden />
+                        {local.back}
+                      </Button>
+                      {cantSign && (
+                        <p className="text-small font-semibold text-danger">
+                          {t.blockedReason}
+                        </p>
+                      )}
+                      <Button onClick={toSign} disabled={cantSign}>
+                        {t.review}
+                      </Button>
+                    </div>
+                  </section>
                 )}
-                <Button onClick={toSign} disabled={cantSign}>
-                  {t.review}
-                </Button>
-              </div>
-            </section>
-          )}
 
-          {step === 2 && (
-            <section className="grid gap-4">
-              <Button
-                variant="ghost"
-                onClick={() => setStep(1)}
-                className="justify-self-start"
-              >
-                <ArrowLeft aria-hidden />
-                {local.back}
-              </Button>
-              <SigningPanel
-                facts={facts}
-                meaning={t.meaning}
-                button={t.sign}
-                busy={issue.isPending}
-                error={issue.isError ? problemOf(issue.error) : undefined}
-                blocked={block ? t.blockedReason : undefined}
-                onSign={(pin) =>
-                  issue.mutate({ pin, v: issueFormSchema.parse(getValues()) })
-                }
-              />
-            </section>
-          )}
+                {step === 2 && (
+                  <section className="grid gap-4">
+                    <Button
+                      variant="ghost"
+                      onClick={() => setStep(1)}
+                      className="justify-self-start"
+                    >
+                      <ArrowLeft aria-hidden />
+                      {local.back}
+                    </Button>
+                    <SigningPanel
+                      facts={facts}
+                      meaning={t.meaning}
+                      button={t.sign}
+                      busy={issue.isPending}
+                      error={issue.isError ? problemOf(issue.error) : undefined}
+                      blocked={block ? t.blockedReason : undefined}
+                      onSign={(pin) =>
+                        issue.mutate({
+                          pin,
+                          v: issueFormSchema.parse(getValues()),
+                        })
+                      }
+                    />
+                  </section>
+                )}
               </>
             )}
           </DataWidget>

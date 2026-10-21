@@ -25,14 +25,15 @@ type Input struct {
 // that is safe to show, or "".
 func (in *Input) Validate() string {
 	in.Name = strings.TrimSpace(in.Name)
+	in.Kind = strings.TrimSpace(in.Kind)
 	in.LicenceNumber = strings.TrimSpace(in.LicenceNumber)
 	in.CapacityUnit = strings.TrimSpace(in.CapacityUnit)
 
 	switch {
 	case in.Name == "" || len(in.Name) > MaxNameLen:
 		return fmt.Sprintf("name is required, up to %d characters", MaxNameLen)
-	case !slices.Contains(Kinds, in.Kind):
-		return "kind must be one of: " + strings.Join(Kinds, ", ")
+	case !keyPattern.MatchString(in.Kind):
+		return MsgBadKind
 	case in.LicenceNumber == "" || len(in.LicenceNumber) > MaxNameLen:
 		return fmt.Sprintf("licence_number is required, up to %d characters", MaxNameLen)
 	case in.Capacity <= 0:
@@ -47,6 +48,19 @@ func (in *Input) Validate() string {
 	}
 	in.LicenceValidTo = strings.TrimSpace(in.LicenceValidTo)
 	return validLocation(in.Location)
+}
+
+// ValidateKind checks a kind definition (withKey: the key itself, on create).
+func ValidateKind(key, label, sub string, withKey bool) string {
+	switch {
+	case withKey && !keyPattern.MatchString(strings.TrimSpace(strings.ToLower(key))):
+		return MsgBadKindKey
+	case label == "" || len(label) > 120:
+		return MsgBadKindName
+	case len(sub) > 500:
+		return MsgBadKindSub
+	}
+	return ""
 }
 
 type position []float64

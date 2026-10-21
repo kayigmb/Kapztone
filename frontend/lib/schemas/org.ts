@@ -9,6 +9,7 @@ import {
   reviewDecisions,
   upload,
 } from "../consts.ts";
+import { strongPasswordSchema } from "./password.ts";
 
 // What a new organisation submits, and what a reviewer decides. Each rule
 // mirrors the API's own check (backend/internal/org/validate.go,
@@ -29,10 +30,7 @@ export const accountSchema = z.object({
     .toLowerCase()
     .max(limits.email, v.emailLong)
     .pipe(z.email(v.email)),
-  password: z
-    .string()
-    .min(limits.password.min, v.passwordShort(limits.password.min))
-    .max(limits.password.max, v.tooLong(limits.password.max)),
+  password: strongPasswordSchema,
   confirm_password: z.string().min(1, v.passwordConfirm),
   consent: z.literal(true, v.consent),
 });

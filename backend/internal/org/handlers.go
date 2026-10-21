@@ -86,6 +86,21 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// EmailAvailability lets sign-up catch a duplicate before the final submit.
+func (h *Handlers) EmailAvailability(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("email")))
+	if !validEmail(email) {
+		httpx.Error(w, http.StatusBadRequest, "email is not a valid address")
+		return
+	}
+	available, err := h.Store.EmailAvailable(r.Context(), email)
+	if err != nil {
+		httpx.ServerError(w, "check email availability", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", map[string]bool{"available": available})
+}
+
 // listOf reads a comma-separated filter whose every value must be allowed; none means no filter.
 func listOf(w http.ResponseWriter, r *http.Request, param string, allowed []string) ([]string, bool) {
 	out := []string{} // never nil: a NULL array would match nothing

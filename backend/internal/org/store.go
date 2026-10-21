@@ -113,6 +113,14 @@ type Store struct {
 	Pool *pgxpool.Pool
 }
 
+// EmailAvailable checks the same global uniqueness constraint used when a
+// registration creates its first account.
+func (s Store) EmailAvailable(ctx context.Context, email string) (bool, error) {
+	var exists bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email = $1 AND NOT is_deleted)`, email).Scan(&exists)
+	return !exists, err
+}
+
 // Register creates the organisation (pending), its first user, and that
 // user's org_admin scope, all or nothing.
 func (s Store) Register(ctx context.Context, in Registration, passwordHash string) (Organisation, error) {

@@ -23,7 +23,7 @@ import (
 
 const (
 	testSecret   = "test-secret-test-secret-test-secret"
-	testPassword = "correct-password"
+	testPassword = "Correct-password1!"
 	// testPIN is every database test user's signing PIN; send attaches it to every request.
 	testPIN        = "246810"
 	testBaseDomain = "chaintrack.test"

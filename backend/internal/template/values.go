@@ -58,6 +58,7 @@ const (
 	MsgCommodityTaken = "a template for this commodity already exists"
 	MsgInUse          = "passports already use this template; its commodity and unit can no longer change"
 	MsgNoDraft        = "this template has no draft to publish; save the changes first"
+	MsgUnknownKind    = "originFacilityKind must be a curated facility kind"
 )
 
 // Confirmations the app shows as they are.

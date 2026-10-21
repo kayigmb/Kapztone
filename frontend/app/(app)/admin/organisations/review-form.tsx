@@ -89,7 +89,11 @@ export function ReviewForm({ orgId }: { orgId: string }) {
           aria-describedby={noteId}
           {...register("reason")}
         />
-        <FieldNote id={noteId} error={errors.reason?.message} help={t.noteHelp} />
+        <FieldNote
+          id={noteId}
+          error={errors.reason?.message}
+          help={t.noteHelp}
+        />
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         <Button

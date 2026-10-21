@@ -11,7 +11,6 @@ import {
   FileText,
   Flag,
   House,
-  Bell,
   Layers,
   MapPin,
   PackagePlus,
@@ -66,7 +65,6 @@ const icons: Record<string, LucideIcon> = {
   orgs: ClipboardCheck,
   users: Users,
   profile: UserRound,
-  notifications: Bell,
   facilities: Factory,
   issue: PackagePlus,
   handovers: ArrowLeftRight,
@@ -180,13 +178,14 @@ export function AppShell({
         {initials(orgName)}
       </span>
       {!rail && (
-        <div className="grid min-w-0 gap-0.5">
+        <div className="grid min-w-0 gap-1.5">
           <span className="truncate text-sm font-semibold text-sidebar-fg">
             {orgName}
           </span>
           <span className="truncate text-xs text-sidebar-label">
             {humanize(me.role)}
           </span>
+          {me.organisation && <OrgStatusChip status={me.organisation.status} />}
         </div>
       )}
     </div>
@@ -244,11 +243,6 @@ export function AppShell({
           )}
         >
           {orgCard(folded)}
-          {!folded && me.organisation && (
-            <span className="px-1 pt-1">
-              <OrgStatusChip status={me.organisation.status} />
-            </span>
-          )}
           {!folded && <OrgSwitcher me={me} onNavy />}
           {!folded && <SignOutButton onNavy />}
         </div>

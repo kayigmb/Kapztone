@@ -84,6 +84,7 @@ func Routes(d Deps) []Route {
 		{post, "/auth/logout", Public, "", a.Logout},
 		{post, "/auth/password/forgot", Public, "", a.LimitIP(auth.ForgotRate, a.ForgotPassword)},
 		{post, "/auth/password/reset", Public, "", a.LimitIP(auth.RegisterRate, a.ResetPassword)},
+		{get, "/auth/email/availability", Public, "", a.LimitIP(auth.RegisterRate, o.EmailAvailability)},
 		{post, "/auth/lock", Public, "", a.LimitIP(auth.RegisterRate, a.LockAccount)},
 		{post, "/auth/handoff/accept", Public, "", a.LimitIP(auth.RegisterRate, a.AcceptHandoff)},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
@@ -122,6 +123,12 @@ func Routes(d Deps) []Route {
 		{post, "/facilities" + idPath + "/licence", Permission, auth.FacilityManage, f.UploadLicence},
 		{get, "/facilities" + idPath + "/licence", Permission, auth.FacilityRead, f.Licence},
 		{del, "/facilities" + idPath, Permission, auth.FacilityManage, f.Delete},
+
+		{get, "/facility-kinds", Permission, auth.FacilityRead, f.Kinds},
+		{get, "/facility-kinds/all", Permission, auth.TemplateManage, f.AllKinds},
+		{post, "/facility-kinds", Permission, auth.TemplateManage, f.CreateKind},
+		{put, "/facility-kinds/{key}", Permission, auth.TemplateManage, f.UpdateKind},
+		{del, "/facility-kinds/{key}", Permission, auth.TemplateManage, f.DeleteKind},
 
 		{post, "/templates", Permission, auth.TemplateManage, t.Create},
 		{get, "/templates", Permission, auth.TemplateRead, t.List},

@@ -37,11 +37,11 @@ test("sign-in: refuses a missing email, password or a code that is not 6 digits,
   }
 });
 
-test("a reset password must be long enough and typed the same twice", () => {
+test("a reset password meets the strength policy and is typed the same twice", () => {
   assert.equal(
     resetSchema.safeParse({
-      new: "harbour-lantern-41",
-      confirm: "harbour-lantern-41",
+      new: "Harbour-lantern-41!",
+      confirm: "Harbour-lantern-41!",
     }).success,
     true,
   );
@@ -49,9 +49,17 @@ test("a reset password must be long enough and typed the same twice", () => {
     resetSchema.safeParse({ new: "short", confirm: "short" }).success,
     false,
   );
+  const overBcryptLimit = `Aa1!${"😀".repeat(18)}`;
+  assert.equal(
+    resetSchema.safeParse({
+      new: overBcryptLimit,
+      confirm: overBcryptLimit,
+    }).success,
+    false,
+  );
   const differ = resetSchema.safeParse({
-    new: "harbour-lantern-41",
-    confirm: "harbour-lantern-42",
+    new: "Harbour-lantern-41!",
+    confirm: "Harbour-lantern-42!",
   });
   assert.equal(differ.success, false);
   assert.deepEqual(differ.error?.issues[0].path, ["confirm"]);

@@ -85,28 +85,28 @@ export function HandoverFlow() {
               <Stepper steps={[...t.steps]} current={step} />
             </PageHeader>
             <LotSummary p={p} />
-      {step === 1 && (
-        <Details
-          p={p}
-          initial={details}
-          place={place}
-          onPlace={setPlace}
-          photos={photos}
-          onPhotos={setPhotos}
-          onNext={(d) => {
-            setDetails(d);
-            setStep(2);
-          }}
-        />
-      )}
-      {step === 2 && (
-        <PickReceiver
-          selected={receiver}
-          onPick={setReceiver}
-          onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
-        />
-      )}
+            {step === 1 && (
+              <Details
+                p={p}
+                initial={details}
+                place={place}
+                onPlace={setPlace}
+                photos={photos}
+                onPhotos={setPhotos}
+                onNext={(d) => {
+                  setDetails(d);
+                  setStep(2);
+                }}
+              />
+            )}
+            {step === 2 && (
+              <PickReceiver
+                selected={receiver}
+                onPick={setReceiver}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
+            )}
             {step === 3 && details && receiver && (
               <Sign
                 p={p}
@@ -366,7 +366,11 @@ function PickReceiver({
               {search ? t.receiverEmpty : t.receiverEmptyAll}
             </Notice>
           ) : (
-            <ul className="grid gap-2" role="radiogroup" aria-label={t.receiver}>
+            <ul
+              className="grid gap-2"
+              role="radiogroup"
+              aria-label={t.receiver}
+            >
               {orgs.map((o) => (
                 <li key={o.id}>
                   <button

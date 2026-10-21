@@ -10,7 +10,7 @@ import {
   type Page,
 } from "@playwright/test";
 
-import { copy, facilityKinds } from "../lib/consts";
+import { copy } from "../lib/consts";
 
 const run = Date.now().toString(36);
 const password = "e2e-password-123456";
@@ -159,7 +159,7 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
     .getByRole("region", { name: f.mapLabel })
     .click({ position: { x: spot(), y: spot() } });
   await p.getByLabel(f.name).fill(plot);
-  await p.getByText(facilityKinds[0].label, { exact: true }).click();
+  await p.getByText("Farm plot", { exact: true }).click();
   await p.getByLabel(f.licence).fill(`LIC-${run}`);
   await p.getByLabel(f.licenceValid).fill("2030-12-31");
   await p.getByLabel(f.capacity).fill("5000");

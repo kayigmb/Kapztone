@@ -5,7 +5,10 @@ import { test } from "node:test";
 import { fill } from "../lib/format.ts";
 
 test("fill replaces every placeholder", () => {
-  assert.equal(fill("Page {page} of {pages}", { page: 2, pages: 9 }), "Page 2 of 9");
+  assert.equal(
+    fill("Page {page} of {pages}", { page: 2, pages: 9 }),
+    "Page 2 of 9",
+  );
 });
 
 test("fill leaves unknown placeholders visible", () => {

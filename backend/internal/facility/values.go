@@ -2,7 +2,18 @@
 // farm plots, mine sites, washing stations, plants and warehouses.
 package facility
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
+
+// keyPattern is the shape of a facility kind. It mirrors
+// template.ValidKey on purpose (that package imports this one, so it cannot
+// be shared); kinds_test.go asserts the two stay in lockstep.
+var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
+
+const keyRule = "lowercase letters, digits and underscores, starting with a letter"
 
 // Every value in this file is declared here once and referenced everywhere
 // else, including SQL arguments and tests.
@@ -15,7 +26,14 @@ const (
 	KindWarehouse       = "warehouse"
 )
 
-var Kinds = []string{KindFarmPlot, KindMineSite, KindWashingStation, KindProcessingPlant, KindWarehouse}
+// Kind is one curated facility kind. New kinds are added by the platform
+// (template:manage); facilities and templates name kinds, never invent them.
+type Kind struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Sub    string `json:"sub"`
+	Active bool   `json:"active"`
+}
 
 const (
 	// StatusPending: registered, waiting for the platform to approve it. It
@@ -74,13 +92,19 @@ const FormLicenceValidTo = "licence_valid_to"
 
 // URL parameter names.
 const (
-	ParamStatus = "status"
-	ParamKind   = "kind"
-	ParamBBox   = "bbox" // minLon,minLat,maxLon,maxLat
+	ParamStatus  = "status"
+	ParamKind    = "kind"
+	ParamKindKey = "key"  // a facility kind in /facility-kinds/{key}
+	ParamBBox    = "bbox" // minLon,minLat,maxLon,maxLat
 )
 
 // Messages shown to callers.
 const (
+	MsgBadKind       = "kind must be " + keyRule
+	MsgBadKindKey    = "kind key must be " + keyRule
+	MsgBadKindName   = "kind needs a label up to 120 characters"
+	MsgBadKindSub    = "kind description may be up to 500 characters"
+	MsgKindInUse     = "this kind is used by facilities or templates and cannot be deleted"
 	MsgBadGeometry   = "location is not a valid shape (a boundary must not cross itself)"
 	MsgBadBBox       = ParamBBox + " must be minLon,minLat,maxLon,maxLat"
 	MsgLicenceDate   = "licence_valid_to must be a date, e.g. 2027-12-31"
@@ -94,11 +118,20 @@ const (
 // MsgOverlaps names the caller's own facility the new one overlaps.
 func MsgOverlaps(name string) string { return "overlaps " + name }
 
+// MsgUnknownKind names the active kinds a facility or template may use.
+func MsgUnknownKind(active []string) string {
+	return "kind must be one of: " + strings.Join(active, ", ")
+}
+
 // Confirmations the app shows as they are.
 const (
 	MsgApproved     = "Facility approved. It can issue passports now."
 	MsgLicenceSaved = "Licence uploaded."
 	MsgDeleted      = "Facility deleted. Passports already issued there keep their records."
+	MsgKindCreated  = "Facility kind added. Forms offer it now."
+	MsgKindUpdated  = "Facility kind updated."
+	MsgKindDeleted  = "Facility kind deleted."
+	MsgKindTaken    = "a facility kind with this key already exists"
 )
 
 // statusMessage confirms a status change.

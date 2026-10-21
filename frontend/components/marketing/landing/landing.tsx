@@ -7,12 +7,18 @@ import { VerifyStrip } from "./verify-strip";
 
 // Below the fold: each section ships in its own chunk and streams in behind
 // a skeleton (map.tsx sets the precedent with next/dynamic).
-const HowItWorks = dynamic(() => import("./how-it-works").then((m) => m.HowItWorks), {
-  loading: () => <SectionSkeleton />,
-});
-const RoleGuide = dynamic(() => import("./role-guide").then((m) => m.RoleGuide), {
-  loading: () => <SectionSkeleton />,
-});
+const HowItWorks = dynamic(
+  () => import("./how-it-works").then((m) => m.HowItWorks),
+  {
+    loading: () => <SectionSkeleton />,
+  },
+);
+const RoleGuide = dynamic(
+  () => import("./role-guide").then((m) => m.RoleGuide),
+  {
+    loading: () => <SectionSkeleton />,
+  },
+);
 const Showcase = dynamic(() => import("./showcase").then((m) => m.Showcase), {
   loading: () => <SectionSkeleton />,
 });

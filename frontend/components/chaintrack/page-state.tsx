@@ -6,6 +6,7 @@ import { RefreshCw, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 /** A spinner and what is happening, while a page's data loads. */
 export function Loading({
@@ -29,17 +30,30 @@ export function Loading({
   );
 }
 
+/** Loading with the logo */
+export function LoadingWithLogo() {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center">
+      <div className="flex flex-col items-center">
+        <Image
+          src="/brand/chaintrack-mark.svg"
+          alt="Logo"
+          width={80}
+          height={80}
+        />
+        <Loading className="p-4 lg:p-8" />
+      </div>
+    </div>
+  );
+}
+
 /**
  * The one Suspense wrapper for every `page.tsx`: pages read search params on
  * the client inside `<Suspense>`, and this keeps the one fallback (the page
  * frame's padding) in a single place. Never write another `fallback={<Loading`.
  */
 export function PageSuspense({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={<Loading className="p-4 lg:p-8" />}>
-      {children}
-    </Suspense>
-  );
+  return <Suspense fallback={<LoadingWithLogo />}>{children}</Suspense>;
 }
 
 /** A whole-page outcome with no content to show: not found, unreachable, not allowed. */

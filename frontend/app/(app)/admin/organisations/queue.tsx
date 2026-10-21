@@ -10,7 +10,10 @@ import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import {
+  LoadingWithLogo,
+  PageState,
+} from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { OrgStatusChip } from "@/components/chaintrack/status";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -101,7 +104,7 @@ export function Queue() {
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="px-4 py-8 lg:px-8" />;
+  if (!me.ready) return <LoadingWithLogo />;
   if (!allowed)
     return (
       <PageState icon={Lock} title={t.notAllowedTitle}>
@@ -284,32 +287,33 @@ function OrgDetail({ org }: { org: Organisation }) {
                     key={d.id}
                     className="grid gap-2 rounded-md border border-border p-3"
                   >
-                {upload.imageTypes.includes(d.content_type) && (
-                  // Opens full size in a new tab to zoom.
-                  <a
-                    href={documentFileURL(d.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- served with the session cookie; the image optimiser would fetch it without one */}
-                    <img
-                      src={documentFileURL(d.id)}
-                      alt={d.file_name}
-                      className="max-h-56 w-full rounded-sm bg-surface-sunken object-contain"
-                    />
-                  </a>
-                )}
-                <a
-                  href={documentFileURL(d.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex min-h-tap items-center gap-2 text-sm font-semibold text-primary underline"
-                >
-                  <FileText className="size-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 truncate">{d.file_name}</span>
-                </a>
+                    {upload.imageTypes.includes(d.content_type) && (
+                      // Opens full size in a new tab to zoom.
+                      <a
+                        href={documentFileURL(d.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- served with the session cookie; the image optimiser would fetch it without one */}
+                        <img
+                          src={documentFileURL(d.id)}
+                          alt={d.file_name}
+                          className="max-h-56 w-full rounded-sm bg-surface-sunken object-contain"
+                        />
+                      </a>
+                    )}
+                    <a
+                      href={documentFileURL(d.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-tap items-center gap-2 text-sm font-semibold text-primary underline"
+                    >
+                      <FileText className="size-4 shrink-0" aria-hidden />
+                      <span className="min-w-0 truncate">{d.file_name}</span>
+                    </a>
                     <p className="text-small text-ink-muted">
-                      {copy.documentTypeLabel(d.type)} · {formatDate(d.created_at)}
+                      {copy.documentTypeLabel(d.type)} ·{" "}
+                      {formatDate(d.created_at)}
                     </p>
                   </li>
                 ))}

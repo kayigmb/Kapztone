@@ -2,7 +2,7 @@
 // Pure: `node --test` runs it.
 import { z } from "zod";
 
-import { copy, facilityKinds, limits, templateEvents } from "../consts.ts";
+import { copy, limits, templateEvents } from "../consts.ts";
 
 const v = copy.validation;
 
@@ -32,29 +32,26 @@ export const stageFormSchema = z.object({
 
 export type StageForm = z.infer<typeof stageFormSchema>;
 
-export const templateFormSchema = z
-  .object({
-    commodity: z
-      .string()
-      .trim()
-      .min(1, v.commodity)
-      .max(limits.name, v.tooLong(limits.name)),
-    name: z
-      .string()
-      .trim()
-      .min(1, v.templateName)
-      .max(limits.name, v.tooLong(limits.name)),
-    unit: z.string().trim().min(1, v.unit).max(16, v.tooLong(16)),
-    originFacilityKind: z.string().trim(),
-    capacityRule: capacityRuleSchema.nullable(),
-    stages: z.array(stageFormSchema).min(1, v.stages),
-  })
-  .refine(
-    (f) =>
-      f.originFacilityKind === "" ||
-      facilityKinds.some((k) => k.value === f.originFacilityKind),
-    { path: ["originFacilityKind"], message: v.facilityKind },
-  );
+export const templateFormSchema = z.object({
+  commodity: z
+    .string()
+    .trim()
+    .min(1, v.commodity)
+    .max(limits.name, v.tooLong(limits.name)),
+  name: z
+    .string()
+    .trim()
+    .min(1, v.templateName)
+    .max(limits.name, v.tooLong(limits.name)),
+  unit: z.string().trim().min(1, v.unit).max(16, v.tooLong(16)),
+  originFacilityKind: z
+    .string()
+    .trim()
+    .min(1, v.facilityKind)
+    .regex(/^[a-z][a-z0-9_]{0,49}$/, v.facilityKind),
+  capacityRule: capacityRuleSchema.nullable(),
+  stages: z.array(stageFormSchema).min(1, v.stages),
+});
 
 export type TemplateForm = z.infer<typeof templateFormSchema>;
 /** What the form holds before zod coerces it (numbers typed as text). */

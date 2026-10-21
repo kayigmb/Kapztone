@@ -21,13 +21,13 @@ For visual design, load the `chaintrack-ui` skill before touching any page, comp
 
 ## Commands
 
-| Command                          | What it does                                                                                                                                                          |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make web` (repo root)           | Dev server on :3000 with the repo `.env` (needs `API_URL`)                                                                                                            |
-| `pnpm lint`                      | ESLint, must be clean                                                                                                                                                 |
-| `pnpm build`                     | Production build, must pass                                                                                                                                           |
-| `node --test "__tests__/**/*.test.ts"` | Unit tests of the pure helpers (`__tests__/`, mirrored names; schema tests prefixed `schemas-`)                              |
-| `make e2e` (repo root)           | Playwright happy path (`e2e/coffee.spec.ts`) against the running API and web app; needs `SUPERADMIN_*` in `.env`. First time: `pnpm exec playwright install chromium` |
+| Command                                | What it does                                                                                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make web` (repo root)                 | Dev server on :3000 with the repo `.env` (needs `API_URL`)                                                                                                            |
+| `pnpm lint`                            | ESLint, must be clean                                                                                                                                                 |
+| `pnpm build`                           | Production build, must pass                                                                                                                                           |
+| `node --test "__tests__/**/*.test.ts"` | Unit tests of the pure helpers (`__tests__/`, mirrored names; schema tests prefixed `schemas-`)                                                                       |
+| `make e2e` (repo root)                 | Playwright happy path (`e2e/coffee.spec.ts`) against the running API and web app; needs `SUPERADMIN_*` in `.env`. First time: `pnpm exec playwright install chromium` |
 
 The browser never calls the API directly. Every call goes to `/api/...`, and `app/api/[...path]/route.ts` passes it to `API_URL` with the session cookie, `Origin`, `X-Forwarded-Host/For` and `X-Signing-PIN`. That's what keeps the session cookie on this host only.
 
@@ -41,13 +41,13 @@ The browser never calls the API directly. Every call goes to `/api/...`, and `ap
 | `app/providers.tsx`                                         | TanStack Query, next-themes (`data-theme`), tooltips, toaster                                                  |
 | `components/ui/`                                            | shadcn/ui primitives (Base UI). Owned here, restyled to ChainTrack                                             |
 | `components/chaintrack/`                                    | Domain components: StatTile, CapacityMeter, PassportCard, JourneyTimeline, VerdictBadge, AppShell, ScanButton… |
-| `components/chaintrack/data-widget.tsx`                     | `DataWidget`: the one pending / error / data branch for every section (`query` + render fn)                   |
-| `components/chaintrack/field-note.tsx`                      | `FieldNote`: the one error-or-help line under every field; used inside `TextField`                            |
-| `components/chaintrack/page-state.tsx`                      | `Loading`, `PageState`, `PageSuspense`: the one Suspense wrapper for every `page.tsx`                          |
+| `components/chaintrack/data-widget.tsx`                     | `DataWidget`: the one pending / error / data branch for every section (`query` + render fn)                    |
+| `components/chaintrack/field-note.tsx`                      | `FieldNote`: the one error-or-help line under every field; used inside `TextField`                             |
+| `components/chaintrack/page-state.tsx`                      | `Loading`, `LoadingWithLogo`, `PageState`, `PageSuspense`: whole-page wait → `LoadingWithLogo`; section → `DataWidget` |
 | `lib/api.ts`                                                | Every API call (`endpoints.*`), its zod schema, `ApiError`, `problemOf`, `useMe`, `useMeGuard`                 |
-| `lib/consts.ts`                                             | Every status, kind, permission, route, API path, query key, nav item, dashboard layout; copy re-exported      |
-| `lib/copy/*.json`                                           | All UI copy (second-language-ready JSON; `{placeholders}` filled by `fill()` in `lib/format.ts`)              |
-| `lib/format.ts`                                             | `fill()` for copy templates, `formatDate`; pure, with `format.test.ts`                                        |
+| `lib/consts.ts`                                             | Every status, kind, permission, route, API path, query key, nav item, dashboard layout; copy re-exported       |
+| `lib/copy/*.json`                                           | All UI copy (second-language-ready JSON; `{placeholders}` filled by `fill()` in `lib/format.ts`)               |
+| `lib/format.ts`                                             | `fill()` for copy templates, `formatDate`; pure, with `format.test.ts`                                         |
 | `lib/schemas/*.ts`                                          | Form schemas (zod), mirroring the backend's `Validate()`                                                       |
 | `lib/dashboard.ts`, `lib/address.ts`, `lib/verification.ts` | Pure helpers, each with a test in `__tests__/` (`schemas-` prefix for `lib/schemas/`)                          |
 

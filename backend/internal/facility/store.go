@@ -13,15 +13,19 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
+	"github.com/kayigmb/chaintrack/backend/internal/dbx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 )
 
 var (
 	ErrNotFound    = errors.New("not found")
+	ErrKindTaken   = errors.New("facility kind already exists")
 	ErrBadGeometry = errors.New("invalid geometry")
 	ErrNotPending  = errors.New("not pending approval")
 	ErrPending     = errors.New("pending approval")
 	ErrNoLicence   = errors.New("no licence document")
+	ErrUnknownKind = errors.New("unknown facility kind")
+	ErrKindInUse   = errors.New("facility kind is in use")
 )
 
 // OverlapError is a new facility's location touching a live one's.
@@ -144,6 +148,15 @@ func (s Store) Create(ctx context.Context, orgID string, in Input) (Facility, er
 
 	// ponytail: one lock for every registration; per-area locks if registrations ever queue up.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, createLock); err != nil {
+		return Facility{}, err
+	}
+	// Curated kinds only: a kind deactivated after this check still leaves a
+	// valid facility behind, which is fine — nothing references the kind list.
+	var kindKey string
+	if err := tx.QueryRow(ctx,
+		`SELECT key FROM facility_kinds WHERE key = $1 AND active AND NOT is_deleted FOR SHARE`, in.Kind).Scan(&kindKey); errors.Is(err, pgx.ErrNoRows) {
+		return Facility{}, ErrUnknownKind
+	} else if err != nil {
 		return Facility{}, err
 	}
 	var other, otherName, otherOrg string
@@ -344,4 +357,129 @@ func (s Store) Delete(ctx context.Context, id, gate string) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+func scanKind(row pgx.CollectableRow) (Kind, error) {
+	var k Kind
+	err := row.Scan(&k.Key, &k.Label, &k.Sub, &k.Active)
+	return k, err
+}
+
+// Kinds lists active facility kinds for forms and filters.
+func (s Store) Kinds(ctx context.Context) ([]Kind, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT key, label, sub, active FROM facility_kinds WHERE active AND NOT is_deleted ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, scanKind)
+	if out == nil {
+		out = []Kind{}
+	}
+	return out, err
+}
+
+// AllKinds includes deactivated kinds for the platform's management view.
+func (s Store) AllKinds(ctx context.Context) ([]Kind, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT key, label, sub, active FROM facility_kinds WHERE NOT is_deleted ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, scanKind)
+	if out == nil {
+		out = []Kind{}
+	}
+	return out, err
+}
+
+// ActiveKindKeys is the membership list facility and template validation
+// checks new records against.
+func (s Store) ActiveKindKeys(ctx context.Context) ([]string, error) {
+	kinds, err := s.Kinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		if k.Active {
+			out = append(out, k.Key)
+		}
+	}
+	return out, nil
+}
+
+// AllKindKeys includes inactive kinds so existing facilities stay filterable.
+func (s Store) AllKindKeys(ctx context.Context) ([]string, error) {
+	kinds, err := s.AllKinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		out = append(out, k.Key)
+	}
+	return out, nil
+}
+
+// CreateKind adds a facility kind. Only the platform curates kinds.
+func (s Store) CreateKind(ctx context.Context, in Kind) (Kind, error) {
+	var k Kind
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO facility_kinds AS k (key, label, sub, active)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING k.key, k.label, k.sub, k.active`,
+		in.Key, in.Label, in.Sub, in.Active).Scan(&k.Key, &k.Label, &k.Sub, &k.Active)
+	if constraint, ok := dbx.UniqueViolation(err); ok && constraint == "facility_kinds_key_key" {
+		return Kind{}, ErrKindTaken
+	}
+	return k, err
+}
+
+// UpdateKind changes a kind's label, description or availability. Deactivating
+// hides it from forms; what already uses it keeps working.
+func (s Store) UpdateKind(ctx context.Context, key string, in Kind) (Kind, error) {
+	var k Kind
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE facility_kinds AS k SET label = $2, sub = $3, active = $4, updated_at = now()
+		 WHERE k.key = $1 AND NOT k.is_deleted
+		 RETURNING k.key, k.label, k.sub, k.active`,
+		key, in.Label, in.Sub, in.Active).Scan(&k.Key, &k.Label, &k.Sub, &k.Active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Kind{}, ErrNotFound
+	}
+	return k, err
+}
+
+// DeleteKind removes a kind nobody uses. Facilities and templates keep
+// referencing their kinds, so an in-use kind is refused, not cascade-deleted.
+func (s Store) DeleteKind(ctx context.Context, key string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var found string
+	err = tx.QueryRow(ctx, `SELECT key FROM facility_kinds WHERE key = $1 AND NOT is_deleted FOR UPDATE`, key).Scan(&found)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	var used bool
+	err = tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM facilities WHERE kind = $1 AND NOT is_deleted)
+		     OR EXISTS (SELECT 1 FROM commodity_templates WHERE origin_facility_kind = $1 AND NOT is_deleted)
+	     	     OR EXISTS (SELECT 1 FROM commodity_templates WHERE draft->>'originFacilityKind' = $1 AND NOT is_deleted)`, key).Scan(&used)
+	if err != nil {
+		return err
+	}
+	if used {
+		return ErrKindInUse
+	}
+	if _, err := tx.Exec(ctx, `UPDATE facility_kinds SET is_deleted = true, active = false WHERE key = $1`, key); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

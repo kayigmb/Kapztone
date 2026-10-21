@@ -5,7 +5,7 @@ import { Check, Clock, WifiOff } from "lucide-react";
 
 import { SignOutButton } from "@/components/chaintrack/sign-out-button";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
 import { Stepper } from "@/components/chaintrack/stepper";
 import { endpoints, problemOf, useMeGuard } from "@/lib/api";
@@ -56,7 +56,7 @@ export function Onboarding() {
     );
   }
   if (!org.data || !docs.data)
-    return <Loading className="mx-auto max-w-xl px-4 py-8" />;
+    return <LoadingWithLogo />;
 
   const o = org.data;
   const documents = docs.data;

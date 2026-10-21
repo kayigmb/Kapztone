@@ -1,4 +1,11 @@
-import { Check, CircleCheck, MapPin, Package, Route, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  CircleCheck,
+  MapPin,
+  Package,
+  Route,
+  ShieldCheck,
+} from "lucide-react";
 import Image from "next/image";
 import { StatusChip } from "@/components/chaintrack/status";
 import { marketing as m } from "@/lib/consts";
@@ -88,4 +95,3 @@ export function HeroVisual() {
     </div>
   );
 }
-

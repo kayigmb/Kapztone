@@ -144,7 +144,12 @@ export function SignInForm({ email }: { email: string }) {
         />
         {t.remember}
       </label>
-      <Button type="submit" block loading={signIn.isPending} loadingText={t.submitting}>
+      <Button
+        type="submit"
+        block
+        loading={signIn.isPending}
+        loadingText={t.submitting}
+      >
         {t.submit}
       </Button>
     </form>

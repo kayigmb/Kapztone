@@ -240,14 +240,19 @@ export function IssueCertificate() {
                   if (f) setValue("file", f, { shouldValidate: true });
                 }}
               />
-              <FieldNote error={errors.file?.message ?? (errors.file ? t.documentMissing : undefined)} />
+              <FieldNote
+                error={
+                  errors.file?.message ??
+                  (errors.file ? t.documentMissing : undefined)
+                }
+              />
             </label>
           </form>
         </section>
 
         <aside className="grid gap-4">
           <section className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card">
-            <span className="text-xs font-bold tracking-[0.1em] text-ink-muted uppercase">
+            <span className="text-xs font-bold tracking-widest text-ink-muted uppercase">
               {t.preview}
             </span>
             <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3">

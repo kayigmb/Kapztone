@@ -1,12 +1,14 @@
 package facility
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -73,7 +75,20 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.Store.Create(r.Context(), o.ID, in)
+	if errors.Is(err, ErrUnknownKind) {
+		httpx.Error(w, http.StatusBadRequest, h.unknownKind(r.Context()))
+		return
+	}
 	respond(w, http.StatusCreated, MsgRegistered(in.Name), "create facility", f, err)
+}
+
+// unknownKind names the active kinds, for a facility whose kind is retired or invented.
+func (h *Handlers) unknownKind(ctx context.Context) string {
+	kinds, err := h.Store.ActiveKindKeys(ctx)
+	if err != nil || len(kinds) == 0 {
+		return MsgBadKind
+	}
+	return MsgUnknownKind(kinds)
 }
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +106,16 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := r.URL.Query().Get(ParamKind)
-	if kind != "" && !slices.Contains(Kinds, kind) {
-		listq.BadParam(w, ParamKind, Kinds)
-		return
+	if kind != "" {
+		kinds, err := h.Store.AllKindKeys(r.Context())
+		if err != nil {
+			httpx.ServerError(w, "list kinds", err)
+			return
+		}
+		if !slices.Contains(kinds, kind) {
+			listq.BadParam(w, ParamKind, kinds)
+			return
+		}
 	}
 	bbox, ok := ParseBBox(r.URL.Query().Get(ParamBBox))
 	if !ok {
@@ -210,4 +232,111 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, http.StatusOK, MsgDeleted, nil)
+}
+
+// KindInput is what the platform sends to create or change a facility kind.
+type KindInput struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Sub    string `json:"sub"`
+	Active bool   `json:"active"`
+}
+
+func (in *KindInput) normalise() {
+	in.Key = strings.TrimSpace(strings.ToLower(in.Key))
+	in.Label = strings.TrimSpace(in.Label)
+	in.Sub = strings.TrimSpace(in.Sub)
+}
+
+// Kinds lists active facility kinds for forms and filters.
+func (h *Handlers) Kinds(w http.ResponseWriter, r *http.Request) {
+	kinds, err := h.Store.Kinds(r.Context())
+	if err != nil {
+		httpx.ServerError(w, "list kinds", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", map[string]any{"data": kinds})
+}
+
+// AllKinds includes deactivated kinds for the platform management screen.
+func (h *Handlers) AllKinds(w http.ResponseWriter, r *http.Request) {
+	kinds, err := h.Store.AllKinds(r.Context())
+	if err != nil {
+		httpx.ServerError(w, "list all kinds", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", map[string]any{"data": kinds})
+}
+
+// CreateKind adds a facility kind. Only the platform curates kinds.
+func (h *Handlers) CreateKind(w http.ResponseWriter, r *http.Request) {
+	var in KindInput
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	in.normalise()
+	if msg := ValidateKind(in.Key, in.Label, in.Sub, true); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
+		return
+	}
+	k, err := h.Store.CreateKind(r.Context(), Kind{Key: in.Key, Label: in.Label, Sub: in.Sub, Active: true})
+	if errors.Is(err, ErrKindTaken) {
+		httpx.Error(w, http.StatusConflict, MsgKindTaken)
+		return
+	}
+	if err != nil {
+		httpx.ServerError(w, "create kind", err)
+		return
+	}
+	httpx.OK(w, http.StatusCreated, MsgKindCreated, k)
+}
+
+// UpdateKind changes a kind's label, description or availability.
+// Deactivating hides it from forms; what already uses it keeps working.
+func (h *Handlers) UpdateKind(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, ParamKindKey)
+	if !keyPattern.MatchString(key) {
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+		return
+	}
+	var in KindInput
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	in.normalise()
+	if msg := ValidateKind("", in.Label, in.Sub, false); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
+		return
+	}
+	k, err := h.Store.UpdateKind(r.Context(), key, Kind{Label: in.Label, Sub: in.Sub, Active: in.Active})
+	if errors.Is(err, ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+		return
+	}
+	if err != nil {
+		httpx.ServerError(w, "update kind", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, MsgKindUpdated, k)
+}
+
+// DeleteKind removes a kind nobody uses. Facilities and templates keep
+// referencing their kinds, so an in-use kind is refused, not cascade-deleted.
+func (h *Handlers) DeleteKind(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, ParamKindKey)
+	if !keyPattern.MatchString(key) {
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+		return
+	}
+	err := h.Store.DeleteKind(r.Context(), key)
+	switch {
+	case errors.Is(err, ErrKindInUse):
+		httpx.Error(w, http.StatusConflict, MsgKindInUse)
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+	case err != nil:
+		httpx.ServerError(w, "delete kind", err)
+	default:
+		httpx.OK(w, http.StatusOK, MsgKindDeleted, nil)
+	}
 }

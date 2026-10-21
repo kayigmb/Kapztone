@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { copy, limits } from "../consts.ts";
+import { strongPasswordSchema } from "./password.ts";
 
 const v = copy.validation;
 
@@ -25,10 +26,7 @@ export const forgotSchema = z.object({
 /** A new password from a reset link: the API's length rule, typed twice. */
 export const resetSchema = z
   .object({
-    new: z
-      .string()
-      .min(limits.password.min, v.passwordShort(limits.password.min))
-      .max(limits.password.max, v.tooLong(limits.password.max)),
+    new: strongPasswordSchema,
     confirm: z.string(),
   })
   .refine((p) => p.new === p.confirm, {

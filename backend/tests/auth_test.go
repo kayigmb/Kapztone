@@ -41,6 +41,31 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestPasswordFormatProblem(t *testing.T) {
+	cases := []struct {
+		password string
+		want     string
+	}{
+		{"short1!", auth.MsgPasswordLength},
+		{"lowercase1!", auth.MsgPasswordComplexity},
+		{"UPPERCASE1!", auth.MsgPasswordComplexity},
+		{"Mixedcase!!", auth.MsgPasswordComplexity},
+		{"Mixedcase1", auth.MsgPasswordComplexity},
+		{"Strong-pass1!", ""},
+		{"Strong-pass１!", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.password, func(t *testing.T) {
+			if got := auth.PasswordFormatProblem(tc.password); got != tc.want {
+				t.Fatalf("PasswordFormatProblem() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	if got := auth.PasswordFormatProblem(strings.Repeat("A1!a", 19)); got != auth.MsgPasswordLength {
+		t.Fatalf("password over bcrypt's byte limit = %q", got)
+	}
+}
+
 func TestToken(t *testing.T) {
 	a, _ := newAuth(t)
 	now := time.Now()
@@ -272,7 +297,7 @@ func TestEveryRouteIsGated(t *testing.T) {
 	token, _ := a.IssueToken(fakeUserID, time.Now())
 	h := fakeRouter(a)
 
-	public := []string{"GET /healthz", "POST /auth/login", "POST /orgs", "GET /verify/{id}", "POST /auth/logout",
+	public := []string{"GET /healthz", "POST /auth/login", "GET /auth/email/availability", "POST /orgs", "GET /verify/{id}", "POST /auth/logout",
 		"POST /invites/{token}/accept", "POST /auth/password/forgot", "POST /auth/password/reset", "POST /auth/lock", "POST /auth/handoff/accept"}
 	signedIn := []string{"GET /me", "POST /auth/2fa/setup", "POST /auth/2fa/enable", "POST /auth/2fa/disable",
 		"POST /auth/2fa/recovery", "POST /auth/pin", "GET /notifications", "POST /notifications/{id}/read",

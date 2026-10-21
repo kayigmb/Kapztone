@@ -96,9 +96,12 @@ func TestPasswordResetAndLock(t *testing.T) {
 	reset := func(tok, pw string) int {
 		return do(e.h, http.MethodPost, "/auth/password/reset", "", `{"token":"`+tok+`","new":"`+pw+`"}`).Code
 	}
-	const newPassword = "harbour-lantern-41"
+	const newPassword = "Harbour-lantern-41!"
 	if got := reset(token, "short"); got != http.StatusBadRequest {
 		t.Fatalf("short password = %d", got)
+	}
+	if got := reset(token, "lowercase-password1"); got != http.StatusBadRequest {
+		t.Fatalf("weak password = %d", got)
 	}
 	if got := reset(token, testPassword); got != http.StatusBadRequest {
 		t.Fatalf("current password reused = %d", got)
@@ -110,7 +113,7 @@ func TestPasswordResetAndLock(t *testing.T) {
 	if got := reset(token, newPassword); got != http.StatusOK {
 		t.Fatalf("reset = %d", got)
 	}
-	if got := reset(token, "another-good-pass"); got != http.StatusNotFound {
+	if got := reset(token, "Another-good-pass1!"); got != http.StatusNotFound {
 		t.Fatalf("link used twice = %d", got)
 	}
 	if got := meCode(e, before); got != http.StatusUnauthorized {
@@ -126,7 +129,7 @@ func TestPasswordResetAndLock(t *testing.T) {
 	if err := e.a.Accounts.AddLink(ctx, userID, auth.LinkReset, sha256Hex(expired), time.Now().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if got := reset(expired, "yet-another-pass"); got != http.StatusNotFound {
+	if got := reset(expired, "Yet-another-pass1!"); got != http.StatusNotFound {
 		t.Fatalf("expired link = %d", got)
 	}
 
@@ -153,7 +156,7 @@ func TestPasswordChangeHistoryAndSessions(t *testing.T) {
 	change := func(tok, cur, next string) *httptest.ResponseRecorder {
 		return do(e.h, http.MethodPost, "/auth/password", tok, `{"current":"`+cur+`","new":"`+next+`"}`)
 	}
-	rec := change(first, testPassword, "harbour-lantern-41")
+	rec := change(first, testPassword, "Harbour-lantern-41!")
 	want(t, "change", rec, http.StatusOK)
 	fresh := decodeTo[struct{ Token string }](t, rec).Token
 	box.next(t, auth.MailChangedSubject)
@@ -164,7 +167,7 @@ func TestPasswordChangeHistoryAndSessions(t *testing.T) {
 		t.Fatal("the session that changed the password was signed out")
 	}
 	// The last passwords can't come back.
-	want(t, "back to the old password", change(fresh, "harbour-lantern-41", testPassword), http.StatusBadRequest)
+	want(t, "back to the old password", change(fresh, "Harbour-lantern-41!", testPassword), http.StatusBadRequest)
 
 	// Sign out other devices: the caller stays signed in with a new token.
 	other := decodeTo[struct{ Token string }](t,

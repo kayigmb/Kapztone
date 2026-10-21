@@ -72,6 +72,8 @@ func (h *Handlers) fail(w http.ResponseWriter, what string, err error) {
 		httpx.Error(w, http.StatusNotFound, MsgInviteInvalid)
 	case errors.Is(err, ErrNameNeeded):
 		httpx.Error(w, http.StatusBadRequest, MsgName)
+	case errors.Is(err, ErrPasswordPolicy):
+		httpx.Error(w, http.StatusBadRequest, auth.MsgPasswordComplexity)
 	case errors.Is(err, ErrBadPassword):
 		httpx.Error(w, http.StatusForbidden, auth.MsgBadCredentials)
 	default:

@@ -33,12 +33,7 @@
     "passportLabel": "Digital product passport",
     "passportName": "Example coffee lot",
     "passportCode": "EXAMPLE-2026-0001",
-    "stops": [
-      "Origin",
-      "Process",
-      "Export",
-      "Buyer"
-    ],
+    "stops": ["Origin", "Process", "Export", "Buyer"],
     "verified": "Verified",
     "checks": "4 of 4 checks passed",
     "signedTitle": "Custody accepted",
@@ -46,13 +41,7 @@
   },
   "trustStrip": {
     "label": "Built for trusted trade in",
-    "items": [
-      "Coffee",
-      "Minerals",
-      "Medicines",
-      "Agriculture",
-      "Logistics"
-    ]
+    "items": ["Coffee", "Minerals", "Medicines", "Agriculture", "Logistics"]
   },
   "verify": {
     "title": "Have a ChainTrack label?",
@@ -124,10 +113,7 @@
         "title": "Move goods with shared accountability",
         "body": "Scan before collection, record the quantity and condition, then ask the receiver to weigh, inspect and countersign.",
         "steps": [
-          [
-            "Scan the label",
-            "Confirm the lot before it enters your custody."
-          ],
+          ["Scan the label", "Confirm the lot before it enters your custody."],
           [
             "Record the handover",
             "Add the quantity, place and evidence photos."
@@ -142,28 +128,16 @@
         "title": "Attach evidence buyers can trust",
         "body": "Find the right lot or facility, choose a certificate type you're accredited for and issue it with its validity dates.",
         "steps": [
-          [
-            "Choose the subject",
-            "Find the exact lot or licensed facility."
-          ],
-          [
-            "Upload evidence",
-            "Add the validity dates and the signed file."
-          ],
-          [
-            "Issue or revoke",
-            "Publish valid evidence, or revoke it for good."
-          ]
+          ["Choose the subject", "Find the exact lot or licensed facility."],
+          ["Upload evidence", "Add the validity dates and the signed file."],
+          ["Issue or revoke", "Publish valid evidence, or revoke it for good."]
         ]
       },
       "regulator": {
         "title": "Investigate risk across the full journey",
         "body": "Work through open flags, raised by businesses or by the rules, compare the signed records and see every lot made from a flagged one.",
         "steps": [
-          [
-            "Review the queue",
-            "Start with open flags and who raised them."
-          ],
+          ["Review the queue", "Start with open flags and who raised them."],
           [
             "Inspect evidence",
             "Compare quantities, documents and affected lots."

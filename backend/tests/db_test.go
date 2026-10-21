@@ -467,8 +467,23 @@ func TestAccessAgainstDatabase(t *testing.T) {
 
 func TestKYBFlow(t *testing.T) {
 	e, _, _ := newEnv(t, true)
+	availability := func(email string) *httptest.ResponseRecorder {
+		return do(e.h, http.MethodGet, "/auth/email/availability?email="+email, "", "")
+	}
+	available := decodeTo[struct {
+		Available bool `json:"available"`
+	}](t, availability(e.email("fresh")))
+	if !available.Available {
+		t.Fatal("unused email reported as taken")
+	}
 
 	acme := e.register(tAcme, org.KindProducer)
+	used := decodeTo[struct {
+		Available bool `json:"available"`
+	}](t, availability(e.email(tAcme)))
+	if used.Available {
+		t.Fatal("registered email reported as available")
+	}
 	rival := e.register(tRival, org.KindExporter)
 	if acme.Status != org.StatusPending {
 		t.Fatalf("new organisation status = %s", acme.Status)

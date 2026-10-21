@@ -3,7 +3,7 @@
 import { WifiOff } from "lucide-react";
 
 import { AppShell } from "@/components/chaintrack/app-shell";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { problemOf, useMeGuard } from "@/lib/api";
 import { copy, orgStatus, routes } from "@/lib/consts";
 
@@ -30,6 +30,6 @@ export default function Layout({ children }: LayoutProps<"/">) {
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="px-4 py-8 lg:p-8" />;
+  if (!me.ready) return <LoadingWithLogo />;
   return <AppShell me={me.data!}>{children}</AppShell>;
 }

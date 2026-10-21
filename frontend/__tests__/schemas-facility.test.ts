@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { facilityFormSchema, type FacilityForm } from "../lib/schemas/facility.ts";
+import {
+  facilityFormSchema,
+  type FacilityForm,
+} from "../lib/schemas/facility.ts";
 
 const nextYear = `${new Date().getFullYear() + 1}-12-31`;
 const good: FacilityForm = {
@@ -38,7 +41,7 @@ test("registration: each backend rule has a refused case, on the right field", (
   };
   assert.deepEqual(bad({ name: "  " }), ["name"]);
   assert.deepEqual(bad({ name: "a".repeat(201) }), ["name"]);
-  assert.deepEqual(bad({ kind: "mine" }), ["kind"]);
+  assert.deepEqual(bad({ kind: "has space" }), ["kind"]);
   assert.deepEqual(bad({ licence_number: "" }), ["licence_number"]);
   assert.deepEqual(bad({ licence_valid_to: "2000-01-01" }), [
     "licence_valid_to",

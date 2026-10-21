@@ -1,5 +1,17 @@
 import type { LucideIcon } from "lucide-react";
-import { MapPin, Route, Layers, ShieldCheck, Link2, FileText, Clock, Check, CircleCheck, TriangleAlert, OctagonX } from "lucide-react";
+import {
+  MapPin,
+  Route,
+  Layers,
+  ShieldCheck,
+  Link2,
+  FileText,
+  Clock,
+  Check,
+  CircleCheck,
+  TriangleAlert,
+  OctagonX,
+} from "lucide-react";
 import type { MarketingRole } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 

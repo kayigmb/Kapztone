@@ -5,11 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Lock, Plus, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +24,6 @@ import { endpoints, problemOf, useMeGuard, type Template } from "@/lib/api";
 import {
   capacityRuleTypes,
   copy,
-  facilityKinds,
   permissions,
   queryKeys,
   routes,
@@ -37,14 +36,9 @@ import {
   type TemplateForm,
   type TemplateFormInput,
 } from "@/lib/schemas/template";
-import { formatDate } from "@/lib/verification";
+import { formatDate, humanize } from "@/lib/verification";
 
 const t = screenCopy.templateDetail;
-
-const originOptions = [
-  { value: "", label: t.any },
-  ...facilityKinds.map((k) => ({ value: k.value, label: k.label })),
-];
 
 const ruleOptions = [
   { value: "none", label: t.none },
@@ -68,6 +62,11 @@ export function TemplateDetail({
     queryFn: () => endpoints.template(id),
     enabled: allowed,
   });
+  const kinds = useQuery({
+    queryKey: queryKeys.facilityKinds,
+    queryFn: endpoints.facilityKinds,
+    enabled: allowed,
+  });
 
   if (me.isError) {
     return (
@@ -81,7 +80,7 @@ export function TemplateDetail({
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="px-4 py-8 lg:px-8" />;
+  if (!me.ready) return <LoadingWithLogo />;
   if (!allowed) {
     return (
       <PageState icon={Lock} title={t.notAllowedTitle}>
@@ -95,12 +94,24 @@ export function TemplateDetail({
       className="px-4 py-8 lg:px-8"
       page={{ icon: WifiOff, title: copy.errors.loadTitle }}
     >
-      {(data) => <EditForm tpl={data} id={id} />}
+      {(data) => (
+        <DataWidget query={kinds}>
+          {(activeKinds) => <EditForm tpl={data} id={id} kinds={activeKinds} />}
+        </DataWidget>
+      )}
     </DataWidget>
   );
 }
 
-function EditForm({ tpl, id }: { tpl: Template; id: string }) {
+function EditForm({
+  tpl,
+  id,
+  kinds,
+}: {
+  tpl: Template;
+  id: string;
+  kinds: { key: string; label: string; sub: string; active: boolean }[];
+}) {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const form = useForm<TemplateFormInput, unknown, TemplateForm>({
@@ -123,12 +134,24 @@ function EditForm({ tpl, id }: { tpl: Template; id: string }) {
     control,
     register,
     handleSubmit,
-    watch,
     setValue,
     formState: { errors },
   } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "stages" });
-  const ruleType = watch("capacityRule")?.type ?? "none";
+  const stageValues = useWatch({ control, name: "stages" });
+  const capacityRule = useWatch({ control, name: "capacityRule" });
+  const ruleType = capacityRule?.type ?? "none";
+  const originKinds = kinds.some((kind) => kind.key === tpl.originFacilityKind)
+    ? kinds
+    : [
+        ...kinds,
+        {
+          key: tpl.originFacilityKind,
+          label: `${humanize(tpl.originFacilityKind ?? "")} · ${screenCopy.templates.kindInactiveLabel}`,
+          sub: "",
+          active: false,
+        },
+      ];
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
@@ -177,7 +200,10 @@ function EditForm({ tpl, id }: { tpl: Template; id: string }) {
               name="originFacilityKind"
               render={({ field }) => (
                 <Select
-                  items={originOptions}
+                  items={originKinds.map((kind) => ({
+                    value: kind.key,
+                    label: kind.label,
+                  }))}
                   value={field.value}
                   onValueChange={(v) => field.onChange(v)}
                 >
@@ -185,9 +211,13 @@ function EditForm({ tpl, id }: { tpl: Template; id: string }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {originOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
+                    {originKinds.map((kind) => (
+                      <SelectItem
+                        key={kind.key}
+                        value={kind.key}
+                        disabled={!kind.active}
+                      >
+                        {kind.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -281,14 +311,13 @@ function EditForm({ tpl, id }: { tpl: Template; id: string }) {
                 <span className="text-sm font-semibold">{t.events}</span>
                 <div className="flex flex-wrap gap-3">
                   {templateEvents.map((ev) => {
-                    const checked =
-                      watch(`stages.${i}.events`)?.includes(ev.value) ?? false;
+                    const current = stageValues?.[i]?.events ?? [];
+                    const checked = current.includes(ev.value);
                     return (
                       <label key={ev.value} className="flex items-center gap-2">
                         <Checkbox
                           checked={checked}
                           onCheckedChange={(c) => {
-                            const current = watch(`stages.${i}.events`) ?? [];
                             if (c)
                               setValue(`stages.${i}.events`, [
                                 ...current,

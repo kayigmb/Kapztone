@@ -1,14 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, Plus, WifiOff, Eye } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
+import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FacilityKindsManager } from "@/components/chaintrack/facility-kinds-manager";
 import {
   ListTable,
   RowAction,
@@ -19,10 +21,11 @@ import {
 import { ListBar } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -40,7 +43,6 @@ import {
 import {
   capacityRuleTypes,
   copy,
-  facilityKinds,
   permissions,
   queryKeys,
   routes,
@@ -59,11 +61,6 @@ import { formatDate, humanize } from "@/lib/verification";
 
 const t = screenCopy.templates;
 
-const originOptions = [
-  { value: "", label: t.any },
-  ...facilityKinds.map((k) => ({ value: k.value, label: k.label })),
-];
-
 const ruleOptions = [
   { value: "none", label: t.none },
   { value: "perArea", label: t.perArea },
@@ -74,6 +71,7 @@ export function Templates() {
   const router = useRouter();
   const client = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [tab, setTab] = useState("templates");
 
   const me = useMeGuard((me) => (me ? undefined : routes.signin));
   const allowed =
@@ -87,6 +85,11 @@ export function Templates() {
     endpoints.templatesPage,
     list.query(),
   );
+  const kinds = useQuery({
+    queryKey: queryKeys.facilityKinds,
+    queryFn: endpoints.facilityKinds,
+    enabled: canCreate,
+  });
 
   const create = useMutation({
     mutationFn: (body: TemplateForm) =>
@@ -110,7 +113,7 @@ export function Templates() {
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="px-4 py-8 lg:px-8" />;
+  if (!me.ready) return <LoadingWithLogo />;
   if (!allowed) {
     return (
       <PageState icon={Lock} title={t.notAllowedTitle}>
@@ -134,27 +137,49 @@ export function Templates() {
         }
       />
 
-      {showForm && (
-        <NewTemplateForm
-          onCancel={() => setShowForm(false)}
-          onSubmit={(v) => create.mutate(v)}
-          busy={create.isPending}
-          error={create.isError ? problemOf(create.error) : undefined}
-        />
-      )}
+      <Tabs value={tab} onValueChange={(v) => setTab(v)}>
+        <TabsList>
+          <TabsTrigger value="templates">{t.tabTemplates}</TabsTrigger>
+          {canCreate && (
+            <TabsTrigger value="facility-kinds">
+              {t.tabFacilityKinds}
+            </TabsTrigger>
+          )}
+        </TabsList>
+        <TabsContent value="templates" className="grid gap-6">
+          {showForm && (
+            <DataWidget query={kinds}>
+              {(rows) => (
+                <NewTemplateForm
+                  kinds={rows}
+                  onCancel={() => setShowForm(false)}
+                  onSubmit={(v) => create.mutate(v)}
+                  busy={create.isPending}
+                  error={create.isError ? problemOf(create.error) : undefined}
+                />
+              )}
+            </DataWidget>
+          )}
 
-      <ListTable
-        label={t.title}
-        columns={columns}
-        rows={templates.data?.data ?? []}
-        total={templates.data?.total ?? 0}
-        list={list}
-        rowKey={(x) => x.id}
-        loading={templates.isPending}
-        error={templates.isError ? problemOf(templates.error) : undefined}
-        empty={list.search ? copy.list.noMatch : t.noTemplates}
-        toolbar={<ListBar list={list} />}
-      />
+          <ListTable
+            label={t.title}
+            columns={columns}
+            rows={templates.data?.data ?? []}
+            total={templates.data?.total ?? 0}
+            list={list}
+            rowKey={(x) => x.id}
+            loading={templates.isPending}
+            error={templates.isError ? problemOf(templates.error) : undefined}
+            empty={list.search ? copy.list.noMatch : t.noTemplates}
+            toolbar={<ListBar list={list} />}
+          />
+        </TabsContent>
+        {canCreate && (
+          <TabsContent value="facility-kinds">
+            <FacilityKindsManager />
+          </TabsContent>
+        )}
+      </Tabs>
     </main>
   );
 }
@@ -195,8 +220,7 @@ const columns: ListColumn<Template>[] = [
 ];
 
 function originLabel(v: string) {
-  if (!v) return t.any;
-  return facilityKinds.find((k) => k.value === v)?.label ?? v;
+  return humanize(v);
 }
 
 function toApiBody(v: TemplateForm) {
@@ -227,11 +251,13 @@ function toApiBody(v: TemplateForm) {
 }
 
 function NewTemplateForm({
+  kinds,
   onCancel,
   onSubmit,
   busy,
   error,
 }: {
+  kinds: { key: string; label: string; sub: string }[];
   onCancel: () => void;
   onSubmit: (v: TemplateForm) => void;
   busy: boolean;
@@ -244,7 +270,7 @@ function NewTemplateForm({
       commodity: "",
       name: "",
       unit: "kg",
-      originFacilityKind: "",
+      originFacilityKind: kinds[0]?.key ?? "",
       capacityRule: null,
       stages: [
         {
@@ -267,12 +293,13 @@ function NewTemplateForm({
     control,
     register,
     handleSubmit,
-    watch,
     setValue,
     formState: { errors },
   } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "stages" });
-  const ruleType = watch("capacityRule")?.type ?? "none";
+  const stageValues = useWatch({ control, name: "stages" });
+  const capacityRule = useWatch({ control, name: "capacityRule" });
+  const ruleType = capacityRule?.type ?? "none";
 
   return (
     <form
@@ -307,7 +334,7 @@ function NewTemplateForm({
             name="originFacilityKind"
             render={({ field }) => (
               <Select
-                items={originOptions}
+                items={kinds.map((k) => ({ value: k.key, label: k.label }))}
                 value={field.value}
                 onValueChange={(v) => field.onChange(v)}
               >
@@ -315,9 +342,9 @@ function NewTemplateForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {originOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                  {kinds.map((kind) => (
+                    <SelectItem key={kind.key} value={kind.key}>
+                      {kind.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -411,14 +438,13 @@ function NewTemplateForm({
               <span className="text-sm font-semibold">{t.events}</span>
               <div className="flex flex-wrap gap-3">
                 {templateEvents.map((ev) => {
-                  const checked =
-                    watch(`stages.${i}.events`)?.includes(ev.value) ?? false;
+                  const current = stageValues?.[i]?.events ?? [];
+                  const checked = current.includes(ev.value);
                   return (
                     <label key={ev.value} className="flex items-center gap-2">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(c) => {
-                          const current = watch(`stages.${i}.events`) ?? [];
                           if (c) {
                             setValue(`stages.${i}.events`, [
                               ...current,

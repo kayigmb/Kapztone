@@ -20,7 +20,10 @@ import confirmCopyJson from "./copy/confirmCopy.json" with { type: "json" };
 /** A flat copy table from JSON: every leaf is a finished string. */
 export type StrMap = Record<string, string>;
 /** A copy table whose leaves are `{ label, pass, reason }` check rows. */
-export type CheckMap = Record<string, { label: string; pass: string; reason: string }>;
+export type CheckMap = Record<
+  string,
+  { label: string; pass: string; reason: string }
+>;
 
 // ---- Values shared with the API ----
 
@@ -188,22 +191,7 @@ export const facilityStatus = {
   active: "active",
   suspended: "suspended",
 } as const;
-export const facilityKinds = [
-  { value: "farm_plot", label: "Farm plot", sub: "Land growing a crop" },
-  { value: "mine_site", label: "Mine site", sub: "Extraction site" },
-  {
-    value: "washing_station",
-    label: "Washing station",
-    sub: "Coffee or tea processing",
-  },
-  {
-    value: "processing_plant",
-    label: "Processing plant",
-    sub: "Factory, mill or smelter",
-  },
-  { value: "warehouse", label: "Warehouse", sub: "Storage and depot" },
-] as const;
-export type FacilityKind = (typeof facilityKinds)[number]["value"];
+export type FacilityKind = string;
 /** The period a facility's declared capacity applies to. */
 export const capacityPeriods = [
   { value: "season", label: "Season" },
@@ -284,12 +272,6 @@ export const navItems = [
     icon: "transform",
     group: "workspace",
     permission: permissions.transformCreate,
-  },
-  {
-    key: "notifications",
-    href: "/notifications",
-    icon: "notifications",
-    group: "workspace",
   },
   {
     key: "certificates",
@@ -567,6 +549,7 @@ export const apiPaths = {
   me: "/me",
   login: "/auth/login",
   logout: "/auth/logout",
+  emailAvailability: "/auth/email/availability",
   forgotPassword: "/auth/password/forgot",
   resetPassword: "/auth/password/reset",
   lockAccount: "/auth/lock",
@@ -607,6 +590,10 @@ export const apiPaths = {
   attestationRevoke: (id: string) =>
     `/attestations/${encodeURIComponent(id)}/revoke`,
   facilities: "/facilities",
+  geocode: "/geocode",
+  facilityKinds: "/facility-kinds",
+  facilityKindsAll: "/facility-kinds/all",
+  facilityKind: (key: string) => `/facility-kinds/${encodeURIComponent(key)}`,
   facility: (id: string) => `/facilities/${encodeURIComponent(id)}`,
   facilityStatus: (id: string) =>
     `/facilities/${encodeURIComponent(id)}/status`,
@@ -663,6 +650,9 @@ export const queryKeys = {
   unread: ["notifications", "unread"] as const,
   users: ["users"] as const,
   facilities: ["facilities"] as const,
+  facilityKinds: ["facility-kinds"] as const,
+  geocode: (query: string) => ["geocode", query] as const,
+  emailAvailability: (email: string) => ["email-availability", email] as const,
   facility: (id: string) => ["facilities", id] as const,
   passports: ["passports"] as const,
   passport: (id: string) => ["passports", id] as const,
@@ -684,7 +674,8 @@ export const copy = {
   ...copyJson,
   errors: {
     ...copyJson.errors,
-    unexpectedRef: (id: string) => fill(copyJson.errors.unexpectedRef.$template, { id }),
+    unexpectedRef: (id: string) =>
+      fill(copyJson.errors.unexpectedRef.$template, { id }),
   },
   removeFile: (name: string) => fill(copyJson.removeFile.$template, { name }),
   shell: {
@@ -692,13 +683,15 @@ export const copy = {
     nav: copyJson.shell.nav as Record<NavKey, string>,
     groups: copyJson.shell.groups as Record<NavGroup, string>,
     theme: copyJson.shell.theme as Record<ThemeChoice, string>,
-    yourProfile: (name: string) => fill(copyJson.shell.yourProfile.$template, { name }),
+    yourProfile: (name: string) =>
+      fill(copyJson.shell.yourProfile.$template, { name }),
   },
   list: {
     ...copyJson.list,
     range: (from: number, to: number, total: number) =>
       `${from.toLocaleString()}–${to.toLocaleString()} of ${total.toLocaleString()}`,
-    page: (page: number, pages: number) => fill(copyJson.list.page.$template, { page, pages }),
+    page: (page: number, pages: number) =>
+      fill(copyJson.list.page.$template, { page, pages }),
   },
   notifications: {
     ...copyJson.notifications,
@@ -707,7 +700,6 @@ export const copy = {
   },
   profile: {
     ...copyJson.profile,
-    newPasswordHelp: `${limits.password.min} to ${limits.password.max} characters.`,
   },
   users: {
     ...copyJson.users,
@@ -722,9 +714,12 @@ export const copy = {
     },
     from: (name: string) => fill(copyJson.dashboard.from.$template, { name }),
     to: (name: string) => fill(copyJson.dashboard.to.$template, { name }),
-    stage: (stage: string) => fill(copyJson.dashboard.stage.$template, { stage }),
-    capacityOf: (used: string, max: string) => fill(copyJson.dashboard.capacityOf.$template, { used, max }),
-    capacityLeft: (left: string) => fill(copyJson.dashboard.capacityLeft.$template, { left }),
+    stage: (stage: string) =>
+      fill(copyJson.dashboard.stage.$template, { stage }),
+    capacityOf: (used: string, max: string) =>
+      fill(copyJson.dashboard.capacityOf.$template, { used, max }),
+    capacityLeft: (left: string) =>
+      fill(copyJson.dashboard.capacityLeft.$template, { left }),
     waitingDays: (d: number) =>
       d === 0 ? "Today" : d === 1 ? "1 day" : `${d} days`,
     workspaces: {
@@ -734,30 +729,40 @@ export const copy = {
           ? "You are a member of 1 organisation. Open it to start working."
           : `You are a member of ${n} organisations. Pick one to start working.`,
     },
-    tiles: copyJson.dashboard.tiles as Record<TileKey, { label: string; note: string }>,
+    tiles: copyJson.dashboard.tiles as Record<
+      TileKey,
+      { label: string; note: string }
+    >,
     actions: copyJson.dashboard.actions as Record<ActionKey, string>,
-    panels: copyJson.dashboard.panels as Record<PanelKey, { title: string; sub: string; empty: string }>,
+    panels: copyJson.dashboard.panels as Record<
+      PanelKey,
+      { title: string; sub: string; empty: string }
+    >,
   },
   documentTypeLabel: (type: string) =>
     documentTypes.find((d) => d.value === type)?.label ?? type,
-  stepOf: (n: number, total: number) => fill(copyJson.stepOf.$template, { n, total }),
+  stepOf: (n: number, total: number) =>
+    fill(copyJson.stepOf.$template, { n, total }),
   keyLabel: (key: string) =>
     key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
   facilities: {
     ...copyJson.facilities,
     sub: (n: number, org: string) =>
       `${n} ${n === 1 ? "facility" : "facilities"} registered · ${org}`,
-    suspendTitle: (name: string) => fill(copyJson.facilities.suspendTitle.$template, { name }),
+    suspendTitle: (name: string) =>
+      fill(copyJson.facilities.suspendTitle.$template, { name }),
     detail: {
       ...copyJson.facilities.detail,
-      mapLabel: (name: string) => fill(copyJson.facilities.detail.mapLabel.$template, { name }),
+      mapLabel: (name: string) =>
+        fill(copyJson.facilities.detail.mapLabel.$template, { name }),
       area: (ha: number) =>
         `${new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(ha)} ha`,
       declaredOf: (n: number, unit: string, period: string) =>
         `${n.toLocaleString()} ${unit} per ${period}`,
       issued: (used: number, unit: string, period: string) =>
         `${used.toLocaleString()} ${unit} issued this ${period}`,
-      deleteTitle: (name: string) => fill(copyJson.facilities.detail.deleteTitle.$template, { name }),
+      deleteTitle: (name: string) =>
+        fill(copyJson.facilities.detail.deleteTitle.$template, { name }),
     },
     new: {
       ...copyJson.facilities.new,
@@ -770,70 +775,106 @@ export const copy = {
       `${n.toLocaleString()} ${unit} left this ${period}`,
     after: (left: number, unit: string, period: string) =>
       `You have ${left.toLocaleString()} ${unit} left this ${period}. After this passport: ${Math.max(left, 0).toLocaleString()} ${unit}.`,
-    evidenceMissing: (keys: string) => fill(copyJson.issue.evidenceMissing.$template, { keys }),
+    evidenceMissing: (keys: string) =>
+      fill(copyJson.issue.evidenceMissing.$template, { keys }),
     blockedField: (limit: number, unit: string, period: string) =>
       `More than the ${limit.toLocaleString()} ${unit} left for this facility this ${period}.`,
     blockedNotice: (limit: number, unit: string) =>
       `This passport can't be issued. Lower the quantity to ${limit.toLocaleString()} ${unit} or less. If the harvest really is larger, ask the regulator to review the declared capacity.`,
-    createdBody: (quantity: string, facility: string) => fill(copyJson.issue.createdBody.$template, { quantity, facility }),
+    createdBody: (quantity: string, facility: string) =>
+      fill(copyJson.issue.createdBody.$template, { quantity, facility }),
   },
   handover: {
     ...copyJson.handover,
     holds: (n: number, unit: string) =>
       `This passport holds ${n.toLocaleString()} ${unit}.`,
-    partial: (rest: string) => fill(copyJson.handover.partial.$template, { rest }),
-    locationAdded: (lat: string, lon: string) => fill(copyJson.handover.locationAdded.$template, { lat, lon }),
-    photosHelp: (max: number) => fill(copyJson.handover.photosHelp.$template, { max }),
-    tooManyPhotos: (max: number) => fill(copyJson.handover.tooManyPhotos.$template, { max }),
-    meaning: (receiver: string) => fill(copyJson.handover.meaning.$template, { receiver }),
-    sentBody: (quantity: string, receiver: string) => fill(copyJson.handover.sentBody.$template, { quantity, receiver }),
+    partial: (rest: string) =>
+      fill(copyJson.handover.partial.$template, { rest }),
+    locationAdded: (lat: string, lon: string) =>
+      fill(copyJson.handover.locationAdded.$template, { lat, lon }),
+    photosHelp: (max: number) =>
+      fill(copyJson.handover.photosHelp.$template, { max }),
+    tooManyPhotos: (max: number) =>
+      fill(copyJson.handover.tooManyPhotos.$template, { max }),
+    meaning: (receiver: string) =>
+      fill(copyJson.handover.meaning.$template, { receiver }),
+    sentBody: (quantity: string, receiver: string) =>
+      fill(copyJson.handover.sentBody.$template, { quantity, receiver }),
   },
   receiver: {
     ...copyJson.receiver,
     rejectChips: copyJson.receiver.rejectChips as Record<RejectReason, string>,
     from: (name: string) => fill(copyJson.receiver.from.$template, { name }),
     to: (name: string) => fill(copyJson.receiver.to.$template, { name }),
-    within: (n: string, unit: string, pct: string, tol: string) => fill(copyJson.receiver.within.$template, { n, unit, pct, tol }),
-    outside: (n: string, unit: string, pct: string, tol: string) => fill(copyJson.receiver.outside.$template, { n, unit, pct, tol }),
-    locationAdded: (lat: string, lon: string) => fill(copyJson.receiver.locationAdded.$template, { lat, lon }),
-    photosHelp: (max: number) => fill(copyJson.receiver.photosHelp.$template, { max }),
-    meaning: (sender: string) => fill(copyJson.receiver.meaning.$template, { sender }),
-    completeBody: (quantity: string) => fill(copyJson.receiver.completeBody.$template, { quantity }),
-    rejectStays: (sender: string) => fill(copyJson.receiver.rejectStays.$template, { sender }),
-    partOf: (code: string) => fill(copyJson.receiver.partOf.$template, { code }),
-    rejectedBody: (sender: string) => fill(copyJson.receiver.rejectedBody.$template, { sender }),
+    within: (n: string, unit: string, pct: string, tol: string) =>
+      fill(copyJson.receiver.within.$template, { n, unit, pct, tol }),
+    outside: (n: string, unit: string, pct: string, tol: string) =>
+      fill(copyJson.receiver.outside.$template, { n, unit, pct, tol }),
+    locationAdded: (lat: string, lon: string) =>
+      fill(copyJson.receiver.locationAdded.$template, { lat, lon }),
+    photosHelp: (max: number) =>
+      fill(copyJson.receiver.photosHelp.$template, { max }),
+    meaning: (sender: string) =>
+      fill(copyJson.receiver.meaning.$template, { sender }),
+    completeBody: (quantity: string) =>
+      fill(copyJson.receiver.completeBody.$template, { quantity }),
+    rejectStays: (sender: string) =>
+      fill(copyJson.receiver.rejectStays.$template, { sender }),
+    partOf: (code: string) =>
+      fill(copyJson.receiver.partOf.$template, { code }),
+    rejectedBody: (sender: string) =>
+      fill(copyJson.receiver.rejectedBody.$template, { sender }),
   },
   transform: {
     ...copyJson.transform,
     selected: (n: number, quantity: string) =>
       `${n} ${n === 1 ? "lot" : "lots"} selected · ${quantity}`,
     output: (n: number) => fill(copyJson.transform.output.$template, { n }),
-    meterWithin: (below: string) => fill(copyJson.transform.meterWithin.$template, { below }),
-    meterOver: (over: string) => fill(copyJson.transform.meterOver.$template, { over }),
-    yieldLine: (yieldPct: string, maxPct: string) => fill(copyJson.transform.yieldLine.$template, { yieldPct, maxPct }),
-    inOut: (into: string, out: string) => fill(copyJson.transform.inOut.$template, { into, out }),
+    meterWithin: (below: string) =>
+      fill(copyJson.transform.meterWithin.$template, { below }),
+    meterOver: (over: string) =>
+      fill(copyJson.transform.meterOver.$template, { over }),
+    yieldLine: (yieldPct: string, maxPct: string) =>
+      fill(copyJson.transform.yieldLine.$template, { yieldPct, maxPct }),
+    inOut: (into: string, out: string) =>
+      fill(copyJson.transform.inOut.$template, { into, out }),
     sign: (n: number) =>
       `Sign and create ${n} ${n === 1 ? "passport" : "passports"}`,
     createdTitle: (n: number) =>
       `${n} new ${n === 1 ? "passport" : "passports"} created`,
-    createdBody: (into: string, out: string, yieldPct: string, maxPct: string) => fill(copyJson.transform.createdBody.$template, { into, out, yieldPct, maxPct }),
+    createdBody: (
+      into: string,
+      out: string,
+      yieldPct: string,
+      maxPct: string,
+    ) =>
+      fill(copyJson.transform.createdBody.$template, {
+        into,
+        out,
+        yieldPct,
+        maxPct,
+      }),
   },
   passportView: {
     ...copyJson.passportView,
     status: copyJson.passportView.status as Record<PassportStatus, string>,
     eventKinds: copyJson.passportView.eventKinds as StrMap,
-    eventFrom: (name: string) => fill(copyJson.passportView.eventFrom.$template, { name }),
-    eventTo: (name: string) => fill(copyJson.passportView.eventTo.$template, { name }),
+    eventFrom: (name: string) =>
+      fill(copyJson.passportView.eventFrom.$template, { name }),
+    eventTo: (name: string) =>
+      fill(copyJson.passportView.eventTo.$template, { name }),
   },
   certificates: {
     ...copyJson.certificates,
     expiringIn: (days: number) =>
       `Expiring in ${days} ${days === 1 ? "day" : "days"}`,
-    attachedLot: (code: string) => fill(copyJson.certificates.attachedLot.$template, { code }),
+    attachedLot: (code: string) =>
+      fill(copyJson.certificates.attachedLot.$template, { code }),
     attachedFacility: (name: string) => name,
     new: {
       ...copyJson.certificates.new,
-      checkVerdict: (verdict: string) => fill(copyJson.certificates.new.checkVerdict.$template, { verdict }),
+      checkVerdict: (verdict: string) =>
+        fill(copyJson.certificates.new.checkVerdict.$template, { verdict }),
     },
   },
   flags: {
@@ -851,16 +892,19 @@ export const copy = {
     ...copyJson.templates,
     detail: {
       ...copyJson.templates.detail,
-      title: (name: string) => fill(copyJson.templates.detail.title.$template, { name }),
+      title: (name: string) =>
+        fill(copyJson.templates.detail.title.$template, { name }),
       eventChip: (events: string) => events,
     },
   },
   reports: {
     ...copyJson.reports,
-    event: (method: string, route: string) => fill(copyJson.reports.event.$template, { method, route }),
+    event: (method: string, route: string) =>
+      fill(copyJson.reports.event.$template, { method, route }),
     footer: (shown: number, total: number) =>
       `${shown} of ${total.toLocaleString()} events · Every row is sealed; this log can't be edited`,
-    verifyBad: (seq: number) => fill(copyJson.reports.verifyBad.$template, { seq }),
+    verifyBad: (seq: number) =>
+      fill(copyJson.reports.verifyBad.$template, { seq }),
   },
   forgot: {
     ...copyJson.forgot,
@@ -868,28 +912,31 @@ export const copy = {
   },
   reset: {
     ...copyJson.reset,
-    rules: {
-      ...copyJson.reset.rules,
-      length: `At least ${limits.password.min} characters`,
-    },
+    rules: copyJson.reset.rules,
   },
   signup: {
     ...copyJson.signup,
-    passwordHelp: (min: number) => fill(copyJson.signup.passwordHelp.$template, { min }),
+    passwordHelp: (min: number, max: number) =>
+      fill(copyJson.signup.passwordHelp.$template, { min, max }),
   },
   validation: {
     ...copyJson.validation,
     tooLong: (n: number) => fill(copyJson.validation.tooLong.$template, { n }),
-    passwordShort: (n: number) => fill(copyJson.validation.passwordShort.$template, { n }),
+    passwordShort: (n: number) =>
+      fill(copyJson.validation.passwordShort.$template, { n }),
   },
   onboarding: {
     ...copyJson.onboarding,
-    pendingSub: (name: string) => fill(copyJson.onboarding.pendingSub.$template, { name }),
-    rejected: (name: string) => fill(copyJson.onboarding.rejected.$template, { name }),
-    submitted: (when: string) => fill(copyJson.onboarding.submitted.$template, { when }),
+    pendingSub: (name: string) =>
+      fill(copyJson.onboarding.pendingSub.$template, { name }),
+    rejected: (name: string) =>
+      fill(copyJson.onboarding.rejected.$template, { name }),
+    submitted: (when: string) =>
+      fill(copyJson.onboarding.submitted.$template, { when }),
     progress: {
       ...copyJson.onboarding.progress,
-      stillNeeded: (list: string) => fill(copyJson.onboarding.progress.stillNeeded.$template, { list }),
+      stillNeeded: (list: string) =>
+        fill(copyJson.onboarding.progress.stillNeeded.$template, { list }),
     },
   },
   admin: {
@@ -903,11 +950,14 @@ export const copy = {
       ]
         .filter(Boolean)
         .join(" · "),
-    tabCount: (label: string, n: number) => fill(copyJson.admin.tabCount.$template, { label, n }),
-    queueLabel: (label: string) => fill(copyJson.admin.queueLabel.$template, { label }),
+    tabCount: (label: string, n: number) =>
+      fill(copyJson.admin.tabCount.$template, { label, n }),
+    queueLabel: (label: string) =>
+      fill(copyJson.admin.queueLabel.$template, { label }),
     age: (days: number) =>
       days === 0 ? "Today" : `${days} ${days === 1 ? "day" : "days"}`,
-    submitted: (when: string) => fill(copyJson.admin.submitted.$template, { when }),
+    submitted: (when: string) =>
+      fill(copyJson.admin.submitted.$template, { when }),
     accreditation: {
       ...copyJson.admin.accreditation,
       current: (n: number) =>
@@ -926,37 +976,52 @@ export const copy = {
       n === 0
         ? "This lot was issued at its origin. It was not made from other lots."
         : `This lot traces back through ${n} ${n === 1 ? "earlier lot" : "earlier lots"} to its origin.`,
-    via: (stage: string, used: string) => fill(copyJson.verification.via.$template, { stage, used }),
-    passedOf: (n: number, total: number) => fill(copyJson.verification.passedOf.$template, { n, total }),
-    originMap: (name: string) => fill(copyJson.verification.originMap.$template, { name }),
+    via: (stage: string, used: string) =>
+      fill(copyJson.verification.via.$template, { stage, used }),
+    passedOf: (n: number, total: number) =>
+      fill(copyJson.verification.passedOf.$template, { n, total }),
+    originMap: (name: string) =>
+      fill(copyJson.verification.originMap.$template, { name }),
     steps: (n: number) => `${n} ${n === 1 ? "step" : "steps"}`,
     lotsToOrigin: (n: number) =>
       `${n} ${n === 1 ? "lot" : "lots"}, back to origin`,
     summary: {
       ...copyJson.verification.summary,
-      from: (product: string, places: string) => fill(copyJson.verification.summary.from.$template, { product, places }),
-      warning: (points: string) => fill(copyJson.verification.summary.warning.$template, { points }),
+      from: (product: string, places: string) =>
+        fill(copyJson.verification.summary.from.$template, { product, places }),
+      warning: (points: string) =>
+        fill(copyJson.verification.summary.warning.$template, { points }),
       pointsNeed: (n: number) =>
         `${n} ${n === 1 ? "point needs" : "points need"}`,
     },
     meta: {
       ...copyJson.verification.meta,
-      checked: (when: string) => fill(copyJson.verification.meta.checked.$template, { when }),
+      checked: (when: string) =>
+        fill(copyJson.verification.meta.checked.$template, { when }),
       records: (n: number) => `${n} ${n === 1 ? "record" : "records"}`,
       organisations: (n: number) =>
         `${n} ${n === 1 ? "organisation" : "organisations"}`,
     },
-    issued: (when: string) => fill(copyJson.verification.issued.$template, { when }),
+    issued: (when: string) =>
+      fill(copyJson.verification.issued.$template, { when }),
     certificateNote: {
       ...copyJson.verification.certificateNote,
       revoked: (reason: string | null) =>
         `Revoked by its issuer${reason ? `: ${reason}` : "."} Ask the holder for a replacement.`,
-      expired: (when: string) => fill(copyJson.verification.certificateNote.expired.$template, { when }),
+      expired: (when: string) =>
+        fill(copyJson.verification.certificateNote.expired.$template, { when }),
     },
     technical: {
       ...copyJson.verification.technical,
-      eventSealed: (title: string, when: string) => fill(copyJson.verification.technical.eventSealed.$template, { title, when }),
-      certificateFingerprint: (type: string) => fill(copyJson.verification.technical.certificateFingerprint.$template, { type }),
+      eventSealed: (title: string, when: string) =>
+        fill(copyJson.verification.technical.eventSealed.$template, {
+          title,
+          when,
+        }),
+      certificateFingerprint: (type: string) =>
+        fill(copyJson.verification.technical.certificateFingerprint.$template, {
+          type,
+        }),
     },
   },
 };
@@ -1017,11 +1082,16 @@ export const marketing = {
   ...marketingJson,
   trust: {
     ...marketingJson.trust,
-    verdicts: marketingJson.trust.verdicts as { label: string; body: string; tone: "verified" | "warning" | "danger" }[],
+    verdicts: marketingJson.trust.verdicts as {
+      label: string;
+      body: string;
+      tone: "verified" | "warning" | "danger";
+    }[],
   },
   footer: {
     ...marketingJson.footer,
-    rights: (year: number) => fill(marketingJson.footer.rights.$template, { year }),
+    rights: (year: number) =>
+      fill(marketingJson.footer.rights.$template, { year }),
   },
 };
 
@@ -1068,23 +1138,30 @@ export const screenCopy = {
     ...screenCopyJson.issue,
     afterPassport: (used: number, unit: string) =>
       `With this passport: ${used.toLocaleString()} ${unit} issued.`,
-    evidenceCount: (have: number, total: number) => fill(screenCopyJson.issue.evidenceCount.$template, { have, total }),
+    evidenceCount: (have: number, total: number) =>
+      fill(screenCopyJson.issue.evidenceCount.$template, { have, total }),
   },
   passportDetail: {
     ...screenCopyJson.passportDetail,
     held: (held: number, total: number, unit: string) =>
       `${held.toLocaleString()} of ${total.toLocaleString()} ${unit}`,
-    edge: (stage: string, used: string) => fill(screenCopyJson.passportDetail.edge.$template, { stage, used }),
+    edge: (stage: string, used: string) =>
+      fill(screenCopyJson.passportDetail.edge.$template, { stage, used }),
   },
   transform: {
     ...screenCopyJson.transform,
-    templateLine: (name: string) => fill(screenCopyJson.transform.templateLine.$template, { name }),
-    allowedYield: (max: number) => fill(screenCopyJson.transform.allowedYield.$template, { max }),
+    templateLine: (name: string) =>
+      fill(screenCopyJson.transform.templateLine.$template, { name }),
+    allowedYield: (max: number) =>
+      fill(screenCopyJson.transform.allowedYield.$template, { max }),
     overRemaining: (max: number, unit: string) =>
       `More than the ${max.toLocaleString()} ${unit} this lot has left. Enter ${max.toLocaleString()} ${unit} or less.`,
-    tooManyRows: (n: number) => fill(screenCopyJson.transform.tooManyRows.$template, { n }),
-    overSaid: (out: string, max: string) => fill(screenCopyJson.transform.overSaid.$template, { out, max }),
-    formula: (into: string, pct: string, max: string) => fill(screenCopyJson.transform.formula.$template, { into, pct, max }),
+    tooManyRows: (n: number) =>
+      fill(screenCopyJson.transform.tooManyRows.$template, { n }),
+    overSaid: (out: string, max: string) =>
+      fill(screenCopyJson.transform.overSaid.$template, { out, max }),
+    formula: (into: string, pct: string, max: string) =>
+      fill(screenCopyJson.transform.formula.$template, { into, pct, max }),
   },
 };
 

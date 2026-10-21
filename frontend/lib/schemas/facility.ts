@@ -2,7 +2,7 @@
 // Pure: `node --test` runs it.
 import { z } from "zod";
 
-import { copy, facilityKinds, limits, type FacilityKind } from "../consts.ts";
+import { copy, limits } from "../consts.ts";
 
 const v = copy.validation;
 
@@ -30,10 +30,11 @@ export const facilityFormSchema = z.object({
     .trim()
     .min(1, v.facilityName)
     .max(limits.name, v.tooLong(limits.name)),
-  kind: z.enum(
-    facilityKinds.map((k) => k.value) as [FacilityKind, ...FacilityKind[]],
-    { message: v.facilityKind },
-  ),
+  kind: z
+    .string()
+    .trim()
+    .min(1, v.facilityKind)
+    .regex(/^[a-z][a-z0-9_]{0,49}$/, v.facilityKind),
   licence_number: z
     .string()
     .trim()

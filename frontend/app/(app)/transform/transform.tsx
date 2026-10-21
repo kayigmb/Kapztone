@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { FieldNote } from "@/components/chaintrack/field-note";
@@ -90,7 +90,6 @@ export function Transform() {
     control,
     register,
     handleSubmit,
-    watch,
     reset,
     formState: { errors, isValid },
   } = useForm<TransformFormInput, unknown, TransformForm>({
@@ -111,7 +110,7 @@ export function Transform() {
     defaultValues: { code: "" },
   });
 
-  const form = watch();
+  const form = useWatch({ control }) as TransformFormInput;
   const rows = form.inputs;
   const first = rows[0] ? known[rows[0].passport_id] : undefined;
   const unit = first?.unit ?? "";

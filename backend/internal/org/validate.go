@@ -42,8 +42,9 @@ func (r *Registration) Validate() string {
 		return fmt.Sprintf("user_name is required, up to %d characters", MaxNameLen)
 	case !validEmail(r.Email):
 		return "email is not a valid address"
-	case len(r.Password) < auth.MinPasswordLen || len(r.Password) > auth.MaxPasswordLen:
-		return fmt.Sprintf("password must be %d to %d characters", auth.MinPasswordLen, auth.MaxPasswordLen)
+	}
+	if problem := auth.PasswordFormatProblem(r.Password); problem != "" {
+		return problem
 	}
 	return ""
 }

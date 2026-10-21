@@ -69,6 +69,9 @@ interface Table_DataTableFiltering {
   resetJoinOperator: (defaultState?: boolean) => void;
 }
 
+// TanStack's module augmentation requires both generics even though this
+// feature's additional members don't depend on either one.
+/* eslint-disable @typescript-eslint/no-unused-vars */
 declare module "@tanstack/react-table" {
   interface Plugins {
     dataTableFilteringFeature: TableFeature;
@@ -92,6 +95,7 @@ declare module "@tanstack/react-table" {
     dataTableFilteringFeature: Table_DataTableFiltering;
   }
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 type DataTableInstance = Table<DataTableFeatures, RowData>;
 

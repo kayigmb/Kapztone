@@ -83,6 +83,21 @@ paths:
       security: []
       responses:
         "200": { $ref: "#/components/responses/Object" }
+  /auth/email/availability:
+    get:
+      tags: [auth]
+      summary: Check whether an email can be used for a new account
+      description: Rate-limited public pre-check for organisation registration. Registration remains authoritative if availability changes before submission.
+      security: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /auth/password/forgot:
     post:
       tags: [auth]
@@ -95,6 +110,7 @@ paths:
     post:
       tags: [auth]
       summary: Set a new password with a reset link's token
+      description: New passwords must be 8 to 72 bytes and include lowercase, uppercase, a number, and a symbol.
       security: []
       requestBody: { $ref: "#/components/requestBodies/Object" }
       responses:
@@ -113,6 +129,7 @@ paths:
     post:
       tags: [auth]
       summary: Change my password; other sessions end
+      description: New passwords must be 8 to 72 bytes and include lowercase, uppercase, a number, and a symbol.
       requestBody: { $ref: "#/components/requestBodies/Object" }
       responses:
         "200": { $ref: "#/components/responses/Object" }
@@ -225,6 +242,7 @@ paths:
     post:
       tags: [organisations]
       summary: Register a business and its first user (pending until verified)
+      description: The first user's password must be 8 to 72 bytes and include lowercase, uppercase, a number, and a symbol. Check availability with GET /auth/email/availability before registration; the POST remains authoritative.
       security: []
       requestBody:
         required: true
@@ -359,7 +377,7 @@ paths:
       x-permission: facility:read
       parameters:
         - { name: status, in: query, schema: { type: string } }
-        - { name: kind, in: query, schema: { type: string, enum: [farm_plot, mine_site, washing_station, processing_plant, warehouse] } }
+        - { name: kind, in: query, schema: { type: string }, description: An active curated facility kind }
         - { name: bbox, in: query, description: "minLon,minLat,maxLon,maxLat", schema: { type: string } }
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/size"
@@ -430,6 +448,60 @@ paths:
                 licence_valid_to: { type: string, format: date }
       responses:
         "200": { $ref: "#/components/responses/Object" }
+
+  /facility-kinds:
+    get:
+      tags: [facilities]
+      summary: List active facility kinds available to registration and templates
+      x-permission: facility:read
+      responses:
+        "200": { $ref: "#/components/responses/FacilityKinds" }
+    post:
+      tags: [facilities]
+      summary: Add a curated facility kind
+      x-permission: template:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FacilityKindInput" }
+      responses:
+        "201": { $ref: "#/components/responses/FacilityKind" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /facility-kinds/all:
+    get:
+      tags: [facilities]
+      summary: List active and deactivated kinds for platform curation
+      x-permission: template:manage
+      responses:
+        "200": { $ref: "#/components/responses/FacilityKinds" }
+  /facility-kinds/{key}:
+    put:
+      tags: [facilities]
+      summary: Rename, describe or deactivate a kind
+      x-permission: template:manage
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FacilityKindUpdate" }
+      responses:
+        "200": { $ref: "#/components/responses/FacilityKind" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [facilities]
+      summary: Delete an unused facility kind
+      x-permission: template:manage
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" } }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
   # ---- Templates ----
 
@@ -801,6 +873,7 @@ paths:
     post:
       tags: [users]
       summary: Accept an invite (name and password)
+      description: New accounts must use a password with lowercase, uppercase, a number, and a symbol; existing members confirm their current password.
       security: []
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
@@ -1007,6 +1080,26 @@ components:
           schema: { $ref: "#/components/schemas/SavedInput" }
 
   responses:
+    FacilityKinds:
+      description: Curated facility kinds
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/FacilityKind" } }
+    FacilityKind:
+      description: One curated facility kind
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Envelope" }
+              - properties: { data: { $ref: "#/components/schemas/FacilityKind" } }
     Object:
       description: OK
       content:
@@ -1134,7 +1227,7 @@ components:
         kind: { type: string, enum: [producer, processor, transporter, exporter, importer, certifier, regulator] }
         user_name: { type: string }
         email: { type: string, format: email }
-        password: { type: string, minLength: 8 }
+        password: { type: string, minLength: 8, maxLength: 72, description: At least one lowercase letter, uppercase letter, number, and symbol }
     Review:
       type: object
       required: [decision]
@@ -1153,7 +1246,7 @@ components:
       required: [name, kind, location, licence_number, licence_valid_to, capacity, capacity_unit, capacity_period]
       properties:
         name: { type: string, maxLength: 200 }
-        kind: { type: string, enum: [farm_plot, mine_site, washing_station, processing_plant, warehouse] }
+        kind: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$", description: Active curated facility kind }
         location:
           type: object
           description: GeoJSON Point or Polygon, [longitude, latitude]
@@ -1166,6 +1259,28 @@ components:
         capacity: { type: integer, minimum: 1 }
         capacity_unit: { type: string, maxLength: 16 }
         capacity_period: { type: string, enum: [season, year, month] }
+    FacilityKindInput:
+      type: object
+      required: [key, label]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" }
+        label: { type: string, minLength: 1, maxLength: 120 }
+        sub: { type: string, maxLength: 500 }
+    FacilityKindUpdate:
+      type: object
+      required: [label, active]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        sub: { type: string, maxLength: 500 }
+        active: { type: boolean }
+    FacilityKind:
+      type: object
+      required: [key, label, sub, active]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        sub: { type: string }
+        active: { type: boolean }
     Template:
       type: object
       required: [commodity, name, unit, capacityRule, stages]

@@ -14,13 +14,14 @@ import (
 )
 
 var (
-	ErrInviteInvalid = errors.New("invite invalid")
-	ErrAlreadyMember = errors.New("already a member")
-	ErrLastAdmin     = errors.New("last admin")
-	ErrNotMember     = errors.New("not a member")
-	ErrNotSuspended  = errors.New("not suspended")
-	ErrBadPassword   = errors.New("bad password")
-	ErrNameNeeded    = errors.New("name needed")
+	ErrInviteInvalid  = errors.New("invite invalid")
+	ErrAlreadyMember  = errors.New("already a member")
+	ErrLastAdmin      = errors.New("last admin")
+	ErrNotMember      = errors.New("not a member")
+	ErrNotSuspended   = errors.New("not suspended")
+	ErrBadPassword    = errors.New("bad password")
+	ErrNameNeeded     = errors.New("name needed")
+	ErrPasswordPolicy = errors.New("password does not meet policy")
 )
 
 // Member is one person's place in an organisation.
@@ -116,6 +117,9 @@ func (s Store) Accept(ctx context.Context, tokenHash, name, password string) (Ac
 	case errors.Is(err, pgx.ErrNoRows) && name == "":
 		return Accepted{}, ErrNameNeeded
 	case errors.Is(err, pgx.ErrNoRows):
+		if auth.PasswordFormatProblem(password) != "" {
+			return Accepted{}, ErrPasswordPolicy
+		}
 		newHash, err := auth.HashPassword(password)
 		if err != nil {
 			return Accepted{}, err

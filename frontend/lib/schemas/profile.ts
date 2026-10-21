@@ -3,6 +3,12 @@
 import { z } from "zod";
 
 import { copy, limits, memberRoles } from "../consts.ts";
+import {
+  isStrongPassword,
+  passwordLengthSchema,
+  passwordLengthProblem,
+  strongPasswordSchema,
+} from "./password.ts";
 
 const v = copy.validation;
 
@@ -11,17 +17,12 @@ const fullName = z
   .trim()
   .min(1, v.fullName)
   .max(limits.name, v.tooLong(limits.name));
-const newPassword = z
-  .string()
-  .min(limits.password.min, v.passwordShort(limits.password.min))
-  .max(limits.password.max, v.tooLong(limits.password.max));
-
 export const nameSchema = z.object({ name: fullName });
 
 export const passwordChangeSchema = z
   .object({
     current: z.string().min(1, v.passwordEmpty),
-    new: newPassword,
+    new: strongPasswordSchema,
     confirm: z.string().min(1, v.passwordConfirm),
   })
   .refine((p) => p.new !== p.current, {
@@ -60,13 +61,26 @@ export const inviteSchema = z.object({
 });
 
 /** Accepting an invitation: a name only for a new account; the password is new or the existing one. */
-export const acceptSchema = z.object({
-  name: z.string().trim().max(limits.name, v.tooLong(limits.name)),
-  password: z
-    .string()
-    .min(1, v.passwordEmpty)
-    .max(limits.password.max, v.tooLong(limits.password.max)),
-});
+export const acceptSchema = z
+  .object({
+    name: z.string().trim().max(limits.name, v.tooLong(limits.name)),
+    password: passwordLengthSchema,
+  })
+  .superRefine(({ name, password }, ctx) => {
+    // A non-empty name denotes a new account; existing members use their
+    // current password, which may predate today's new-account policy.
+    if (
+      name &&
+      !passwordLengthProblem(password) &&
+      !isStrongPassword(password)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: v.passwordComplexity,
+      });
+    }
+  });
 
 export type NameForm = z.infer<typeof nameSchema>;
 export type PasswordChange = z.infer<typeof passwordChangeSchema>;

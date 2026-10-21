@@ -27,6 +27,7 @@ import type { ApiVerification } from "@/lib/verification";
 import { yieldToFraction, yieldToPct } from "@/lib/schemas/template";
 import { listQuery, type ListParams } from "@/lib/list";
 import { orgAddress } from "@/lib/address";
+import { placeSchema } from "@/lib/geocode";
 
 declare module "@tanstack/react-query" {
   interface Register {
@@ -351,6 +352,13 @@ const facilityRow = z.object({
   status: z.string(),
 });
 export type FacilityRow = z.infer<typeof facilityRow>;
+export const facilityKindSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  sub: z.string(),
+  active: z.boolean(),
+});
+export type FacilityKindRow = z.infer<typeof facilityKindSchema>;
 const flagRow = z.object({
   id: z.string(),
   passport_id: z.string(),
@@ -658,12 +666,24 @@ const paged =
 // ---- Endpoints ----
 
 export const endpoints = {
+  /** Search map locations through this app's Photon proxy. */
+  searchPlaces: (query: string, signal?: AbortSignal) =>
+    api(
+      `${apiPaths.geocode}?q=${encodeURIComponent(query)}`,
+      placeSchema.array(),
+      { signal },
+    ),
   /** Who is signed in at this address, or null if nobody is. */
   me: () =>
     api(apiPaths.me, meSchema).catch((err) => {
       if (err instanceof ApiError && err.status === 401) return null;
       throw err;
     }),
+  emailAvailability: (email: string) =>
+    api(
+      `${apiPaths.emailAvailability}?email=${encodeURIComponent(email)}`,
+      z.object({ available: z.boolean() }),
+    ).then((result) => result.available),
   login: (body: {
     email: string;
     password: string;
@@ -842,6 +862,26 @@ export const endpoints = {
   // ---- Facilities ----
 
   facilitiesPage: paged(apiPaths.facilities, facilitySchema),
+  facilityKinds: () =>
+    api(
+      apiPaths.facilityKinds,
+      z.object({ data: z.object({ data: z.array(facilityKindSchema) }) }),
+    ).then((r) => r.data.data),
+  facilityKindsAll: () =>
+    api(
+      apiPaths.facilityKindsAll,
+      z.object({ data: z.object({ data: z.array(facilityKindSchema) }) }),
+    ).then((r) => r.data.data),
+  createFacilityKind: (body: { key: string; label: string; sub: string }) =>
+    write(apiPaths.facilityKinds, facilityKindSchema, send("POST", body)),
+  updateFacilityKind: (
+    key: string,
+    body: { label: string; sub: string; active: boolean },
+  ) => write(apiPaths.facilityKind(key), facilityKindSchema, send("PUT", body)),
+  deleteFacilityKind: (key: string) =>
+    write(apiPaths.facilityKind(key), nothing, {
+      method: "DELETE",
+    }),
   facilitiesList: () =>
     api(`${apiPaths.facilities}${all}&sort=name`, page(facilitySchema)).then(
       (p) => p.data,
@@ -1046,7 +1086,9 @@ export const endpoints = {
       z.object({ data: z.array(volumeRow) }),
     ).then((r) => r.data);
   },
-  outcomesReport: (params: { startDate?: string; endDate?: string; commodity?: string } = {}) => {
+  outcomesReport: (
+    params: { startDate?: string; endDate?: string; commodity?: string } = {},
+  ) => {
     const q = new URLSearchParams();
     if (params.startDate) q.set("start_date", params.startDate);
     if (params.endDate) q.set("end_date", params.endDate);
@@ -1058,13 +1100,22 @@ export const endpoints = {
     ).then((r) => r.data);
   },
   savedReports: () =>
-    api(apiPaths.reportsSaved, z.object({ data: z.array(savedReport) })).then((r) => r.data) as Promise<SavedReport[]>,
-  createSaved: (body: { name: string; kind: string; params: Record<string, string> }) =>
-    write(apiPaths.reportsSaved, savedReport, send("POST", body)),
+    api(apiPaths.reportsSaved, z.object({ data: z.array(savedReport) })).then(
+      (r) => r.data,
+    ) as Promise<SavedReport[]>,
+  createSaved: (body: {
+    name: string;
+    kind: string;
+    params: Record<string, string>;
+  }) => write(apiPaths.reportsSaved, savedReport, send("POST", body)),
   runSaved: (id: string, format: string = "csv") =>
-    write(`${apiPaths.reportRun(id)}?format=${format}`, savedFile, { method: "POST" }),
+    write(`${apiPaths.reportRun(id)}?format=${format}`, savedFile, {
+      method: "POST",
+    }),
   savedFiles: (id: string) =>
-    api(apiPaths.reportFiles(id), z.object({ data: z.array(savedFile) })).then((r) => r.data),
+    api(apiPaths.reportFiles(id), z.object({ data: z.array(savedFile) })).then(
+      (r) => r.data,
+    ),
 };
 
 // Where each counted tile's number comes from: a list and its filter.

@@ -218,7 +218,9 @@ function Members({ list, myId }: { list: ListParamsState; myId: string }) {
         <Select
           items={roleItems}
           value={u.role}
-          disabled={act.isPending || u.status !== memberStatus.active || u.id === myId}
+          disabled={
+            act.isPending || u.status !== memberStatus.active || u.id === myId
+          }
           onValueChange={(role) =>
             role &&
             role !== u.role &&

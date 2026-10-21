@@ -2,7 +2,7 @@ import * as React from "react";
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cn } from "cn";
 
-type InputProps = React.ComponentProps<'input'>;
+type InputProps = React.ComponentProps<"input">;
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
@@ -19,4 +19,4 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   );
 }
 
-export { Input , type InputProps};
+export { Input, type InputProps };

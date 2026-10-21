@@ -133,37 +133,37 @@ export function FlagQueue() {
               ) : (
                 <ul className="divide-y divide-border">
                   {page.data.map((f) => (
-                <li key={f.id}>
-                  <button
-                    type="button"
-                    onClick={() => go({ flag: f.id })}
-                    aria-current={f.id === selected ? "true" : undefined}
-                    className={cn(
-                      "grid w-full grid-cols-[auto_1fr] gap-3 px-4 py-3 text-left",
-                      f.id === selected
-                        ? "bg-primary-soft shadow-selected"
-                        : "hover:bg-surface-sunken",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "grid size-8 place-items-center rounded-md",
-                        f.status === flagStatus.open
-                          ? "bg-warning-soft text-warning-ink"
-                          : "bg-surface-sunken text-ink-muted",
-                      )}
-                    >
-                      <FlagIcon className="size-4" aria-hidden />
-                    </span>
-                    <span className="grid min-w-0 gap-0.5">
-                      <span className="line-clamp-2 text-sm font-semibold">
-                        {f.reason}
-                      </span>
-                      <span className="text-small text-ink-muted">
-                        {t.source[f.raised_by ?? "user"] ?? f.raised_by} ·{" "}
-                        {formatDate(f.created_at)}
-                      </span>
-                    </span>
+                    <li key={f.id}>
+                      <button
+                        type="button"
+                        onClick={() => go({ flag: f.id })}
+                        aria-current={f.id === selected ? "true" : undefined}
+                        className={cn(
+                          "grid w-full grid-cols-[auto_1fr] gap-3 px-4 py-3 text-left",
+                          f.id === selected
+                            ? "bg-primary-soft shadow-selected"
+                            : "hover:bg-surface-sunken",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "grid size-8 place-items-center rounded-md",
+                            f.status === flagStatus.open
+                              ? "bg-warning-soft text-warning-ink"
+                              : "bg-surface-sunken text-ink-muted",
+                          )}
+                        >
+                          <FlagIcon className="size-4" aria-hidden />
+                        </span>
+                        <span className="grid min-w-0 gap-0.5">
+                          <span className="line-clamp-2 text-sm font-semibold">
+                            {f.reason}
+                          </span>
+                          <span className="text-small text-ink-muted">
+                            {t.source[f.raised_by ?? "user"] ?? f.raised_by} ·{" "}
+                            {formatDate(f.created_at)}
+                          </span>
+                        </span>
                       </button>
                     </li>
                   ))}

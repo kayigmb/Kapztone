@@ -1,8 +1,10 @@
 package template
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -50,6 +52,10 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Create(r.Context(), in)
+	if errors.Is(err, ErrUnknownKind) {
+		httpx.Error(w, http.StatusBadRequest, h.unknownKind(r.Context()))
+		return
+	}
 	respond(w, http.StatusCreated, MsgCreated, "create template", t, err)
 }
 
@@ -86,7 +92,29 @@ func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Update(r.Context(), id, in)
+	if errors.Is(err, ErrUnknownKind) {
+		httpx.Error(w, http.StatusBadRequest, h.unknownKind(r.Context()))
+		return
+	}
 	respond(w, http.StatusOK, MsgDraftSaved, "update template", t, err)
+}
+
+// unknownKind names the active origin kinds, for a template naming one that
+// is retired or invented. The store guards every write path; this only
+// formats the refusal.
+func (h *Handlers) unknownKind(ctx context.Context) string {
+	kinds, err := h.Store.ActiveKinds(ctx)
+	if err != nil {
+		return MsgUnknownKind
+	}
+	names := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		names = append(names, k.Key)
+	}
+	if len(names) == 0 {
+		return MsgUnknownKind
+	}
+	return "originFacilityKind must be one of: " + strings.Join(names, ", ")
 }
 
 // Publish makes the draft the template's rules, as the next version.
@@ -96,6 +124,10 @@ func (h *Handlers) Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.Store.Publish(r.Context(), id)
+	if errors.Is(err, ErrUnknownKind) {
+		httpx.Error(w, http.StatusBadRequest, h.unknownKind(r.Context()))
+		return
+	}
 	respond(w, http.StatusOK, MsgPublished, "publish template", t, err)
 }
 

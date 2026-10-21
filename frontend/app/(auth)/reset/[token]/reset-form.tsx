@@ -141,7 +141,12 @@ export function ResetForm({ token }: { token: string }) {
           ))}
         </ul>
         <p className="text-small text-ink-muted">{t.signOutNote}</p>
-        <Button type="submit" block loading={save.isPending} loadingText={t.submitting}>
+        <Button
+          type="submit"
+          block
+          loading={save.isPending}
+          loadingText={t.submitting}
+        >
           {t.submit}
         </Button>
       </form>

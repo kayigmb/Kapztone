@@ -19,6 +19,7 @@ import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { endpoints, useMe, type Me } from "@/lib/api";
 import { copy, queryKeys } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
@@ -41,10 +42,20 @@ export function Profile() {
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader title={t.title} sub={t.sub} />
-      <Details me={me} />
-      <Password />
-      <Pin set={!!me.pin_set} />
-      <TwoFactor on={me.two_factor} />
+      <Tabs defaultValue="account" className="grid gap-4">
+        <TabsList aria-label={t.title}>
+          <TabsTrigger value="account">{t.accountTab}</TabsTrigger>
+          <TabsTrigger value="security">{t.securityTab}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="account">
+          <Details me={me} />
+        </TabsContent>
+        <TabsContent value="security" className="grid gap-4">
+          <Password />
+          <Pin set={!!me.pin_set} />
+          <TwoFactor on={me.two_factor} />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
@@ -154,7 +165,7 @@ function Password() {
           label={t.newPassword}
           type="password"
           autoComplete="new-password"
-          help={t.newPasswordHelp}
+          help={t.passwordHelp}
           error={errors.new?.message}
           {...register("new")}
         />

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"github.com/kayigmb/chaintrack/backend/internal/facility"
 )
 
 // Stage is one step of a commodity's journey.
@@ -59,8 +57,10 @@ func (in *Input) Validate() string {
 		return fmt.Sprintf("name may be up to %d characters", MaxNameLen)
 	case in.Unit == "" || len(in.Unit) > MaxUnitLen:
 		return fmt.Sprintf("unit is required, up to %d characters", MaxUnitLen)
-	case !slices.Contains(facility.Kinds, in.OriginFacilityKind):
-		return "originFacilityKind must be one of: " + strings.Join(facility.Kinds, ", ")
+	case in.OriginFacilityKind == "":
+		return "originFacilityKind is required"
+	case !keyPattern.MatchString(in.OriginFacilityKind):
+		return "originFacilityKind must be " + keyRule
 	case !slices.Contains(CapacityTypes, in.CapacityRule.Type):
 		return "capacityRule.type must be one of: " + strings.Join(CapacityTypes, ", ")
 	case in.CapacityRule.Type == CapacityYieldPerArea && in.CapacityRule.KgPerHaPerSeason <= 0:

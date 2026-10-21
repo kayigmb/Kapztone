@@ -101,6 +101,7 @@ const (
 	MsgTwoFactorNotOn      = "two-factor sign-in is not on"
 	MsgTwoFactorSetupFirst = "set up two-factor sign-in first"
 	MsgPasswordLength      = "new password must be 8 to 72 characters"
+	MsgPasswordComplexity  = "new password must include an uppercase letter, a lowercase letter, a number and a symbol"
 	MsgPINNotSet           = "set a signing PIN first"
 	MsgPINNeeded           = "enter your signing PIN"
 	MsgBadPIN              = "signing PIN is incorrect"

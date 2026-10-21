@@ -34,22 +34,36 @@ test("template wrappers fill their placeholders", () => {
   assert.equal(copy.transform.output(1), "Output 1");
   assert.equal(copy.verification.steps(1), "1 step");
   assert.equal(copy.verification.steps(4), "4 steps");
-  assert.equal(
-    screenCopy.passportDetail.held(10, 100, "kg"),
-    "10 of 100 kg",
-  );
+  assert.equal(screenCopy.passportDetail.held(10, 100, "kg"), "10 of 100 kg");
 });
 
 test("logic copy kept its branches", () => {
   assert.equal(copy.flags.sub(0), "Nothing open");
   assert.equal(copy.flags.sub(2), "2 flags open");
   assert.equal(copy.dashboard.waitingDays(0), "Today");
-  assert.equal(copy.dashboard.greeting("Ada Lovelace").startsWith("Good "), true);
+  assert.equal(
+    copy.dashboard.greeting("Ada Lovelace").startsWith("Good "),
+    true,
+  );
 });
 
 test("marketing covers every role with title, body and two steps", () => {
-  const guides = (marketing as unknown as { roles: { guides: Record<string, { title: string; body: string; steps: [string, string][] }> } }).roles.guides;
-  for (const role of ["producer", "logistics", "certifier", "regulator"] as const) {
+  const guides = (
+    marketing as unknown as {
+      roles: {
+        guides: Record<
+          string,
+          { title: string; body: string; steps: [string, string][] }
+        >;
+      };
+    }
+  ).roles.guides;
+  for (const role of [
+    "producer",
+    "logistics",
+    "certifier",
+    "regulator",
+  ] as const) {
     const entry = guides[role];
     assert.ok(entry.title, role);
     assert.ok(entry.body, role);

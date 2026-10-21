@@ -19,7 +19,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { HandoverStatusChip } from "@/components/chaintrack/handover-status";
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import {
   PlaceAndPhotos,
@@ -95,7 +95,7 @@ export function HandoverView({ id }: { id: string }) {
       </PageState>
     );
   }
-  if (!hv) return <Loading className="p-4 lg:p-8" />;
+  if (!hv) return <LoadingWithLogo />;
 
   const p = lot.data?.passport;
   const unit = p?.unit ?? "";

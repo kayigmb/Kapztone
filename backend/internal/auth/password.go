@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/mailtmpl"
@@ -46,8 +47,8 @@ func (a *Auth) signIn(w http.ResponseWriter, userID string, ver int, ttl time.Du
 
 // passwordProblem says what is wrong with a new password, or "" if nothing is.
 func (a *Auth) passwordProblem(ctx context.Context, userID, password string) (string, error) {
-	if n := len(password); n < MinPasswordLen || n > MaxPasswordLen {
-		return MsgPasswordLength, nil
+	if problem := PasswordFormatProblem(password); problem != "" {
+		return problem, nil
 	}
 	recent, err := a.Accounts.RecentPasswordHashes(ctx, userID, PasswordHistoryLen)
 	if err != nil {
@@ -59,6 +60,25 @@ func (a *Auth) passwordProblem(ctx context.Context, userID, password string) (st
 		}
 	}
 	return "", nil
+}
+
+// PasswordFormatProblem enforces the policy for every newly chosen password.
+// The byte limit matches bcrypt's 72-byte input limit.
+func PasswordFormatProblem(password string) string {
+	if n := len(password); n < MinPasswordLen || n > MaxPasswordLen {
+		return MsgPasswordLength
+	}
+	var lower, upper, digit, symbol bool
+	for _, r := range password {
+		lower = lower || unicode.IsLower(r)
+		upper = upper || unicode.IsUpper(r)
+		digit = digit || unicode.IsNumber(r)
+		symbol = symbol || unicode.IsPunct(r) || unicode.IsSymbol(r)
+	}
+	if !lower || !upper || !digit || !symbol {
+		return MsgPasswordComplexity
+	}
+	return ""
 }
 
 // newLinkToken is a random token for an emailed link and the hash that is stored.
@@ -218,8 +238,8 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &in) {
 		return
 	}
-	if n := len(in.New); n < MinPasswordLen || n > MaxPasswordLen {
-		httpx.Error(w, http.StatusBadRequest, MsgPasswordLength)
+	if msg := PasswordFormatProblem(in.New); msg != "" {
+		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	ctx, hash := r.Context(), linkHash(in.Token)

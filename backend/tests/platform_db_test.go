@@ -110,11 +110,13 @@ func TestProfileAndPlatformUsers(t *testing.T) {
 		t.Fatalf("renamed user: %+v", u)
 	}
 
-	newPassword := "a-brand-new-password"
+	newPassword := "A-brand-new-password1!"
 	want(t, "wrong current password", do(e.h, http.MethodPost, "/auth/password", admin,
 		`{"current":"not-it-at-all","new":"`+newPassword+`"}`), http.StatusForbidden)
 	want(t, "short new password", do(e.h, http.MethodPost, "/auth/password", admin,
 		`{"current":"`+testPassword+`","new":"short"}`), http.StatusBadRequest)
+	want(t, "weak new password", do(e.h, http.MethodPost, "/auth/password", admin,
+		`{"current":"`+testPassword+`","new":"lowercase-password1"}`), http.StatusBadRequest)
 	want(t, "change password", do(e.h, http.MethodPost, "/auth/password", admin,
 		`{"current":"`+testPassword+`","new":"`+newPassword+`"}`), http.StatusOK)
 	want(t, "old password", do(e.h, http.MethodPost, "/auth/login", "", loginBody(e.email(tAcme), testPassword)), http.StatusUnauthorized)

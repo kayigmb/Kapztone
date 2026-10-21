@@ -12,6 +12,7 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/dbx"
+	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 )
 
@@ -20,6 +21,7 @@ var (
 	ErrCommodityTaken = errors.New("commodity taken")
 	ErrInUse          = errors.New("template in use")
 	ErrNoDraft        = errors.New("no draft")
+	ErrUnknownKind    = errors.New("unknown facility kind")
 )
 
 // Template is a stored commodity template: the published rules plus the base
@@ -154,9 +156,49 @@ func (s Store) save(ctx context.Context, check func(pgx.Tx) error, sql string, a
 	return t, tx.Commit(ctx)
 }
 
+// ActiveKinds lists the curated, active facility kinds templates may name.
+func (s Store) ActiveKinds(ctx context.Context) ([]facility.Kind, error) {
+	kinds, err := (&facility.Store{Pool: s.Pool}).Kinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := kinds[:0]
+	for _, k := range kinds {
+		if k.Active {
+			out = append(out, k)
+		}
+	}
+	if out == nil {
+		out = []facility.Kind{}
+	}
+	return out, nil
+}
+
+// checkKind refuses an origin facility kind the platform has not curated
+// (or has since deactivated). Templates name kinds; they never invent them.
+func checkKind(ctx context.Context, tx pgx.Tx, kind, existingTemplateID string) error {
+	var key string
+	err := tx.QueryRow(ctx, `SELECT key FROM facility_kinds WHERE key = $1 AND active AND NOT is_deleted FOR SHARE`, kind).Scan(&key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if existingTemplateID != "" {
+			var priorKind string
+			if err := tx.QueryRow(ctx,
+				`SELECT origin_facility_kind FROM commodity_templates WHERE id = $1::uuid AND NOT is_deleted`, existingTemplateID).Scan(&priorKind); err == nil && priorKind == kind {
+				// A deactivated kind remains valid for an existing template that
+				// already references it; it cannot be chosen for new templates.
+				return nil
+			} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		return ErrUnknownKind
+	}
+	return err
+}
+
 func (s Store) Create(ctx context.Context, in Input) (Template, error) {
 	rule, stages := jsonArgs(in)
-	return s.save(ctx, nil,
+	return s.save(ctx, func(tx pgx.Tx) error { return checkKind(ctx, tx, in.OriginFacilityKind, "") },
 		`INSERT INTO commodity_templates AS t (commodity, name, unit, origin_facility_kind, capacity_rule, stages)
 		 VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb) RETURNING `+columns,
 		in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, rule, stages)
@@ -200,6 +242,9 @@ func (s Store) Update(ctx context.Context, id string, in Input) (Template, error
 	if err := inUse(ctx, tx, id, in); err != nil {
 		return Template{}, err
 	}
+	if err := checkKind(ctx, tx, in.OriginFacilityKind, id); err != nil {
+		return Template{}, err
+	}
 	draft, _ := json.Marshal(in)
 	t, err := one(tx.Query(ctx,
 		`UPDATE commodity_templates AS t SET draft = $2::jsonb
@@ -233,6 +278,9 @@ func (s Store) Publish(ctx context.Context, id string) (Template, error) {
 	}
 	var in Input
 	if err := json.Unmarshal([]byte(*draft), &in); err != nil {
+		return Template{}, err
+	}
+	if err := checkKind(ctx, tx, in.OriginFacilityKind, id); err != nil {
 		return Template{}, err
 	}
 	if err := inUse(ctx, tx, id, in); err != nil {

@@ -44,7 +44,7 @@ test("template: each field is required and capped", () => {
   assert.deepEqual(bad({ commodity: "  " }), ["commodity"]);
   assert.deepEqual(bad({ name: "" }), ["name"]);
   assert.deepEqual(bad({ unit: "" }), ["unit"]);
-  assert.deepEqual(bad({ originFacilityKind: "factory" }), [
+  assert.deepEqual(bad({ originFacilityKind: "Has Space" }), [
     "originFacilityKind",
   ]);
   assert.deepEqual(bad({ stages: [] }), ["stages"]);

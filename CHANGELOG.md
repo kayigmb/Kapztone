@@ -60,6 +60,13 @@ What has been built and what is left. Every finished piece of work adds an entry
 
 ## Done
 
+### 2026-10-21 — Facility kinds, map search, and account UX
+- **Facility kinds:** CRUD table and editor in template administration; active kinds feed registration and filters, inactive kinds remain visible on existing records/templates. Added migration `000023_facility_kinds_id` to preserve existing data while meeting the table UUID-id convention; `key` remains unique.
+- **Facility registration:** Photon place search with selectable results and map fly-to, plus a map/details two-column desktop layout.
+- **Workspace and detail screens:** reports, profile and passport detail now use underlined tabs; notifications are opened from the bell; organisation verification status is shown in the workspace card; audit includes an Organisation column.
+- **Account security:** all new-password paths enforce 8–72 bytes plus lowercase, uppercase, number and symbol on frontend and backend. Signup checks email availability before proceeding through a rate-limited endpoint; final registration remains authoritative.
+- **Verification:** backend unit tests, frontend lint/build and 77 frontend tests pass. Targeted DB tests for facility kinds, email availability, reset and change-password pass. The full `make test-db` suite encountered an existing shared-database mailer race in `TestCommodityChainsEndToEnd` (`notifications are still waiting to be e-mailed`).
+
 ### 2026-10-20 — Branded sender, background invites, HTML mail
 - **Sender identity:** new required `MAIL_FROM` (fail-fast `mail.ParseAddress`, e.g. `"ChainTrack <noreply@chaintrack.digital>"`); envelope keeps the bare address, the `From:` header shows the display name. `SMTP_USER` is login-only now (docs + `.env.example` updated, Gmail alias/SPF note).
 - **Background invites:** `POST /invites` returns immediately; the e-mail sends in a `go` routine like `sendLink`, failures only logged (re-invite makes a new link). Response semantics (`emailed` = queued) and frontend unchanged.

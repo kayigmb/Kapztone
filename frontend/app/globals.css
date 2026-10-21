@@ -375,12 +375,30 @@
 }
 
 /* ---------- Two helpers used everywhere ---------- */
-/* Hide the scrollbar while keeping the scroll itself (tab rows, chip lists). */
-@utility no-scrollbar {
+/* Plain CSS on purpose (not @utility): these rules must ship even when class
+   scanning misses a file. Covers .no-scrollbar (tab rows, chip lists) and the
+   active tab underline from components/ui/tabs.tsx (data-active comes from
+   Base UI; the stacked Tailwind equivalents in tabs.tsx stay as backup). */
+.no-scrollbar {
   scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Line tabs: a teal 2 px bar under the active tab (Figma .tabs). The list
+   scrolls instead of overflowing on narrow screens; triggers never wrap. */
+[data-slot="tabs-list"] {
+  overflow-x: auto;
+}
+[data-slot="tabs-list"][data-variant="line"] [data-slot="tabs-trigger"] {
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+[data-slot="tabs-list"][data-variant="line"]
+  [data-slot="tabs-trigger"][data-active]:not([data-active="false"]) {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
 }
 @utility label {
   @apply text-label uppercase text-ink-muted;

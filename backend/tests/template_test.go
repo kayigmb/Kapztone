@@ -50,7 +50,7 @@ func TestTemplateValidate(t *testing.T) {
 	cases := map[string]func(*template.Input){
 		"commodity with spaces":      func(in *template.Input) { in.Commodity = "Green Coffee" },
 		"no unit":                    func(in *template.Input) { in.Unit = "" },
-		"unknown facility kind":      func(in *template.Input) { in.OriginFacilityKind = "castle" },
+		"malformed facility kind":    func(in *template.Input) { in.OriginFacilityKind = "Castle Kind" },
 		"unknown capacity rule":      func(in *template.Input) { in.CapacityRule.Type = "guess" },
 		"yield rule without a rate":  func(in *template.Input) { in.CapacityRule.KgPerHaPerSeason = 0 },
 		"rate on the wrong rule":     func(in *template.Input) { in.CapacityRule.Type = template.CapacityFacility },

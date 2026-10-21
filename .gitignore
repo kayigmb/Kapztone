@@ -30,7 +30,7 @@ frontend/playwright-report/
 # Simulation output
 tools/sim/sim-results.csv
 
-ui
+/ui
 .claude
 PLAN.md
 CLAUDE.md

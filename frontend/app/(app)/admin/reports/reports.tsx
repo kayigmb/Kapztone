@@ -21,10 +21,11 @@ import {
   type ListColumn,
 } from "@/components/chaintrack/list-table";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -91,24 +92,44 @@ const volumeColumns: ListColumn<VolumeRow>[] = [
 ];
 
 const outcomeColumns: ListColumn<OutcomeRow>[] = [
-  column("period", "Period", (o) => <span className="font-mono">{o.period}</span>, {
-    value: (o) => o.period,
-  }),
-  column("verified", "Verified", (o) => <span className="fig">{o.verified}</span>, {
-    value: (o) => o.verified,
-  }),
-  column("warning", "Warning", (o) => <span className="fig">{o.warning}</span>, {
-    value: (o) => o.warning,
-  }),
+  column(
+    "period",
+    "Period",
+    (o) => <span className="font-mono">{o.period}</span>,
+    {
+      value: (o) => o.period,
+    },
+  ),
+  column(
+    "verified",
+    "Verified",
+    (o) => <span className="fig">{o.verified}</span>,
+    {
+      value: (o) => o.verified,
+    },
+  ),
+  column(
+    "warning",
+    "Warning",
+    (o) => <span className="fig">{o.warning}</span>,
+    {
+      value: (o) => o.warning,
+    },
+  ),
   column("failed", "Failed", (o) => <span className="fig">{o.failed}</span>, {
     value: (o) => o.failed,
   }),
   column("total", "Total", (o) => <span className="fig">{o.total}</span>, {
     value: (o) => o.total,
   }),
-  column("pct_verified", "% verified", (o) => <span className="fig">{o.pct_verified}</span>, {
-    value: (o) => o.pct_verified,
-  }),
+  column(
+    "pct_verified",
+    "% verified",
+    (o) => <span className="fig">{o.pct_verified}</span>,
+    {
+      value: (o) => o.pct_verified,
+    },
+  ),
 ];
 
 const savedColumns: ListColumn<SavedReport>[] = [
@@ -121,7 +142,9 @@ const savedColumns: ListColumn<SavedReport>[] = [
   )),
 ];
 
-const auditColumns: ListColumn<AuditEntry>[] = [
+const auditColumns = (
+  organisationNames: Map<string, string>,
+): ListColumn<AuditEntry>[] => [
   column("seq", c.seq, (a) => <span className="font-mono">{a.seq}</span>, {
     sortable: true,
   }),
@@ -136,6 +159,13 @@ const auditColumns: ListColumn<AuditEntry>[] = [
   column("actor", c.actor, (a) => (
     <span className="block max-w-48 truncate">
       {a.actor_email || a.actor_user_id || "–"}
+    </span>
+  )),
+  column("organisation_id", c.organisation, (a) => (
+    <span className="block max-w-48 truncate">
+      {a.organisation_id
+        ? (organisationNames.get(a.organisation_id) ?? a.organisation_id)
+        : copy.shell.platform}
     </span>
   )),
   column(
@@ -175,6 +205,11 @@ export function Reports() {
     me.ready &&
     (me.data!.permissions.includes(permissions.auditRead) ||
       me.data!.permissions.includes(permissions.reportRead));
+  const organisations = useQuery({
+    queryKey: queryKeys.directory,
+    queryFn: endpoints.directory,
+    enabled: allowed,
+  });
 
   const [volumeStart, setVolumeStart] = useState("");
   const [volumeEnd, setVolumeEnd] = useState("");
@@ -238,7 +273,7 @@ export function Reports() {
       </PageState>
     );
   }
-  if (!me.ready) return <Loading className="p-4 lg:p-8" />;
+  if (!me.ready) return <LoadingWithLogo />;
   if (!allowed)
     return (
       <PageState icon={Lock} title={t.notAllowedTitle}>
@@ -250,207 +285,237 @@ export function Reports() {
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader title={t.title} sub={t.sub} />
 
-      <Section title={t.volume}>
-        <div className="flex flex-wrap items-end gap-3">
-          <DateField
-            label={t.startDate}
-            value={volumeStart}
-            onChange={setVolumeStart}
-          />
-          <DateField
-            label={t.endDate}
-            value={volumeEnd}
-            onChange={setVolumeEnd}
-          />
-          <Downloads
-            path={apiPaths.reportsVolume}
-            params={{ start_date: volumeStart, end_date: volumeEnd }}
-          />
-        </div>
-        <DataWidget query={volume}>
-          {(rows) => (
-            <ClientTable
-              id="volume"
-              label={t.volume}
-              columns={volumeColumns}
-              rows={rows}
-              rowKey={(v) => `${v.month}|${v.commodity}|${v.unit}`}
-              empty={t.noData}
-            />
-          )}
-        </DataWidget>
-      </Section>
-
-      <Section title={t.outcomes}>
-        <div className="flex flex-wrap items-end gap-3">
-          <DateField label={t.startDate} value={outStart} onChange={setOutStart} />
-          <DateField label={t.endDate} value={outEnd} onChange={setOutEnd} />
-          <Downloads
-            path={apiPaths.reportsOutcomes}
-            params={{ start_date: outStart, end_date: outEnd }}
-          />
-        </div>
-        <DataWidget query={outcomes}>
-          {(rows) => (
-            <ClientTable
-              id="outcomes"
-              label={t.outcomes}
-              columns={outcomeColumns}
-              rows={rows}
-              rowKey={(o) => o.period}
-              empty={t.noData}
-            />
-          )}
-        </DataWidget>
-      </Section>
-
-      <Section title={t.saved}>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.savedName}</span>
-            <Input
-              value={savedName}
-              onChange={(e) => setSavedName(e.target.value)}
-              className="w-56"
-              placeholder="Volume by commodity · Monthly"
-            />
-          </label>
-          <div className="grid gap-1.5">
-            <span className="text-sm font-semibold">{t.savedKind}</span>
-            <Select
-              items={[
-                { value: "volume", label: "volume" },
-                { value: "blocked", label: "blocked" },
-                { value: "verification-outcomes", label: "verification-outcomes" },
-                { value: "audit", label: "audit" },
-              ]}
-              value={savedKind}
-              onValueChange={(v) => setSavedKind(v as string)}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["volume", "blocked", "verification-outcomes", "audit"].map((k) => (
-                  <SelectItem key={k} value={k}>
-                    {k}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            disabled={!savedName.trim()}
-            onClick={async () => {
-              await endpoints.createSaved({
-                name: savedName.trim(),
-                kind: savedKind,
-                params: {
-                  start_date: volumeStart,
-                  end_date: volumeEnd,
-                },
-              });
-              setSavedName("");
-              saved.refetch();
-            }}
-          >
-            {t.save}
-          </Button>
-        </div>
-        <DataWidget query={saved}>
-          {(rows) => (
-            <ClientTable
-              id="saved"
-              label={t.saved}
-              columns={savedColumns}
-              rows={rows}
-              rowKey={(s) => s.id}
-              empty={t.noData}
-            />
-          )}
-        </DataWidget>
-        <p className="text-sm text-ink-muted">
-          Running a saved report keeps its CSV/PDF in the bucket; open it from its files.
-        </p>
-      </Section>
-
-      <Section title={t.auditTrail}>
-        <ListTable
-          label={t.auditTrail}
-          columns={auditColumns}
-          rows={audit.data?.data ?? []}
-          total={audit.data?.total ?? 0}
-          list={list}
-          rowKey={(a) => a.id}
-          loading={audit.isPending}
-          error={audit.isError ? problemOf(audit.error) : undefined}
-          empty={t.noData}
-          toolbar={
+      <Tabs defaultValue="reports" className="grid min-w-0 gap-4">
+        <TabsList aria-label={t.title}>
+          <TabsTrigger value="reports">{t.reportsTab}</TabsTrigger>
+          <TabsTrigger value="audit">{t.auditTab}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="reports" className="grid gap-4">
+          <Section title={t.volume}>
             <div className="flex flex-wrap items-end gap-3">
-              <ListBar list={list} />
               <DateField
                 label={t.startDate}
-                value={f.start_date ?? ""}
-                onChange={(v) => list.setFilters({ start_date: v || null })}
+                value={volumeStart}
+                onChange={setVolumeStart}
               />
               <DateField
                 label={t.endDate}
-                value={f.end_date ?? ""}
-                onChange={(v) => list.setFilters({ end_date: v || null })}
+                value={volumeEnd}
+                onChange={setVolumeEnd}
               />
+              <Downloads
+                path={apiPaths.reportsVolume}
+                params={{ start_date: volumeStart, end_date: volumeEnd }}
+              />
+            </div>
+            <DataWidget query={volume}>
+              {(rows) => (
+                <ClientTable
+                  id="volume"
+                  label={t.volume}
+                  columns={volumeColumns}
+                  rows={rows}
+                  rowKey={(v) => `${v.month}|${v.commodity}|${v.unit}`}
+                  empty={t.noData}
+                />
+              )}
+            </DataWidget>
+          </Section>
+
+          <Section title={t.outcomes}>
+            <div className="flex flex-wrap items-end gap-3">
+              <DateField
+                label={t.startDate}
+                value={outStart}
+                onChange={setOutStart}
+              />
+              <DateField
+                label={t.endDate}
+                value={outEnd}
+                onChange={setOutEnd}
+              />
+              <Downloads
+                path={apiPaths.reportsOutcomes}
+                params={{ start_date: outStart, end_date: outEnd }}
+              />
+            </div>
+            <DataWidget query={outcomes}>
+              {(rows) => (
+                <ClientTable
+                  id="outcomes"
+                  label={t.outcomes}
+                  columns={outcomeColumns}
+                  rows={rows}
+                  rowKey={(o) => o.period}
+                  empty={t.noData}
+                />
+              )}
+            </DataWidget>
+          </Section>
+
+          <Section title={t.saved}>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold">{t.savedName}</span>
+                <Input
+                  value={savedName}
+                  onChange={(e) => setSavedName(e.target.value)}
+                  className="w-56"
+                  placeholder="Volume by commodity · Monthly"
+                />
+              </label>
               <div className="grid gap-1.5">
-                <span className="text-sm font-semibold">{t.route}</span>
+                <span className="text-sm font-semibold">{t.savedKind}</span>
                 <Select
-                  items={routeOptions}
-                  value={f.route ?? ALL_ROUTES}
-                  onValueChange={(v) =>
-                    list.setFilters({ route: (v as string) || null })
-                  }
+                  items={[
+                    { value: "volume", label: "volume" },
+                    { value: "blocked", label: "blocked" },
+                    {
+                      value: "verification-outcomes",
+                      label: "verification-outcomes",
+                    },
+                    { value: "audit", label: "audit" },
+                  ]}
+                  value={savedKind}
+                  onValueChange={(v) => setSavedKind(v as string)}
                 >
-                  <SelectTrigger className="w-44">
+                  <SelectTrigger className="w-56">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {routeOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
+                    {[
+                      "volume",
+                      "blocked",
+                      "verification-outcomes",
+                      "audit",
+                    ].map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {k}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <Downloads
-                path={apiPaths.audit}
-                params={{
-                  start_date: f.start_date ?? "",
-                  end_date: f.end_date ?? "",
-                  route: f.route ?? "",
+              <Button
+                disabled={!savedName.trim()}
+                onClick={async () => {
+                  await endpoints.createSaved({
+                    name: savedName.trim(),
+                    kind: savedKind,
+                    params: {
+                      start_date: volumeStart,
+                      end_date: volumeEnd,
+                    },
+                  });
+                  setSavedName("");
+                  saved.refetch();
                 }}
-              />
+              >
+                {t.save}
+              </Button>
             </div>
-          }
-        />
-      </Section>
+            <DataWidget query={saved}>
+              {(rows) => (
+                <ClientTable
+                  id="saved"
+                  label={t.saved}
+                  columns={savedColumns}
+                  rows={rows}
+                  rowKey={(s) => s.id}
+                  empty={t.noData}
+                />
+              )}
+            </DataWidget>
+            <p className="text-sm text-ink-muted">
+              Running a saved report keeps its CSV/PDF in the bucket; open it
+              from its files.
+            </p>
+          </Section>
+        </TabsContent>
 
-      <Section title={t.chainCheck}>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => chain.refetch()} disabled={chain.isFetching}>
-            <Search aria-hidden />
-            {chain.isFetching ? t.running : t.runCheck}
-          </Button>
-          {chain.data?.ok && (
-            <StatusChip tone="verified" icon={CheckCircle2}>
-              {t.verified} · {t.checked(chain.data.checked)}
-            </StatusChip>
-          )}
-          {chain.data && !chain.data.ok && (
-            <StatusChip tone="danger" icon={ShieldX}>
-              {t.brokenAt(chain.data.broken_at)} ·{" "}
-              {t.checked(chain.data.checked)}
-            </StatusChip>
-          )}
-        </div>
-      </Section>
+        <TabsContent value="audit" className="grid gap-4">
+          <Section title={t.auditTrail}>
+            <ListTable
+              label={t.auditTrail}
+              columns={auditColumns(organisations.data ?? new Map())}
+              rows={audit.data?.data ?? []}
+              total={audit.data?.total ?? 0}
+              list={list}
+              rowKey={(a) => a.id}
+              loading={audit.isPending}
+              error={audit.isError ? problemOf(audit.error) : undefined}
+              empty={t.noData}
+              toolbar={
+                <div className="flex flex-wrap items-end gap-3">
+                  <ListBar list={list} />
+                  <DateField
+                    label={t.startDate}
+                    value={f.start_date ?? ""}
+                    onChange={(v) => list.setFilters({ start_date: v || null })}
+                  />
+                  <DateField
+                    label={t.endDate}
+                    value={f.end_date ?? ""}
+                    onChange={(v) => list.setFilters({ end_date: v || null })}
+                  />
+                  <div className="grid gap-1.5">
+                    <span className="text-sm font-semibold">{t.route}</span>
+                    <Select
+                      items={routeOptions}
+                      value={f.route ?? ALL_ROUTES}
+                      onValueChange={(v) =>
+                        list.setFilters({ route: (v as string) || null })
+                      }
+                    >
+                      <SelectTrigger className="w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {routeOptions.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Downloads
+                    path={apiPaths.audit}
+                    params={{
+                      start_date: f.start_date ?? "",
+                      end_date: f.end_date ?? "",
+                      route: f.route ?? "",
+                    }}
+                  />
+                </div>
+              }
+            />
+          </Section>
+
+          <Section title={t.chainCheck}>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => chain.refetch()}
+                disabled={chain.isFetching}
+              >
+                <Search aria-hidden />
+                {chain.isFetching ? t.running : t.runCheck}
+              </Button>
+              {chain.data?.ok && (
+                <StatusChip tone="verified" icon={CheckCircle2}>
+                  {t.verified} · {t.checked(chain.data.checked)}
+                </StatusChip>
+              )}
+              {chain.data && !chain.data.ok && (
+                <StatusChip tone="danger" icon={ShieldX}>
+                  {t.brokenAt(chain.data.broken_at)} ·{" "}
+                  {t.checked(chain.data.checked)}
+                </StatusChip>
+              )}
+            </div>
+          </Section>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

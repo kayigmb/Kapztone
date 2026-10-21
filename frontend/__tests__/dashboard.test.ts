@@ -47,19 +47,11 @@ test("each kind of organisation gets its dashboard; the platform admin gets the 
 test("nav and actions need their permission", () => {
   assert.deepEqual(
     navFor(producer).map((n) => n.key),
-    ["home", "issue", "notifications", "profile"],
+    ["home", "issue", "profile"],
   );
   assert.deepEqual(
     navFor(admin).map((n) => n.key),
-    [
-      "home",
-      "notifications",
-      "adminOrgs",
-      "templates",
-      "reports",
-      "users",
-      "profile",
-    ],
+    ["home", "adminOrgs", "templates", "reports", "users", "profile"],
   );
   const orgAdmin = {
     organisation: { kind: "producer" },
@@ -67,7 +59,7 @@ test("nav and actions need their permission", () => {
   };
   assert.deepEqual(
     navFor(orgAdmin).map((n) => n.key),
-    ["home", "notifications", "users", "profile"],
+    ["home", "users", "profile"],
   );
   // The producer dashboard asks for issue · scan · handover · register facility, of which this person may use two.
   assert.deepEqual(

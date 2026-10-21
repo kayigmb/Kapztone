@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { parseAsString, parseAsStringLiteral } from "nuqs";
+import { parseAsString } from "nuqs";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
 import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
@@ -48,7 +48,6 @@ import {
 import {
   capacityPeriods,
   copy,
-  facilityKinds,
   facilityStatus,
   listSorts,
   permissions,
@@ -75,8 +74,6 @@ const kindIcon: Record<string, LucideIcon> = {
   processing_plant: Factory,
   warehouse: Warehouse,
 };
-const kindLabel = (kind: string) =>
-  facilityKinds.find((k) => k.value === kind)?.label ?? humanize(kind);
 const periodLabel = (period: string) =>
   capacityPeriods.find((p) => p.value === period)?.label ?? humanize(period);
 
@@ -138,18 +135,17 @@ function coordsOf(f: Facility): [number, number] | null {
   return [c[0], c[1]];
 }
 
-const kindValues = facilityKinds.map((k) => k.value);
 const listFilters = {
-  kind: parseAsStringLiteral(kindValues),
+  kind: parseAsString,
   facility: parseAsString,
 };
-const kindOptions = [
-  { value: "", label: t.filterAll },
-  ...facilityKinds.map((k) => ({ value: k.value, label: k.label })),
-];
 
 export function Facilities() {
   const me = useMe().data!; // the layout only renders once /me has loaded
+  const kinds = useQuery({
+    queryKey: queryKeys.facilityKinds,
+    queryFn: endpoints.facilityKinds,
+  });
   const list = useListParams("name", listFilters);
   const kind = list.filters.kind ?? "";
   const q = usePaged(
@@ -169,6 +165,12 @@ export function Facilities() {
   const maySuspend = me.permissions.includes(permissions.facilitySuspend);
   const org = me.organisation?.name ?? copy.shell.platform;
   const filtered = !!(list.search || kind);
+  const kindLabel = (value: string) =>
+    kinds.data?.find((k) => k.key === value)?.label ?? humanize(value);
+  const kindOptions = [
+    { value: "", label: t.filterAll },
+    ...(kinds.data ?? []).map((k) => ({ value: k.key, label: k.label })),
+  ];
 
   return (
     <DataWidget
@@ -181,96 +183,105 @@ export function Facilities() {
           <PageHeader
             title={t.title}
             sub={t.sub(total, org)}
-        actions={
-          mayManage && (
-            <Link href={routes.facilityNew} className={buttonVariants()}>
-              <Plus aria-hidden />
-              {t.register}
-            </Link>
-          )
-        }
-      />
+            actions={
+              mayManage && (
+                <Link href={routes.facilityNew} className={buttonVariants()}>
+                  <Plus aria-hidden />
+                  {t.register}
+                </Link>
+              )
+            }
+          />
 
-      {total === 0 && !filtered ? (
-        <div className="grid justify-items-center gap-2 px-4 py-12 text-center">
-          <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
-            <Inbox className="size-7" aria-hidden />
-          </span>
-          <h2 className="text-title">{local.emptyTitle}</h2>
-          <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
-          {mayManage && (
-            <Link
-              href={routes.facilityNew}
-              className={cn(buttonVariants(), "mt-2")}
-            >
-              <Plus aria-hidden />
-              {t.register}
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6">
-          <div className="grid min-w-0 content-start gap-3">
-            <ListBar list={list} sorts={listSorts.name}>
-              <Choice
-                label={t.filterLabel}
-                options={kindOptions}
-                value={kind}
-                onChange={(v) =>
-                  list.setFilters({
-                    kind: (v || null) as FacilityKind | null,
-                    facility: null,
-                  })
-                }
-              />
-            </ListBar>
-            {rows.length === 0 ? (
-              <p className="rounded-lg border border-border bg-surface p-4 text-ink-muted">
-                {filtered ? copy.list.noMatch : t.emptyType}
-              </p>
-            ) : (
-              <ul className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-card">
-                {rows.map((f) => (
-                  <Row key={f.id} f={f} selected={f.id === selectedId} />
-                ))}
-              </ul>
-            )}
-            <ListPager list={list} total={total} />
-          </div>
-          {selected ? (
-            <Detail
-              f={selected}
-              mayManage={mayManage}
-              maySuspend={maySuspend}
-            />
+          {total === 0 && !filtered ? (
+            <div className="grid justify-items-center gap-2 px-4 py-12 text-center">
+              <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
+                <Inbox className="size-7" aria-hidden />
+              </span>
+              <h2 className="text-title">{local.emptyTitle}</h2>
+              <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
+              {mayManage && (
+                <Link
+                  href={routes.facilityNew}
+                  className={cn(buttonVariants(), "mt-2")}
+                >
+                  <Plus aria-hidden />
+                  {t.register}
+                </Link>
+              )}
+            </div>
           ) : (
-            <section className="grid min-w-0 content-start gap-3 rounded-lg border border-border bg-surface p-4 shadow-card">
-              <MapView
-                label={t.mapLabel}
-                shapes={rows.flatMap(shapeOf)}
-                className="h-72 overflow-hidden rounded-md lg:h-96"
-              />
-              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-small text-ink-muted">
-                <li className="flex items-center gap-1.5">
-                  <CircleCheck className="size-4 text-primary" aria-hidden />
-                  {t.legend.active}
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <Clock className="size-4 text-pending" aria-hidden />
-                  {t.legend.pending}
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <OctagonX className="size-4 text-danger" aria-hidden />
-                  {t.legend.inactive}
-                </li>
-              </ul>
-                <p className="text-small text-ink-subtle">
-                {local.selectPrompt}
-              </p>
-            </section>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6">
+              <div className="grid min-w-0 content-start gap-3">
+                <ListBar list={list} sorts={listSorts.name}>
+                  <Choice
+                    label={t.filterLabel}
+                    options={kindOptions}
+                    value={kind}
+                    onChange={(v) =>
+                      list.setFilters({
+                        kind: (v || null) as FacilityKind | null,
+                        facility: null,
+                      })
+                    }
+                  />
+                </ListBar>
+                {rows.length === 0 ? (
+                  <p className="rounded-lg border border-border bg-surface p-4 text-ink-muted">
+                    {filtered ? copy.list.noMatch : t.emptyType}
+                  </p>
+                ) : (
+                  <ul className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-card">
+                    {rows.map((f) => (
+                      <Row
+                        key={f.id}
+                        f={f}
+                        selected={f.id === selectedId}
+                        kindLabel={kindLabel}
+                      />
+                    ))}
+                  </ul>
+                )}
+                <ListPager list={list} total={total} />
+              </div>
+              {selected ? (
+                <Detail
+                  f={selected}
+                  mayManage={mayManage}
+                  maySuspend={maySuspend}
+                  kindLabel={kindLabel}
+                />
+              ) : (
+                <section className="grid min-w-0 content-start gap-3 rounded-lg border border-border bg-surface p-4 shadow-card">
+                  <MapView
+                    label={t.mapLabel}
+                    shapes={rows.flatMap(shapeOf)}
+                    className="h-72 overflow-hidden rounded-md lg:h-96"
+                  />
+                  <ul className="flex flex-wrap gap-x-4 gap-y-1 text-small text-ink-muted">
+                    <li className="flex items-center gap-1.5">
+                      <CircleCheck
+                        className="size-4 text-primary"
+                        aria-hidden
+                      />
+                      {t.legend.active}
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Clock className="size-4 text-pending" aria-hidden />
+                      {t.legend.pending}
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <OctagonX className="size-4 text-danger" aria-hidden />
+                      {t.legend.inactive}
+                    </li>
+                  </ul>
+                  <p className="text-small text-ink-subtle">
+                    {local.selectPrompt}
+                  </p>
+                </section>
+              )}
+            </div>
           )}
-        </div>
-      )}
         </main>
       )}
     </DataWidget>
@@ -278,7 +289,15 @@ export function Facilities() {
 }
 
 /** One facility: a compact row with what's left this period; actions live in the detail. */
-function Row({ f, selected }: { f: Facility; selected: boolean }) {
+function Row({
+  f,
+  selected,
+  kindLabel,
+}: {
+  f: Facility;
+  selected: boolean;
+  kindLabel: (value: string) => string;
+}) {
   const params = useSearchParams();
   const Icon = kindIcon[f.kind] ?? MapPin;
   const pct =
@@ -333,10 +352,12 @@ function Detail({
   f,
   mayManage,
   maySuspend,
+  kindLabel,
 }: {
   f: Facility;
   mayManage: boolean;
   maySuspend: boolean;
+  kindLabel: (value: string) => string;
 }) {
   const router = useRouter();
   const client = useQueryClient();

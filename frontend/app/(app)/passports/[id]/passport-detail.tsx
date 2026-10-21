@@ -27,7 +27,7 @@ import { CertificateTile } from "@/components/chaintrack/certificate-tile";
 import { JourneyTimeline } from "@/components/chaintrack/journey-timeline";
 import { Notice } from "@/components/chaintrack/notice";
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { PassportCard, type Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { Status, StatusChip } from "@/components/chaintrack/status";
@@ -40,6 +40,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ApiError,
   endpoints,
@@ -164,7 +165,7 @@ export function PassportDetail() {
     queryFn: () => endpoints.passport(id),
   });
 
-  if (query.isPending) return <Loading className="p-4">{copy.loading}</Loading>;
+  if (query.isPending) return <LoadingWithLogo />;
   if (query.isError) {
     if (query.error instanceof ApiError && query.error.status === 404) {
       return (
@@ -355,86 +356,97 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
         </div>
       </div>
 
-      <Card title={t.journey} note={copy.verification.steps(events.length)}>
-        {steps.length === 0 ? (
-          <p className="text-sm text-ink-muted">{t.journeyEmpty}</p>
-        ) : (
-          <JourneyTimeline steps={steps} />
-        )}
-      </Card>
-
-      <Card title={t.certificates}>
-        <DataWidget query={certificatesQuery}>
-          {() =>
-            certificates.length === 0 ? (
-              <p className="text-sm text-ink-muted">{t.certificatesEmpty}</p>
+      <Tabs defaultValue="journey" className="grid min-w-0 gap-4">
+        <TabsList aria-label={p.code}>
+          <TabsTrigger value="journey">{local.journeyTab}</TabsTrigger>
+          <TabsTrigger value="evidence">{local.evidenceTab}</TabsTrigger>
+          <TabsTrigger value="record">{local.recordTab}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="journey" className="grid min-w-0 gap-4">
+          <Card title={t.journey} note={copy.verification.steps(events.length)}>
+            {steps.length === 0 ? (
+              <p className="text-sm text-ink-muted">{t.journeyEmpty}</p>
             ) : (
-              <div className="grid gap-4 md:grid-cols-3">
-                {certificates.map((c) => (
-                  <CertificateTile key={c.id} certificate={c} />
-                ))}
-              </div>
-            )
-          }
-        </DataWidget>
-      </Card>
-
-      <Card title={local.flagsTitle}>
-        <DataWidget query={flagsQuery}>
-          {(rows) => {
-            const mine = rows.filter((f) => f.passport_id === p.id);
-            return mine.length === 0 ? (
-              <p className="text-sm text-ink-muted">{local.flagsEmpty}</p>
-            ) : (
-              <ul className="grid divide-y divide-border rounded-lg border border-border bg-surface shadow-card">
-                {mine.map((f: Flag) => {
-                  const look = flagLook[f.status] ?? flagLook.open;
-                  return (
-                    <li key={f.id} className="grid gap-2 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <StatusChip tone={look.tone} icon={look.icon}>
-                          {look.label}
-                        </StatusChip>
-                        <span className="text-small text-ink-subtle">
-                          {copy.flags.raised(formatDateTime(f.created_at))}
-                        </span>
-                      </div>
-                      <p className="text-sm">{f.reason}</p>
-                      {f.resolution_note && (
-                        <p className="text-small text-ink-muted">
-                          <span className="font-semibold">
-                            {local.resolution}:
-                          </span>{" "}
-                          {f.resolution_note}
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          }}
-        </DataWidget>
-      </Card>
-
-      <Genealogy id={p.id} unit={p.unit} />
-
-      <TechnicalDetails
-        rows={[
-          { label: local.technical.fingerprint, value: p.data_hash },
-          { label: local.technical.sealed, value: p.tx_hash ?? null },
-          ...(p.template_id
-            ? [{ label: local.technical.template, value: p.template_id }]
-            : []),
-          ...(p.facility_id
-            ? [{ label: local.technical.facility, value: p.facility_id }]
-            : []),
-          { label: local.technical.created, value: p.created_at },
-          ...(p.updated_at
-            ? [{ label: local.technical.updated, value: p.updated_at }]
-            : []),
-        ]}
-      />
+              <JourneyTimeline steps={steps} />
+            )}
+          </Card>
+          <Genealogy id={p.id} unit={p.unit} />
+        </TabsContent>
+        <TabsContent value="evidence" className="grid min-w-0 gap-4">
+          <Card title={t.certificates}>
+            <DataWidget query={certificatesQuery}>
+              {() =>
+                certificates.length === 0 ? (
+                  <p className="text-sm text-ink-muted">
+                    {t.certificatesEmpty}
+                  </p>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {certificates.map((c) => (
+                      <CertificateTile key={c.id} certificate={c} />
+                    ))}
+                  </div>
+                )
+              }
+            </DataWidget>
+          </Card>
+          <Card title={local.flagsTitle}>
+            <DataWidget query={flagsQuery}>
+              {(rows) => {
+                const mine = rows.filter((f) => f.passport_id === p.id);
+                return mine.length === 0 ? (
+                  <p className="text-sm text-ink-muted">{local.flagsEmpty}</p>
+                ) : (
+                  <ul className="grid divide-y divide-border rounded-lg border border-border bg-surface shadow-card">
+                    {mine.map((f: Flag) => {
+                      const look = flagLook[f.status] ?? flagLook.open;
+                      return (
+                        <li key={f.id} className="grid gap-2 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <StatusChip tone={look.tone} icon={look.icon}>
+                              {look.label}
+                            </StatusChip>
+                            <span className="text-small text-ink-subtle">
+                              {copy.flags.raised(formatDateTime(f.created_at))}
+                            </span>
+                          </div>
+                          <p className="text-sm">{f.reason}</p>
+                          {f.resolution_note && (
+                            <p className="text-small text-ink-muted">
+                              <span className="font-semibold">
+                                {local.resolution}:
+                              </span>{" "}
+                              {f.resolution_note}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                );
+              }}
+            </DataWidget>
+          </Card>
+        </TabsContent>
+        <TabsContent value="record">
+          <TechnicalDetails
+            rows={[
+              { label: local.technical.fingerprint, value: p.data_hash },
+              { label: local.technical.sealed, value: p.tx_hash ?? null },
+              ...(p.template_id
+                ? [{ label: local.technical.template, value: p.template_id }]
+                : []),
+              ...(p.facility_id
+                ? [{ label: local.technical.facility, value: p.facility_id }]
+                : []),
+              { label: local.technical.created, value: p.created_at },
+              ...(p.updated_at
+                ? [{ label: local.technical.updated, value: p.updated_at }]
+                : []),
+            ]}
+          />
+        </TabsContent>
+      </Tabs>
 
       {canRetire && (
         <RetireDialog
@@ -541,12 +553,11 @@ function Genealogy({ id, unit }: { id: string; unit: string }) {
           const ns = g.nodes ?? [];
           const es = g.edges ?? [];
           const byId = new Map(ns.map((n) => [n.id, n]));
-          const isEmpty =
-            ns.every((n) => n.id === id) && es.length === 0;
+          const isEmpty = ns.every((n) => n.id === id) && es.length === 0;
           return isEmpty ? (
             <p className="text-sm text-ink-muted">{t.noGenealogy}</p>
           ) : (
-              <div className="grid gap-4">
+            <div className="grid gap-4">
               <ul className="grid gap-2">
                 {ns.map((n) => {
                   const look = statusLook[n.status] ?? statusLook.active;

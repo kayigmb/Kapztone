@@ -37,6 +37,7 @@ func TestRegistrationValidate(t *testing.T) {
 		"email with name":   func(r *org.Registration) { r.Email = "Ada <" + fakeEmail + ">" },
 		"short password":    func(r *org.Registration) { r.Password = strings.Repeat("a", auth.MinPasswordLen-1) },
 		"too long password": func(r *org.Registration) { r.Password = strings.Repeat("a", auth.MaxPasswordLen+1) },
+		"weak password":     func(r *org.Registration) { r.Password = "lowercase-password1" },
 	}
 	for name, breakIt := range cases {
 		t.Run(name, func(t *testing.T) {

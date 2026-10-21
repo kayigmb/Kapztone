@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -88,17 +89,22 @@ func TestFacilityValidate(t *testing.T) {
 			t.Fatalf("valid facility rejected: %s", msg)
 		}
 	}
+	custom := facilityInput(pinGeo)
+	custom.Kind = "tea_estate"
+	if msg := custom.Validate(); msg != "" {
+		t.Fatalf("well-formed custom kind rejected before curated-kind lookup: %s", msg)
+	}
 
 	cases := map[string]func(*facility.Input){
-		"empty name":        func(in *facility.Input) { in.Name = " " },
-		"unknown kind":      func(in *facility.Input) { in.Kind = "castle" },
-		"no licence":        func(in *facility.Input) { in.LicenceNumber = "" },
-		"zero capacity":     func(in *facility.Input) { in.Capacity = 0 },
-		"negative capacity": func(in *facility.Input) { in.Capacity = -5 },
-		"no unit":           func(in *facility.Input) { in.CapacityUnit = "" },
-		"long unit":         func(in *facility.Input) { in.CapacityUnit = strings.Repeat("k", facility.MaxUnitLen+1) },
-		"unknown period":    func(in *facility.Input) { in.CapacityPeriod = "decade" },
-		"no location":       func(in *facility.Input) { in.Location = nil },
+		"empty name":         func(in *facility.Input) { in.Name = " " },
+		"malformed kind key": func(in *facility.Input) { in.Kind = "Castle Kind" },
+		"no licence":         func(in *facility.Input) { in.LicenceNumber = "" },
+		"zero capacity":      func(in *facility.Input) { in.Capacity = 0 },
+		"negative capacity":  func(in *facility.Input) { in.Capacity = -5 },
+		"no unit":            func(in *facility.Input) { in.CapacityUnit = "" },
+		"long unit":          func(in *facility.Input) { in.CapacityUnit = strings.Repeat("k", facility.MaxUnitLen+1) },
+		"unknown period":     func(in *facility.Input) { in.CapacityPeriod = "decade" },
+		"no location":        func(in *facility.Input) { in.Location = nil },
 		"unsupported shape": func(in *facility.Input) {
 			in.Location = json.RawMessage(`{"type":"LineString","coordinates":[[30,-2],[31,-2]]}`)
 		},
@@ -130,6 +136,91 @@ func TestFacilityValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFacilityKindsManaged(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.addUser(tRoot, auth.RoleSuperadmin, "")
+	root := e.login(tRoot)
+	e.verifiedOrg(tAcme, org.KindProducer, root)
+	slug, member := e.slug(tAcme), e.login(tAcme)
+	kindKey := "tea_estate_" + e.suffix
+
+	created := post(e, root, "/facility-kinds", facility.Kind{Key: kindKey, Label: "Tea estate", Sub: "Tea growing land", Active: true})
+	want(t, "create kind", created, http.StatusCreated)
+	if got := decodeTo[facility.Kind](t, created); got.Key != kindKey || got.Label != "Tea estate" || !got.Active {
+		t.Fatalf("created kind = %+v", got)
+	}
+	want(t, "duplicate kind", post(e, root, "/facility-kinds", facility.Kind{Key: kindKey, Label: "Again", Active: true}), http.StatusConflict)
+	want(t, "member cannot curate kinds", post(e, member, "/facility-kinds", facility.Kind{Key: "another_kind", Label: "Another", Active: true}), http.StatusForbidden)
+
+	active := do(e.h, http.MethodGet, as(slug, "/facility-kinds"), member, "")
+	want(t, "list active kinds", active, http.StatusOK)
+	activeRows := decodeTo[struct {
+		Data []facility.Kind `json:"data"`
+	}](t, active).Data
+	if !slices.ContainsFunc(activeRows, func(k facility.Kind) bool { return k.Key == kindKey }) {
+		t.Fatalf("new kind absent from active list: %+v", activeRows)
+	}
+
+	in := facilityInput(pinGeo)
+	in.Kind = kindKey
+	facRec := post(e, member, as(slug, "/facilities"), in)
+	want(t, "create facility with custom kind", facRec, http.StatusCreated)
+	_ = decodeTo[facility.Facility](t, facRec)
+
+	tpl := coffeeTemplate("tea_" + e.suffix)
+	tpl.OriginFacilityKind = kindKey
+	body, _ := json.Marshal(tpl)
+	tplRec := do(e.h, http.MethodPost, "/templates", root, string(body))
+	want(t, "create template with custom origin kind", tplRec, http.StatusCreated)
+
+	updated := do(e.h, http.MethodPut, "/facility-kinds/"+kindKey, root,
+		`{"label":"Tea farm","sub":"Leaf production","active":false}`)
+	want(t, "deactivate kind", updated, http.StatusOK)
+	deactivated := decodeTo[facility.Kind](t, updated)
+	if deactivated.Active || deactivated.Label != "Tea farm" {
+		t.Fatalf("updated kind = %+v", deactivated)
+	}
+	active = do(e.h, http.MethodGet, as(slug, "/facility-kinds"), member, "")
+	want(t, "inactive kinds hidden from forms", active, http.StatusOK)
+	activeRows = decodeTo[struct {
+		Data []facility.Kind `json:"data"`
+	}](t, active).Data
+	if slices.ContainsFunc(activeRows, func(k facility.Kind) bool { return k.Key == kindKey }) {
+		t.Fatalf("deactivated kind still offered: %+v", activeRows)
+	}
+	all := do(e.h, http.MethodGet, "/facility-kinds/all", root, "")
+	want(t, "platform sees inactive kind", all, http.StatusOK)
+	allRows := decodeTo[struct {
+		Data []facility.Kind `json:"data"`
+	}](t, all).Data
+	if !slices.ContainsFunc(allRows, func(k facility.Kind) bool { return k.Key == kindKey && !k.Active }) {
+		t.Fatalf("inactive kind absent from management list: %+v", allRows)
+	}
+
+	// Historical facilities remain filterable by a kind removed from new forms.
+	filtered := do(e.h, http.MethodGet, as(slug, "/facilities?kind="+kindKey+"&size=100"), member, "")
+	want(t, "filter historical inactive kind", filtered, http.StatusOK)
+	if got := decodeTo[listq.Page[facility.Facility]](t, filtered).Total; got != 1 {
+		t.Fatalf("custom-kind facilities filtered = %d, want 1", got)
+	}
+
+	in.Name += " 2"
+	facRec = post(e, member, as(slug, "/facilities"), in)
+	want(t, "inactive kind refused for new facility", facRec, http.StatusBadRequest)
+	tpl.Commodity += "_draft"
+	body, _ = json.Marshal(tpl)
+	tplRec = do(e.h, http.MethodPost, "/templates", root, string(body))
+	want(t, "inactive kind refused for new template", tplRec, http.StatusBadRequest)
+	if !strings.Contains(tplRec.Body.String(), "originFacilityKind") {
+		t.Fatalf("inactive-kind template error = %s", tplRec.Body)
+	}
+
+	want(t, "used kind cannot be deleted", do(e.h, http.MethodDelete, "/facility-kinds/"+kindKey, root, ""), http.StatusConflict)
+	unusedKey := "unused_kind_" + e.suffix
+	want(t, "create removable kind", post(e, root, "/facility-kinds", facility.Kind{Key: unusedKey, Label: "Unused", Active: true}), http.StatusCreated)
+	want(t, "delete unused kind", do(e.h, http.MethodDelete, "/facility-kinds/"+unusedKey, root, ""), http.StatusOK)
 }
 
 func TestParseBBox(t *testing.T) {
