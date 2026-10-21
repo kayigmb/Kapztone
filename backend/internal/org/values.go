@@ -30,9 +30,10 @@ const (
 	StatusVerified         = auth.OrgVerified
 	StatusRejected         = auth.OrgRejected
 	StatusChangesRequested = auth.OrgChangesRequested
+	StatusSuspended        = auth.OrgSuspended
 )
 
-var Statuses = []string{StatusPending, StatusVerified, StatusRejected, StatusChangesRequested}
+var Statuses = []string{StatusPending, StatusVerified, StatusRejected, StatusChangesRequested, StatusSuspended}
 
 // Decisions a reviewer can make: every status but pending.
 var Decisions = []string{StatusVerified, StatusRejected, StatusChangesRequested}
@@ -64,11 +65,14 @@ const (
 
 // Messages shown to callers.
 const (
-	MsgSlugTaken    = "this organisation address is already taken"
-	MsgEmailTaken   = "an account with this email already exists"
-	MsgNoDocuments  = "this organisation has no documents to review; it cannot be verified"
-	MsgReasonNeeded = "give a reason for rejecting or asking for changes"
-	MsgNotIssuer    = "only a verified certifier or regulator can be accredited"
+	MsgSlugTaken     = "this organisation address is already taken"
+	MsgEmailTaken    = "an account with this email already exists"
+	MsgNoDocuments   = "this organisation has no documents to review; it cannot be verified"
+	MsgReasonNeeded  = "give a reason for rejecting or asking for changes"
+	MsgNotIssuer     = "only a verified certifier or regulator can be accredited"
+	MsgSuspendReason = "give a reason for suspending; the organisation is shown it"
+	MsgNotVerified   = "only a verified organisation can be suspended"
+	MsgNotSuspended  = "this organisation is not suspended"
 
 	MsgNotifyRegistered = "A new organisation registered and is waiting for verification."
 	MsgNotifyDocuments  = "An organisation uploaded documents for review."
@@ -80,10 +84,12 @@ const (
 
 // Confirmations the app shows as they are.
 const (
-	MsgRegistered            = "Account created. Upload your documents so we can verify the organisation."
+	MsgRegistered            = "Account created. Confirm your email from the link we sent, then sign in to upload your documents."
 	MsgAccreditationsSaved   = "Accreditations saved."
 	MsgAccreditationsRemoved = "Accreditations removed."
 	MsgDocumentUploaded      = "Document uploaded."
+	MsgOrgSuspended          = "Organisation suspended. Its members can't act for it until it is reactivated."
+	MsgOrgReactivated        = "Organisation reactivated."
 )
 
 // reviewMessage confirms a review decision.

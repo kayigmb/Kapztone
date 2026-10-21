@@ -198,7 +198,37 @@
     "reinstate": "Reinstate",
     "you": "You",
     "notAllowedTitle": "You can't manage users.",
-    "notAllowedBody": "Only organisation admins and the platform admin can open this page."
+    "notAllowedBody": "Only organisation admins and the platform admin can open this page.",
+    "back": "All users",
+    "view": "Open details",
+    "account": "Account",
+    "deactivate": "Deactivate account",
+    "activate": "Activate account",
+    "facts": {
+      "email": "Email",
+      "emailVerified": "Email",
+      "twoFactor": "Two-factor",
+      "status": "Account",
+      "created": "Joined ChainTrack"
+    },
+    "emailConfirmed": "Confirmed",
+    "emailUnconfirmed": "Not confirmed",
+    "membershipColumns": {
+      "organisation": "Organisation",
+      "role": "Role",
+      "status": "Status"
+    },
+    "activity": "Recent activity",
+    "activitySub": "What they did most recently, newest first.",
+    "noActivity": "Nothing recorded yet.",
+    "activityColumns": {
+      "when": "When",
+      "action": "Action",
+      "organisation": "Organisation",
+      "subject": "Record"
+    },
+    "platformOnlyTitle": "Only the platform admin can open this page.",
+    "platformOnlyBody": "Organisation admins manage their people from Users."
   },
   "invite": {
     "eyebrow": "Invitation",
@@ -1010,6 +1040,9 @@
     "forgot": "Reset password · ChainTrack",
     "reset": "New password · ChainTrack",
     "lock": "Lock account · ChainTrack",
+    "userDetail": "User · ChainTrack",
+    "adminOrg": "Organisation · ChainTrack",
+    "verifyEmail": "Confirm your email · ChainTrack",
     "handoff": "Switching organisation · ChainTrack",
     "signup": "Create account · ChainTrack",
     "onboarding": "Verification · ChainTrack",
@@ -1038,6 +1071,10 @@
     "foot": "Secure by design · Built for regulated trade"
   },
   "signin": {
+    "confirmTitle": "Confirm your email first.",
+    "confirmBody": {
+      "$template": "We've sent a confirmation link to {email}. Open it, then sign in again. No email? Check spam, or sign in again in a few minutes for a new link."
+    },
     "eyebrow": "Welcome back",
     "remember": "Keep me signed in",
     "title": "Sign in to your organisation",
@@ -1111,6 +1148,17 @@
     "expired": "Lock links work once, for 7 days. Contact your organisation admin if you still need to lock the account.",
     "toSignIn": "Back to sign in"
   },
+  "verifyEmail": {
+    "title": "Confirm your email",
+    "body": "Confirm this is your email address to finish setting up your account.",
+    "submit": "Confirm my email",
+    "submitting": "Confirming…",
+    "doneTitle": "Email confirmed",
+    "done": "You can sign in now.",
+    "expiredTitle": "This link no longer works",
+    "expired": "Confirmation links work once, for 24 hours. Sign in with your email and password and we'll send you a new one.",
+    "toSignIn": "Go to sign in"
+  },
   "signup": {
     "eyebrow": "Create account",
     "title": "Create your organisation's account",
@@ -1141,7 +1189,7 @@
     "submitting": "Creating account…",
     "notCreated": "Your account was not created.",
     "created": "Account created",
-    "createdSub": "Your organisation has its own address. Sign in there to upload your documents.",
+    "createdSub": "We've emailed you a link to confirm your email. Confirm it, then sign in at your organisation's own address to upload your documents.",
     "goSignIn": "Sign in and upload documents"
   },
   "validation": {
@@ -1215,6 +1263,8 @@
       "$template": "{name} was not verified."
     },
     "changesRequested": "Changes requested.",
+    "suspendedTitle": "Your organisation is suspended",
+    "suspendedBody": "ChainTrack has suspended this organisation, so nobody can act for it. What it signed stays signed. Contact ChainTrack support to have it reactivated.",
     "noReason": "The reviewer gave no reason.",
     "uploadAgain": "Upload a corrected document below and it goes back to the reviewer.",
     "submitted": {
@@ -1250,7 +1300,8 @@
     "pending": "Pending verification",
     "verified": "Verified",
     "rejected": "Rejected",
-    "changes_requested": "Changes requested"
+    "changes_requested": "Changes requested",
+    "suspended": "Suspended"
   },
   "admin": {
     "title": "Verification queue",
@@ -1269,6 +1320,38 @@
       "rejected": "No organisations have been rejected or asked for changes."
     },
     "selectOne": "Choose an organisation from the list to review it.",
+    "openFull": "Open full page",
+    "back": "Verification queue",
+    "status": {
+      "title": "Status",
+      "suspendNote": "Reason for suspending",
+      "suspendHelp": "The organisation is shown it.",
+      "suspend": "Suspend organisation",
+      "reactivate": "Reactivate organisation",
+      "suspendedBody": "Its members can't use the workspace until it is reactivated.",
+      "pendingBody": "Only a verified organisation can be suspended."
+    },
+    "sections": {
+      "members": "Members",
+      "facilities": "Facilities",
+      "passports": "Passports",
+      "certificates": "Certificates issued",
+      "documents": "Documents"
+    },
+    "recordColumns": {
+      "name": "Name",
+      "kind": "Type",
+      "status": "Status",
+      "code": "Lot code",
+      "commodity": "Commodity",
+      "remaining": "Remaining"
+    },
+    "emptySection": {
+      "members": "Nobody belongs to this organisation.",
+      "facilities": "No facilities registered.",
+      "passports": "No passports held or handled.",
+      "certificates": "No certificates issued."
+    },
     "tabCount": {
       "$template": "{label} ({n})"
     },

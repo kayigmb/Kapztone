@@ -60,6 +60,13 @@ What has been built and what is left. Every finished piece of work adds an entry
 
 ## Done
 
+### 2026-10-21 — Email confirmation, platform admin user and organisation pages
+- **Email confirmation:** migration `000024_email_verified` adds `users.email_verified_at` (existing accounts backfilled as confirmed). Sign-up emails a one-use link (24 h, `/verify-email/<token>`, `POST /auth/email/verify`); invited and seeded accounts count as confirmed. Signing in with the right password but an unconfirmed email answers 403 and sends a fresh link (at most 5 an hour per email). Migration `000025_users_is_verified` adds `users.is_verified`, a boolean generated from `email_verified_at`; sign-in checks it.
+- **Users (platform admin):** `/users` rows open `/users/[id]` and can deactivate / activate the account (`POST /users/{id}/deactivate|activate`; deactivating signs out everywhere, never yourself). The detail page shows account facts (email confirmed, 2FA), each membership with role change and suspend / reinstate per organisation (`?organisation_id=` on the existing role, suspend and reinstate routes), and recent activity from the audit log.
+- **Organisations (platform admin):** new status `suspended` (`POST /orgs/{id}/suspend` with a reason, `POST /orgs/{id}/reactivate`); a suspended organisation fails `RequireVerified` and its members see a suspended notice on onboarding. `/admin/organisations/[id]` shows the existing review panel plus status, members (`GET /orgs/{id}/members`), facilities, passports and certificates issued. The queue links to it; the Approved tab lists suspended ones too.
+- **Lists narrowed by organisation:** `auth.Gate` lets the platform pass `?organisation_id=` to narrow any gated list to one organisation (only narrows, never widens).
+- **Verification:** backend unit tests, new DB tests (`TestEmailVerification`, `TestPlatformAdminActions`), frontend lint/build and 77 node tests pass. `TestCommodityChainsEndToEnd/mineral` still hits the shared-database mailer race noted below.
+
 ### 2026-10-21 — Facility kinds, map search, and account UX
 - **Facility kinds:** CRUD table and editor in template administration; active kinds feed registration and filters, inactive kinds remain visible on existing records/templates. Added migration `000023_facility_kinds_id` to preserve existing data while meeting the table UUID-id convention; `key` remains unique.
 - **Facility registration:** Photon place search with selectable results and map fly-to, plus a map/details two-column desktop layout.

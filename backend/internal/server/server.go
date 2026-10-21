@@ -86,6 +86,7 @@ func Routes(d Deps) []Route {
 		{post, "/auth/password/reset", Public, "", a.LimitIP(auth.RegisterRate, a.ResetPassword)},
 		{get, "/auth/email/availability", Public, "", a.LimitIP(auth.RegisterRate, o.EmailAvailability)},
 		{post, "/auth/lock", Public, "", a.LimitIP(auth.RegisterRate, a.LockAccount)},
+		{post, "/auth/email/verify", Public, "", a.LimitIP(auth.RegisterRate, a.VerifyEmail)},
 		{post, "/auth/handoff/accept", Public, "", a.LimitIP(auth.RegisterRate, a.AcceptHandoff)},
 		{post, "/orgs", Public, "", a.LimitIP(auth.RegisterRate, o.Register)},
 		{post, "/invites/{" + user.ParamToken + "}/accept", Public, "", a.LimitIP(auth.RegisterRate, u.Accept)},
@@ -110,6 +111,9 @@ func Routes(d Deps) []Route {
 		{get, "/orgs" + idPath, Permission, auth.OrgRead, o.Get},
 		{post, "/orgs" + idPath + "/verify", Permission, auth.OrgVerify, o.Review},
 		{get, "/orgs" + idPath + "/accreditations", Permission, auth.OrgRead, o.Accreditations},
+		{get, "/orgs" + idPath + "/members", Permission, auth.OrgRead, u.OrgMembers},
+		{post, "/orgs" + idPath + "/suspend", Permission, auth.OrgVerify, o.Suspend},
+		{post, "/orgs" + idPath + "/reactivate", Permission, auth.OrgVerify, o.Reactivate},
 		{put, "/orgs" + idPath + "/accreditations", Permission, auth.OrgVerify, o.SetAccreditations},
 		{get, "/orgs" + idPath + "/documents", Permission, auth.DocumentRead, o.ListDocuments},
 		{post, "/orgs" + idPath + "/documents", Permission, auth.OrgManage, o.Upload},
@@ -170,6 +174,10 @@ func Routes(d Deps) []Route {
 		{put, "/users" + idPath + "/role", Permission, auth.UserManage, u.SetRole},
 		{post, "/users" + idPath + "/suspend", Permission, auth.UserManage, u.Suspend},
 		{post, "/users" + idPath + "/reinstate", Permission, auth.UserManage, u.Reinstate},
+		// The platform admin only; the handlers refuse an organisation's admin.
+		{get, "/users" + idPath, Permission, auth.UserManage, u.Get},
+		{post, "/users" + idPath + "/deactivate", Permission, auth.UserManage, u.Deactivate},
+		{post, "/users" + idPath + "/activate", Permission, auth.UserManage, u.Activate},
 
 		{get, "/audit", Permission, auth.AuditRead, d.Audit.List},
 		{get, "/audit/verify", Permission, auth.AuditVerify, d.Audit.Verify},

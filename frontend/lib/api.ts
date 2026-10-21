@@ -47,6 +47,7 @@ const envelope = z.object({
 const errorDetails = z
   .object({
     two_factor_required: z.boolean().optional(),
+    email_unverified: z.boolean().optional(),
   })
   .nullable()
   .catch(null);
@@ -59,6 +60,8 @@ export class ApiError extends Error {
     readonly twoFactorRequired = false,
     /** The request's id in the server logs (X-Request-ID). */
     readonly requestId?: string,
+    /** Right password, but the email was never confirmed; the API has sent a new link. */
+    readonly emailUnverified = false,
   ) {
     super(message);
   }
@@ -106,6 +109,7 @@ async function call<T>(
       body.data?.message ?? "",
       details?.two_factor_required,
       res.headers.get("x-request-id") ?? undefined,
+      details?.email_unverified,
     );
   }
   if (!body.success) throw body.error;
@@ -618,6 +622,8 @@ const platformUserRow = z.object({
   email: z.string(),
   status: z.string(),
   two_factor: z.boolean().optional(),
+  email_verified: z.boolean().optional(),
+  created_at: z.string().optional(),
   memberships: z
     .array(
       z.object({
@@ -658,6 +664,10 @@ const acceptResult = z.object({
 const nothing = z.unknown();
 const all = `?size=${limits.pageSize}`;
 /** A list endpoint taking page, search, sort and filters (lib/list.ts). */
+/** The platform admin's ?organisation_id= (the API narrows its lists, and membership changes, to it). */
+const inOrg = (orgId?: string) =>
+  orgId ? `?organisation_id=${encodeURIComponent(orgId)}` : "";
+
 const paged =
   <T extends z.ZodType>(path: string, item: T) =>
   (p: ListParams) =>
@@ -702,6 +712,8 @@ export const endpoints = {
     ),
   lockAccount: (token: string) =>
     write(apiPaths.lockAccount, nothing, send("POST", { token })),
+  verifyEmail: (token: string) =>
+    write(apiPaths.verifyEmail, nothing, send("POST", { token })),
   logout: () => write(apiPaths.logout, nothing, { method: "POST" }),
   /** A one-minute code that signs this person in at another organisation's address ("" = the bare one). */
   startHandoff: (slug: string) =>
@@ -843,12 +855,25 @@ export const endpoints = {
   allUsers: paged(apiPaths.users, platformUserRow),
   invite: (body: { email: string; role: string }) =>
     write(apiPaths.invites, inviteResult, send("POST", body)),
-  setRole: (id: string, role: string) =>
-    write(apiPaths.userRole(id), nothing, send("PUT", { role })),
-  suspend: (id: string) =>
-    write(apiPaths.userSuspend(id), nothing, { method: "POST" }),
-  reinstate: (id: string) =>
-    write(apiPaths.userReinstate(id), nothing, { method: "POST" }),
+  // orgId: the platform admin names the organisation; an organisation admin acts for their own.
+  setRole: (id: string, role: string, orgId?: string) =>
+    write(apiPaths.userRole(id) + inOrg(orgId), nothing, send("PUT", { role })),
+  suspend: (id: string, orgId?: string) =>
+    write(apiPaths.userSuspend(id) + inOrg(orgId), nothing, { method: "POST" }),
+  reinstate: (id: string, orgId?: string) =>
+    write(apiPaths.userReinstate(id) + inOrg(orgId), nothing, {
+      method: "POST",
+    }),
+  user: (id: string) => api(apiPaths.user(id), platformUserRow),
+  deactivate: (id: string) =>
+    write(apiPaths.userDeactivate(id), nothing, { method: "POST" }),
+  activate: (id: string) =>
+    write(apiPaths.userActivate(id), nothing, { method: "POST" }),
+  orgMembers: (orgId: string) => paged(apiPaths.orgMembers(orgId), memberRow),
+  orgSuspend: (id: string, reason: string) =>
+    write(apiPaths.orgSuspend(id), nothing, send("POST", { reason })),
+  orgReactivate: (id: string) =>
+    write(apiPaths.orgReactivate(id), nothing, { method: "POST" }),
   acceptInvite: (token: string, body: { name: string; password: string }) =>
     write(apiPaths.inviteAccept(token), acceptResult, send("POST", body)),
 
@@ -944,6 +969,7 @@ export const endpoints = {
       `${apiPaths.passports}${all}&sort=-created_at${status ? `&status=${status}` : ""}`,
       page(passportDetailSchema),
     ).then((p) => p.data),
+  passportsPage: paged(apiPaths.passports, passportRow),
   passport: (id: string) => api(apiPaths.passport(id), passportDetailSchema),
   genealogy: (id: string, direction?: string) =>
     api(

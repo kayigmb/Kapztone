@@ -103,6 +103,7 @@ func main() {
 		Files:         files,
 		InvalidateOrg: store.InvalidateOrg,
 		Secrets:       cfg.Secrets,
+		SendVerify:    a.SendVerifyTo,
 	}
 
 	passports := passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}

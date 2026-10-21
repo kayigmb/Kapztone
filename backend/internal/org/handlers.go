@@ -23,6 +23,8 @@ type Handlers struct {
 	InvalidateOrg func(ctx context.Context, slug string)
 	// Secrets seals each organisation's signing key before it is stored.
 	Secrets *secret.Box
+	// SendVerify emails a new account the link that confirms its email; nil sends nothing.
+	SendVerify func(ctx context.Context, email string)
 }
 
 // newSigningKey makes the key an organisation receives when first verified.
@@ -82,6 +84,9 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ServerError(w, "register organisation", err)
 	default:
+		if h.SendVerify != nil {
+			h.SendVerify(r.Context(), in.Email)
+		}
 		httpx.OK(w, http.StatusCreated, MsgRegistered, o)
 	}
 }
@@ -202,6 +207,44 @@ func (h *Handlers) Review(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.InvalidateOrg(r.Context(), o.Slug)
 		httpx.OK(w, http.StatusOK, reviewMessage[rv.Decision], o)
+	}
+}
+
+// Suspend answers POST /orgs/{id}/suspend: a verified organisation stops
+// acting (RequireVerified refuses it) until reactivated.
+func (h *Handlers) Suspend(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	if in.Reason = strings.TrimSpace(in.Reason); in.Reason == "" {
+		httpx.Error(w, http.StatusBadRequest, MsgSuspendReason)
+		return
+	}
+	h.setStatus(w, r, StatusVerified, StatusSuspended, in.Reason, MsgNotVerified, MsgOrgSuspended)
+}
+
+// Reactivate answers POST /orgs/{id}/reactivate: a suspended organisation is verified again.
+func (h *Handlers) Reactivate(w http.ResponseWriter, r *http.Request) {
+	h.setStatus(w, r, StatusSuspended, StatusVerified, "", MsgNotSuspended, MsgOrgReactivated)
+}
+
+func (h *Handlers) setStatus(w http.ResponseWriter, r *http.Request, from, to, reason, wrong, done string) {
+	o, ok := h.visibleOrg(w, r)
+	if !ok {
+		return
+	}
+	o, err := h.Store.SetStatus(r.Context(), o.ID, from, to, reason, auth.CurrentUser(r.Context()).ID)
+	switch {
+	case errors.Is(err, ErrWrongStatus):
+		httpx.Error(w, http.StatusConflict, wrong)
+	case err != nil:
+		httpx.ServerError(w, "set organisation status", err)
+	default:
+		h.InvalidateOrg(r.Context(), o.Slug)
+		httpx.OK(w, http.StatusOK, done, o)
 	}
 }
 

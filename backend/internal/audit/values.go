@@ -22,11 +22,11 @@ var Formats = []string{FormatCSV, FormatPDF}
 
 // PDF titles.
 const (
-	TitleAudit     = "Audit log"
-	TitleVolume    = "Volume issued at origin"
-	TitleBlocked   = "Actions the rules refused"
-	TitleOutcomes  = "Verification outcomes"
-	TitleSaved     = "Saved report"
+	TitleAudit    = "Audit log"
+	TitleVolume   = "Volume issued at origin"
+	TitleBlocked  = "Actions the rules refused"
+	TitleOutcomes = "Verification outcomes"
+	TitleSaved    = "Saved report"
 )
 
 // File names of downloads, without extension.

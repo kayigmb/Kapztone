@@ -58,6 +58,39 @@ func actingOrg(w http.ResponseWriter, r *http.Request) (*auth.Organisation, bool
 	return o, o != nil
 }
 
+// isPlatform reports whether the caller acts for the whole platform (the superadmin).
+func isPlatform(r *http.Request) bool {
+	gate, ok := auth.CurrentScope(r.Context()).Gate()
+	return ok && gate == ""
+}
+
+// platformOnly writes 403 unless the caller acts for the whole platform.
+func platformOnly(w http.ResponseWriter, r *http.Request) bool {
+	if !isPlatform(r) {
+		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
+		return false
+	}
+	return true
+}
+
+// targetOrg is the organisation a membership change applies to: the acting
+// one, or for the platform the one named by ?organisation_id=.
+func targetOrg(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if isPlatform(r) {
+		id := r.URL.Query().Get(auth.ParamOrganisation)
+		if !httpx.IsUUID(id) {
+			httpx.Error(w, http.StatusBadRequest, auth.MsgOrganisationParam)
+			return "", false
+		}
+		return id, true
+	}
+	o, ok := actingOrg(w, r)
+	if !ok {
+		return "", false
+	}
+	return o.ID, true
+}
+
 func (h *Handlers) fail(w http.ResponseWriter, what string, err error) {
 	switch {
 	case errors.Is(err, ErrNotMember):
@@ -89,7 +122,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		accounts, err := h.Store.All(r.Context(), q)
+		accounts, err := h.Store.All(r.Context(), q, "")
 		if err != nil {
 			httpx.ServerError(w, "list users", err)
 			return
@@ -227,7 +260,7 @@ func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
-	o, ok := actingOrg(w, r)
+	orgID, ok := targetOrg(w, r)
 	if !ok {
 		return
 	}
@@ -243,7 +276,7 @@ func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, MsgSelfRole)
 		return
 	}
-	if err := h.Store.SetRole(r.Context(), o.ID, id, in.Role); err != nil {
+	if err := h.Store.SetRole(r.Context(), orgID, id, in.Role); err != nil {
 		h.fail(w, "set role", err)
 		return
 	}
@@ -253,7 +286,7 @@ func (h *Handlers) SetRole(w http.ResponseWriter, r *http.Request) {
 
 // Suspend removes the person's access to the acting organisation only.
 func (h *Handlers) Suspend(w http.ResponseWriter, r *http.Request) {
-	o, ok := actingOrg(w, r)
+	orgID, ok := targetOrg(w, r)
 	if !ok {
 		return
 	}
@@ -265,7 +298,7 @@ func (h *Handlers) Suspend(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, MsgSelf)
 		return
 	}
-	if err := h.Store.Suspend(r.Context(), o.ID, id); err != nil {
+	if err := h.Store.Suspend(r.Context(), orgID, id); err != nil {
 		h.fail(w, "suspend member", err)
 		return
 	}
@@ -274,7 +307,7 @@ func (h *Handlers) Suspend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Reinstate(w http.ResponseWriter, r *http.Request) {
-	o, ok := actingOrg(w, r)
+	orgID, ok := targetOrg(w, r)
 	if !ok {
 		return
 	}
@@ -282,10 +315,79 @@ func (h *Handlers) Reinstate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.Store.Reinstate(r.Context(), o.ID, id); err != nil {
+	if err := h.Store.Reinstate(r.Context(), orgID, id); err != nil {
 		h.fail(w, "reinstate member", err)
 		return
 	}
 	h.InvalidateUser(r.Context(), id)
 	httpx.OK(w, http.StatusOK, MsgReinstated, map[string]string{"status": StatusActive})
+}
+
+// Get answers GET /users/{id} for the platform: one account with every membership.
+func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.URLID(w, r)
+	if !ok || !platformOnly(w, r) {
+		return
+	}
+	a, err := h.Store.Account(r.Context(), id)
+	if errors.Is(err, ErrNotMember) {
+		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
+		return
+	}
+	if err != nil {
+		httpx.ServerError(w, "get user", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", a)
+}
+
+// Deactivate answers POST /users/{id}/deactivate (platform): the account can't
+// sign in anywhere and every device is signed out.
+func (h *Handlers) Deactivate(w http.ResponseWriter, r *http.Request) {
+	h.setActive(w, r, false, auth.MsgUserDeactivated)
+}
+
+// Activate answers POST /users/{id}/activate (platform).
+func (h *Handlers) Activate(w http.ResponseWriter, r *http.Request) {
+	h.setActive(w, r, true, auth.MsgUserActivated)
+}
+
+func (h *Handlers) setActive(w http.ResponseWriter, r *http.Request, active bool, msg string) {
+	id, ok := httpx.URLID(w, r)
+	if !ok || !platformOnly(w, r) {
+		return
+	}
+	if !active && id == auth.CurrentUser(r.Context()).ID {
+		httpx.Error(w, http.StatusConflict, auth.MsgCannotDisableSelf)
+		return
+	}
+	if err := h.Store.SetActive(r.Context(), id, active); err != nil {
+		h.fail(w, "set account status", err)
+		return
+	}
+	h.InvalidateUser(r.Context(), id)
+	status := auth.UserDisabled
+	if active {
+		status = auth.UserActive
+	}
+	httpx.OK(w, http.StatusOK, msg, map[string]string{"status": status})
+}
+
+// OrgMembers answers GET /orgs/{id}/members for the platform: everyone who
+// belongs or belonged to that organisation.
+func (h *Handlers) OrgMembers(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.URLID(w, r)
+	if !ok || !platformOnly(w, r) {
+		return
+	}
+	q, ok := listq.FromRequest(w, r, MemberList)
+	if !ok {
+		return
+	}
+	members, err := h.Store.List(r.Context(), q, id)
+	if err != nil {
+		httpx.ServerError(w, "list organisation members", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", members)
 }

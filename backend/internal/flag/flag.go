@@ -28,14 +28,14 @@ var (
 )
 
 type Flag struct {
-	ID             string `json:"id"`
-	PassportID     string `json:"passport_id"`
-	OrganisationID string `json:"organisation_id"` // who raised it
-	Reason         string `json:"reason"`
-	DataHash       string `json:"data_hash"`
-	Status         string `json:"status"`
-	Code           *string `json:"code,omitempty"`     // FLG-YEAR-NNNN, set on raise
-	Severity       string  `json:"severity"`           // low, medium, high
+	ID             string  `json:"id"`
+	PassportID     string  `json:"passport_id"`
+	OrganisationID string  `json:"organisation_id"` // who raised it
+	Reason         string  `json:"reason"`
+	DataHash       string  `json:"data_hash"`
+	Status         string  `json:"status"`
+	Code           *string `json:"code,omitempty"` // FLG-YEAR-NNNN, set on raise
+	Severity       string  `json:"severity"`       // low, medium, high
 	RequestInfo    *string `json:"request_info,omitempty"`
 	// RaisedBy is where it came from: SourceUser, SourceRules or SourcePublic.
 	RaisedBy string `json:"raised_by"`

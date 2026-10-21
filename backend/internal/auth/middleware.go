@@ -168,11 +168,19 @@ func (a *Auth) RequireVerified(next http.Handler) http.Handler {
 }
 
 // Gate returns the organisation filter for this request (see Scope.Gate), or
-// writes 403 when the caller has no data access.
+// writes 403 when the caller has no data access. The platform, which sees
+// every organisation, may narrow it to one with ?organisation_id=.
 func Gate(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
 	orgID, ok = CurrentScope(r.Context()).Gate()
 	if !ok {
 		httpx.Error(w, http.StatusForbidden, MsgNoOrgSelected)
+	}
+	if one := r.URL.Query().Get(ParamOrganisation); ok && orgID == "" && one != "" {
+		if !httpx.IsUUID(one) {
+			httpx.Error(w, http.StatusBadRequest, MsgOrganisationParam)
+			return "", false
+		}
+		orgID = one
 	}
 	return orgID, ok
 }
@@ -250,6 +258,18 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
+
+	// The password is right, so saying the email is unconfirmed gives nothing away.
+	if user.EmailUnverified {
+		if !a.Limiter.blocked(ctx, ForgotRate, in.Email) {
+			a.Limiter.record(ctx, ForgotRate, in.Email)
+			if err := a.SendVerify(ctx, user); err != nil {
+				logx.From(ctx).Error("resend verify link failed", logx.KeyUser, user.ID, logx.KeyError, err)
+			}
+		}
+		httpx.ErrorData(w, http.StatusForbidden, MsgEmailNotVerified, map[string]any{"email_unverified": true})
+		return
+	}
 
 	if setTrust {
 		http.SetCookie(w, a.trustCookie(user, now))

@@ -37,11 +37,11 @@ type HandoverInput struct {
 	Stage string `json:"stage"`
 	// Quantity is how much is handed over; unset means all that remains.
 	// Less than that splits the part off into its own passport first.
-	Quantity *int64   `json:"quantity"`
-	Note     string   `json:"note"` // where and how the goods were handed over
-	Lat      *float64 `json:"lat"`
-	Lon      *float64 `json:"lon"`
-	SealNumber string `json:"seal_number"`
+	Quantity   *int64          `json:"quantity"`
+	Note       string          `json:"note"` // where and how the goods were handed over
+	Lat        *float64        `json:"lat"`
+	Lon        *float64        `json:"lon"`
+	SealNumber string          `json:"seal_number"`
 	Checklist  map[string]bool `json:"checklist"`
 }
 

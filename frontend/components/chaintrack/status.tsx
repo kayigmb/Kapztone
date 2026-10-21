@@ -1,4 +1,5 @@
 import {
+  Ban,
   CircleCheck,
   Clock,
   OctagonX,
@@ -88,6 +89,7 @@ const orgStatusLook: Record<OrgStatus, { tone: Tone; icon: LucideIcon }> = {
   [orgStatus.verified]: { tone: "verified", icon: CircleCheck },
   [orgStatus.rejected]: { tone: "danger", icon: OctagonX },
   [orgStatus.changesRequested]: { tone: "warning", icon: TriangleAlert },
+  [orgStatus.suspended]: { tone: "danger", icon: Ban },
 };
 
 export function OrgStatusChip({ status }: { status: string }) {

@@ -76,7 +76,7 @@ const listFilters = {
 const tilesPerPage = 9;
 
 /** 30 days, as on the public page: a valid certificate inside it reads "Expiring soon". */
-function certificateState(c: Certificate): CertificateState {
+export function certificateState(c: Certificate): CertificateState {
   if (c.status !== "valid") return c.status;
   return (new Date(c.valid_to).getTime() - Date.now()) / 86_400_000 <= 30
     ? "expiring"

@@ -31,6 +31,9 @@ const (
 	// OrgChangesRequested: the reviewer wants corrected documents. Like a
 	// rejection, a new upload sends the organisation back to pending.
 	OrgChangesRequested = "changes_requested"
+	// OrgSuspended: a verified organisation the platform has switched off.
+	// RequireVerified refuses it, so its members can read but not act.
+	OrgSuspended = "suspended"
 )
 
 const (
@@ -71,19 +74,25 @@ const (
 	// Emailed one-use links (password_resets.kind).
 	LinkReset = "reset"
 	LinkLock  = "lock"
+	// LinkVerify confirms a new account's email.
+	LinkVerify = "verify"
 	// LinkHandoff carries a session to another address (handoff.go).
 	LinkHandoff = "handoff"
 	// Pages of the frontend those links open: <origin><path><token>.
-	PathReset = "/reset/"
-	PathLock  = "/lock/"
+	PathReset  = "/reset/"
+	PathLock   = "/lock/"
+	PathVerify = "/verify-email/"
+	// ParamOrganisation narrows a platform admin's list to one organisation.
+	ParamOrganisation = "organisation_id"
 )
 
 // How long things last.
 const (
-	TrustTTL     = 30 * 24 * time.Hour
-	ResetLinkTTL = 30 * time.Minute
-	LockLinkTTL  = 7 * 24 * time.Hour
-	HandoffTTL   = time.Minute
+	TrustTTL      = 30 * 24 * time.Hour
+	ResetLinkTTL  = 30 * time.Minute
+	LockLinkTTL   = 7 * 24 * time.Hour
+	VerifyLinkTTL = 24 * time.Hour
+	HandoffTTL    = time.Minute
 )
 
 // Messages shown to callers.
@@ -110,6 +119,9 @@ const (
 	MsgLinkInvalid         = "this link has expired or was already used"
 	MsgNotMember           = "you are not a member of that organisation"
 	MsgHandoffInvalid      = "this switch has expired or was already used; sign in here instead"
+	MsgEmailNotVerified    = "Confirm your email first. We've sent a new link to your inbox."
+	MsgCannotDisableSelf   = "you cannot deactivate your own account"
+	MsgOrganisationParam   = "organisation_id must be an organisation's id"
 	// Confirmations the app shows as they are.
 	MsgSignedIn        = "Signed in."
 	MsgSignedOut       = "Signed out."
@@ -123,6 +135,9 @@ const (
 	MsgTwoFactorOn     = "Two-factor sign-in is on. Keep your recovery codes somewhere safe."
 	MsgTwoFactorOff    = "Two-factor sign-in is off."
 	MsgPasswordReused  = "choose a password you haven't used for your last 5 passwords"
+	MsgEmailVerified   = "Email confirmed. You can sign in now."
+	MsgUserDeactivated = "Account deactivated. They are signed out everywhere."
+	MsgUserActivated   = "Account active again."
 )
 
 // MsgAttemptsLeft follows a failed sign-in while rate limits are on.
@@ -142,6 +157,10 @@ const (
 	MailChangedSubject = "Your ChainTrack password was changed"
 	MailChangedBody    = "The password of your ChainTrack account was just changed, and every other device was signed out.\r\n\r\n" +
 		"If this wasn't you, lock your account now (the link works once, for 7 days):\r\n%s"
+	MailVerifySubject = "Confirm your ChainTrack email"
+	MailVerifyBody    = "Welcome to ChainTrack. Confirm this is your email address to finish setting up your account.\r\n\r\n" +
+		"Confirm it here (the link works once, for 24 hours):\r\n%s\r\n\r\n" +
+		"If you didn't sign up, ignore this email."
 )
 
 // Cache keys.

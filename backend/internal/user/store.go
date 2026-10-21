@@ -125,7 +125,7 @@ func (s Store) Accept(ctx context.Context, tokenHash, name, password string) (Ac
 			return Accepted{}, err
 		}
 		if err := tx.QueryRow(ctx,
-			`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4) RETURNING id::text`,
+			`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now()) RETURNING id::text`,
 			email, newHash, name, auth.UserActive).Scan(&out.UserID); err != nil {
 			return Accepted{}, err
 		}

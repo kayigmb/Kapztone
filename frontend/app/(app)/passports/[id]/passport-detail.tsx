@@ -87,7 +87,7 @@ const commodityIcons: Record<string, LucideIcon> = {
 };
 const firstWord = (s: string) => s.split(/[\s_]/)[0];
 
-const statusLook: Record<
+export const statusLook: Record<
   string,
   { tone: Tone; icon: LucideIcon; label: string }
 > = {

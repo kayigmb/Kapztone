@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Clock, WifiOff } from "lucide-react";
+import { Ban, Check, Clock, WifiOff } from "lucide-react";
 
 import { SignOutButton } from "@/components/chaintrack/sign-out-button";
 import { Notice } from "@/components/chaintrack/notice";
@@ -59,6 +59,12 @@ export function Onboarding() {
     return <LoadingWithLogo />;
 
   const o = org.data;
+  if (o.status === orgStatus.suspended)
+    return (
+      <PageState icon={Ban} tone="danger" title={t.suspendedTitle}>
+        {t.suspendedBody} {o.review_reason}
+      </PageState>
+    );
   const documents = docs.data;
   const missing = missingDocuments(documents);
   const complete = missing.length === 0;

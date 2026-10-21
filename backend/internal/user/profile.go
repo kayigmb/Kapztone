@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -27,12 +28,15 @@ type MyOrganisation struct {
 // Account is a user as the platform admin sees them: every organisation they
 // belong or belonged to.
 type Account struct {
-	ID          string       `json:"id"`
-	Name        string       `json:"name"`
-	Email       string       `json:"email"`
-	Status      string       `json:"status"`
-	TwoFactor   bool         `json:"two_factor"`
-	Memberships []Membership `json:"memberships"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Status    string `json:"status"`
+	TwoFactor bool   `json:"two_factor"`
+	// EmailVerified: the person opened the link that confirms their email.
+	EmailVerified bool         `json:"email_verified"`
+	CreatedAt     time.Time    `json:"created_at"`
+	Memberships   []Membership `json:"memberships"`
 }
 
 type Membership struct {
@@ -77,11 +81,17 @@ var AccountList = listq.Config{
 	Sort:   []string{"name", "email", "status", listq.ColCreatedAt},
 }
 
-// All lists one page of every user on the platform with their memberships.
-func (s Store) All(ctx context.Context, q listq.Query) (listq.Page[Account], error) {
+// All lists one page of every user on the platform with their memberships;
+// a non-empty id keeps only that user.
+func (s Store) All(ctx context.Context, q listq.Query, id string) (listq.Page[Account], error) {
+	var where []string
+	args := []any{StatusSuspended, StatusActive}
+	if id != "" {
+		where, args = []string{"m.id = $3::uuid"}, append(args, id)
+	}
 	return listq.Fetch(ctx, s.Pool, q, AccountList,
-		`SELECT m.id::text, m.name, m.email, m.status, m.totp_enabled, m.memberships`,
-		`FROM (SELECT u.id, u.name, u.email::text AS email, u.status, u.totp_enabled, u.created_at, false AS is_deleted,
+		`SELECT m.id::text, m.name, m.email, m.status, m.totp_enabled, m.is_verified, m.created_at, m.memberships`,
+		`FROM (SELECT u.id, u.name, u.email::text AS email, u.status, u.totp_enabled, u.is_verified, u.created_at, false AS is_deleted,
 		              COALESCE(json_agg(json_build_object(
 		                  'organisation_id', us.organisation_id,
 		                  'organisation', COALESCE(o.name, ''),
@@ -94,14 +104,43 @@ func (s Store) All(ctx context.Context, q listq.Query) (listq.Page[Account], err
 		       LEFT JOIN roles r ON r.id = us.role_id
 		       WHERE NOT u.is_deleted
 		       GROUP BY u.id) m`,
-		nil, []any{StatusSuspended, StatusActive}, func(row pgx.CollectableRow) (Account, error) {
+		where, args, func(row pgx.CollectableRow) (Account, error) {
 			var a Account
 			var memberships []byte
-			if err := row.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.TwoFactor, &memberships); err != nil {
+			if err := row.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.TwoFactor, &a.EmailVerified, &a.CreatedAt, &memberships); err != nil {
 				return a, err
 			}
 			return a, json.Unmarshal(memberships, &a.Memberships)
 		})
+}
+
+// Account is one user as the platform admin sees them.
+func (s Store) Account(ctx context.Context, id string) (Account, error) {
+	page, err := s.All(ctx, listq.Query{Page: 1, Size: 1, SortCol: "name"}, id)
+	if err == nil && len(page.Data) == 0 {
+		err = ErrNotMember
+	}
+	if err != nil {
+		return Account{}, err
+	}
+	return page.Data[0], nil
+}
+
+// SetActive turns the whole account on or off. Turning it off also voids
+// every sign-in, so the person is signed out everywhere at once.
+func (s Store) SetActive(ctx context.Context, id string, active bool) error {
+	status := auth.UserDisabled
+	if active {
+		status = auth.UserActive
+	}
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE users SET status = $2,
+		        token_version = token_version + CASE WHEN $2 = $3 THEN 1 ELSE 0 END
+		 WHERE id = $1::uuid AND NOT is_deleted`, id, status, auth.UserDisabled)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotMember
+	}
+	return err
 }
 
 // MyOrganisationsHandler answers GET /me/organisations.

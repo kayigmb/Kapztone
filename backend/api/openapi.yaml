@@ -125,6 +125,15 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/Object" }
         "400": { $ref: "#/components/responses/Error" }
+  /auth/email/verify:
+    post:
+      tags: [auth]
+      summary: Confirm an email from the link mailed at sign-up (or on a sign-in before confirming)
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "404": { $ref: "#/components/responses/Error" }
   /auth/password:
     post:
       tags: [auth]
@@ -300,6 +309,40 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/Object" }
         "409": { description: No documents uploaded yet }
+  /orgs/{id}/members:
+    get:
+      tags: [organisations]
+      summary: Everyone who belongs or belonged to the organisation (platform only)
+      x-permission: org:read
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/size"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/sort"
+      responses:
+        "200": { $ref: "#/components/responses/Page" }
+        "403": { $ref: "#/components/responses/Error" }
+  /orgs/{id}/suspend:
+    post:
+      tags: [organisations]
+      summary: Suspend a verified organisation; it can read but not act until reactivated
+      x-permission: org:verify
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { description: Not verified }
+  /orgs/{id}/reactivate:
+    post:
+      tags: [organisations]
+      summary: Make a suspended organisation verified again
+      x-permission: org:verify
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "409": { description: Not suspended }
   /orgs/{id}/accreditations:
     get:
       tags: [organisations]
@@ -880,6 +923,35 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/Object" }
       responses:
         "200": { $ref: "#/components/responses/Object" }
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: One account with every membership (platform only)
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /users/{id}/deactivate:
+    post:
+      tags: [users]
+      summary: Turn the account off and sign it out everywhere (platform only)
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: Your own account }
+  /users/{id}/activate:
+    post:
+      tags: [users]
+      summary: Turn the account back on (platform only)
+      x-permission: user:manage
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "403": { $ref: "#/components/responses/Error" }
   /users/{id}/role:
     put:
       tags: [users]

@@ -298,7 +298,7 @@ func TestEveryRouteIsGated(t *testing.T) {
 	h := fakeRouter(a)
 
 	public := []string{"GET /healthz", "POST /auth/login", "GET /auth/email/availability", "POST /orgs", "GET /verify/{id}", "POST /auth/logout",
-		"POST /invites/{token}/accept", "POST /auth/password/forgot", "POST /auth/password/reset", "POST /auth/lock", "POST /auth/handoff/accept"}
+		"POST /invites/{token}/accept", "POST /auth/password/forgot", "POST /auth/password/reset", "POST /auth/lock", "POST /auth/handoff/accept", "POST /auth/email/verify"}
 	signedIn := []string{"GET /me", "POST /auth/2fa/setup", "POST /auth/2fa/enable", "POST /auth/2fa/disable",
 		"POST /auth/2fa/recovery", "POST /auth/pin", "GET /notifications", "POST /notifications/{id}/read",
 		"PUT /me", "GET /me/organisations", "POST /auth/password", "POST /auth/sessions/revoke", "POST /auth/handoff"}

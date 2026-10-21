@@ -102,7 +102,7 @@ const stateNote: Partial<Record<FacilityState, string>> = {
   expired: t.expiredNote,
 };
 
-function FacilityChip({ f }: { f: Facility }) {
+export function FacilityChip({ f }: { f: Facility }) {
   const c = stateChip[facilityState(f)];
   return (
     <StatusChip tone={c.tone} icon={c.icon}>

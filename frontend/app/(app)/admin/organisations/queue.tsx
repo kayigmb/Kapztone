@@ -16,6 +16,7 @@ import {
 } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { OrgStatusChip } from "@/components/chaintrack/status";
+import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   documentFileURL,
@@ -55,7 +56,7 @@ const listFilters = {
   tab: parseAsStringLiteral(tabValues).withDefault(tabValues[0]),
   id: parseAsString,
 };
-const kindLabel = (kind: string) =>
+export const kindLabel = (kind: string) =>
   orgKinds.find((k) => k.value === kind)?.label ?? humanize(kind);
 const daysSince = (iso: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
@@ -241,7 +242,8 @@ function OrgList({
   );
 }
 
-function OrgDetail({ org }: { org: Organisation }) {
+/** One organisation's facts, documents and the review; `full` on its own page (no link to itself). */
+export function OrgDetail({ org, full }: { org: Organisation; full?: boolean }) {
   const docs = useQuery({
     queryKey: queryKeys.orgDocuments(org.id),
     queryFn: () => endpoints.documents(org.id),
@@ -258,7 +260,17 @@ function OrgDetail({ org }: { org: Organisation }) {
             {t.submitted(formatDateTime(org.created_at))}
           </p>
         </div>
-        <OrgStatusChip status={org.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <OrgStatusChip status={org.status} />
+          {!full && (
+            <Link
+              href={routes.adminOrgDetail(org.id)}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              {t.openFull}
+            </Link>
+          )}
+        </div>
       </header>
 
       <KeyValue
@@ -323,7 +335,8 @@ function OrgDetail({ org }: { org: Organisation }) {
         </DataWidget>
       </div>
 
-      {org.status !== orgStatus.verified && <ReviewForm orgId={org.id} />}
+      {org.status !== orgStatus.verified &&
+        org.status !== orgStatus.suspended && <ReviewForm orgId={org.id} />}
       {issuer && <AccreditationForm orgId={org.id} />}
     </section>
   );

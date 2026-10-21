@@ -132,8 +132,8 @@ type Handover struct {
 	SplitFrom       *string `json:"split_from_passport_id"`
 	ChildPassportID *string `json:"child_passport_id"`
 	// Location is where the sender handed the goods over.
-	Location *Location `json:"location"`
-	SealNumber *string `json:"seal_number,omitempty"`
+	Location   *Location       `json:"location"`
+	SealNumber *string         `json:"seal_number,omitempty"`
 	Checklist  map[string]bool `json:"checklist,omitempty"`
 	// ReceivedQuantity is what the receiver weighed on arrival, and where.
 	ReceivedQuantity *int64    `json:"received_quantity"`

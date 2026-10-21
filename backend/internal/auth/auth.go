@@ -32,6 +32,8 @@ type User struct {
 	// Two-factor state; filled by UserByEmail only.
 	TOTPSecret  string `json:"-"` // sealed with secret.Box
 	TOTPEnabled bool   `json:"-"`
+	// EmailUnverified: signed up but never opened the confirmation link. Filled by UserByEmail only.
+	EmailUnverified bool `json:"-"`
 }
 
 type Organisation struct {
@@ -120,6 +122,8 @@ type AccountStore interface {
 	Lock(ctx context.Context, userID string) error
 	// UserByID returns the user (any status) with email and password hash.
 	UserByID(ctx context.Context, userID string) (User, error)
+	// MarkVerified records that the user confirmed their email.
+	MarkVerified(ctx context.Context, userID string) error
 }
 
 type Auth struct {

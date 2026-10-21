@@ -26,9 +26,10 @@ func notFound(err error) error {
 func (s PgStore) UserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled, token_version
+		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled, token_version,
+		        NOT is_verified
 		 FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`, email, UserActive,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled, &u.TokenVersion)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled, &u.TokenVersion, &u.EmailUnverified)
 	return u, notFound(err)
 }
 
@@ -195,6 +196,13 @@ func (s PgStore) Lock(ctx context.Context, userID string) error {
 	return err
 }
 
+func (s PgStore) MarkVerified(ctx context.Context, userID string) error {
+	_, err := s.Pool.Exec(ctx,
+		`UPDATE users SET email_verified_at = COALESCE(email_verified_at, now())
+		 WHERE id = $1::uuid AND NOT is_deleted`, userID)
+	return err
+}
+
 func (s PgStore) SetRecoveryCodes(ctx context.Context, userID string, hashes []string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -253,7 +261,7 @@ func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (
 
 	var userID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4)
+		`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now())
 		 RETURNING id::text`, email, hash, superadminName, UserActive).Scan(&userID)
 	if err != nil {
 		return false, fmt.Errorf("create superadmin user: %w", err)

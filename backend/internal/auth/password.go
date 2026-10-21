@@ -280,6 +280,49 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, http.StatusOK, MsgPasswordReset, nil)
 }
 
+// SendVerify emails the user a link that confirms their email.
+func (a *Auth) SendVerify(ctx context.Context, u User) error {
+	return a.sendLink(ctx, u, LinkVerify, PathVerify, VerifyLinkTTL, MailVerifySubject, MailVerifyBody,
+		"Confirm my email", "This link works once, for 24 hours.")
+}
+
+// SendVerifyTo sends the confirmation link to a just-registered email. A
+// failure is logged: the account exists, and signing in sends a new link.
+func (a *Auth) SendVerifyTo(ctx context.Context, email string) {
+	u, err := a.Store.UserByEmail(ctx, email)
+	if err == nil {
+		err = a.SendVerify(ctx, u)
+	}
+	if err != nil {
+		logx.From(ctx).Error("verify link failed", logx.KeyError, err)
+	}
+}
+
+// VerifyEmail answers POST /auth/email/verify (public), the link in the
+// confirmation email.
+func (a *Auth) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token string `json:"token"`
+	}
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	ctx := r.Context()
+	userID, err := a.Accounts.UseLink(ctx, LinkVerify, linkHash(in.Token), a.now())
+	if errors.Is(err, ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, MsgLinkInvalid)
+		return
+	}
+	if err == nil {
+		err = a.Accounts.MarkVerified(ctx, userID)
+	}
+	if err != nil {
+		httpx.ServerError(w, "verify email", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, MsgEmailVerified, nil)
+}
+
 // LockAccount answers POST /auth/lock (public), the link in the "password
 // changed" email: the account is disabled and every device signed out.
 // Unlocking is a platform admin's job.

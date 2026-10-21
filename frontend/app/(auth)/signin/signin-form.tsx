@@ -25,6 +25,7 @@ export function SignInForm({ email }: { email: string }) {
   useMeGuard((me) => (me ? routes.home : undefined)); // already signed in here
   const [needsCode, setNeedsCode] = useState(false);
   const [problem, setProblem] = useState<string>();
+  const [unconfirmed, setUnconfirmed] = useState<string>(); // the email a confirmation link just went to
   const [capsLock, setCapsLock] = useState(false);
   const {
     register,
@@ -45,7 +46,10 @@ export function SignInForm({ email }: { email: string }) {
 
   const signIn = useMutation({
     mutationFn: endpoints.login,
-    onMutate: () => setProblem(undefined),
+    onMutate: () => {
+      setProblem(undefined);
+      setUnconfirmed(undefined);
+    },
     meta: { inPlace: true },
     onSuccess: async () => {
       // The API has set the session cookie; whoever was cached before is stale.
@@ -63,6 +67,8 @@ export function SignInForm({ email }: { email: string }) {
         setNeedsCode(true);
         return setTimeout(() => setFocus("code"));
       }
+      if (err instanceof ApiError && err.emailUnverified)
+        return setUnconfirmed(values.email);
       setProblem(problemOf(err)); // wrong password, attempts left, paused: the API's words
     },
   });
@@ -76,6 +82,11 @@ export function SignInForm({ email }: { email: string }) {
       {problem && (
         <Notice kind="blocking">
           <strong>{t.notSignedIn}</strong> {problem}
+        </Notice>
+      )}
+      {unconfirmed && (
+        <Notice kind="warning">
+          <strong>{t.confirmTitle}</strong> {t.confirmBody(unconfirmed)}
         </Notice>
       )}
       <TextField

@@ -5,13 +5,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   CircleCheck,
+  Eye,
   Lock,
   OctagonX,
+  Power,
+  PowerOff,
   RotateCcw,
   ShieldCheck,
   ShieldOff,
   UserPlus,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -52,6 +56,7 @@ import {
   permissions,
   queryKeys,
   confirmCopy,
+  routes,
 } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import { useListParams, type ListParamsState } from "@/lib/list-params";
@@ -60,7 +65,7 @@ import { formatDate, humanize } from "@/lib/verification";
 
 const t = copy.users;
 const roleItems = memberRoles.map((r) => ({ value: r.value, label: r.label }));
-const roleLabel = (role: string) =>
+export const roleLabel = (role: string) =>
   memberRoles.find((r) => r.value === role)?.label ?? humanize(role);
 
 export function Users() {
@@ -79,7 +84,7 @@ export function Users() {
       <PageHeader title={t.title} sub={platform ? t.subPlatform : t.subOrg} />
       {!platform && <Invite />}
       {platform ? (
-        <AllUsers list={list} />
+        <AllUsers list={list} myId={me.user.id} />
       ) : (
         <Members list={list} myId={me.user.id} />
       )}
@@ -87,7 +92,7 @@ export function Users() {
   );
 }
 
-function StatusOf({ status }: { status: string }) {
+export function StatusOf({ status }: { status: string }) {
   return status === memberStatus.active ? (
     <StatusChip tone="verified" icon={CircleCheck}>
       {t.status.active}
@@ -99,7 +104,7 @@ function StatusOf({ status }: { status: string }) {
   );
 }
 
-function Person({
+export function Person({
   name,
   email,
   you,
@@ -123,7 +128,11 @@ const accountColumns: ListColumn<PlatformUserRow>[] = [
   column(
     "name",
     t.columns.person,
-    (u) => <Person name={u.name} email={u.email} />,
+    (u) => (
+      <Link href={routes.userDetail(u.id)} className="hover:underline">
+        <Person name={u.name} email={u.email} />
+      </Link>
+    ),
     { sortable: true },
   ),
   column("memberships", t.memberships, (u) =>
@@ -152,12 +161,22 @@ const accountColumns: ListColumn<PlatformUserRow>[] = [
   }),
 ];
 
-function AllUsers({ list }: { list: ListParamsState }) {
+function AllUsers({ list, myId }: { list: ListParamsState; myId: string }) {
   const q = usePaged(queryKeys.users, endpoints.allUsers, list.query());
+  const setActive = useSetActive();
+  const columns = [
+    ...accountColumns,
+    actionsColumn((u: PlatformUserRow) => (
+      <>
+        <RowAction label={t.view} icon={Eye} href={routes.userDetail(u.id)} />
+        <ActiveAction user={u} disabled={u.id === myId} {...setActive} />
+      </>
+    )),
+  ];
   return (
     <ListTable
       label={t.title}
-      columns={accountColumns}
+      columns={columns}
       rows={q.data?.data ?? []}
       total={q.data?.total ?? 0}
       list={list}
@@ -166,6 +185,61 @@ function AllUsers({ list }: { list: ListParamsState }) {
       error={q.isError ? problemOf(q.error) : undefined}
       empty={list.search ? copy.list.noMatch : t.empty}
       toolbar={<ListBar list={list} />}
+    />
+  );
+}
+
+/** Turning a whole account off or on (platform admin), asked first. */
+export function useSetActive() {
+  const client = useQueryClient();
+  const confirm = useConfirm();
+  const act = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      active ? endpoints.activate(id) : endpoints.deactivate(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+  const ask = async (u: PlatformUserRow, active: boolean) => {
+    const c = active
+      ? confirmCopy.userActivate(u.name)
+      : confirmCopy.userDeactivate(u.name);
+    if (
+      await confirm({
+        title: c.title,
+        body: c.body,
+        confirmLabel: c.label,
+        danger: !active,
+      })
+    )
+      act.mutate({ id: u.id, active });
+  };
+  return { ask, pending: act.isPending };
+}
+
+export function ActiveAction({
+  user,
+  disabled,
+  ask,
+  pending,
+}: {
+  user: PlatformUserRow;
+  disabled?: boolean;
+  ask: (u: PlatformUserRow, active: boolean) => void;
+  pending: boolean;
+}) {
+  return user.status === memberStatus.active ? (
+    <RowAction
+      label={t.deactivate}
+      icon={PowerOff}
+      danger
+      disabled={pending || disabled}
+      onClick={() => ask(user, false)}
+    />
+  ) : (
+    <RowAction
+      label={t.activate}
+      icon={Power}
+      disabled={pending}
+      onClick={() => ask(user, true)}
     />
   );
 }

@@ -23,6 +23,7 @@ var (
 	ErrNoDocuments = errors.New("no documents")
 	ErrNotIssuer   = errors.New("not an issuer")
 	ErrUnknownType = errors.New("unknown certificate type")
+	ErrWrongStatus = errors.New("wrong status for this change")
 )
 
 // Unique indexes from the migrations, used to tell which value collided.
@@ -471,4 +472,22 @@ func (s Store) SetAccreditations(ctx context.Context, orgID string, grants []Gra
 		return nil, err
 	}
 	return list, tx.Commit(ctx)
+}
+
+// SetStatus moves an organisation from one status to another, recording who
+// did it and why; ErrWrongStatus when it is not in the from status.
+func (s Store) SetStatus(ctx context.Context, id, from, to, reason, reviewerID string) (Organisation, error) {
+	rows, err := s.Pool.Query(ctx,
+		`UPDATE organisations AS o
+		 SET status = $3, reviewed_by = $5::uuid, reviewed_at = now(), review_reason = NULLIF($4, '')
+		 WHERE id = $1::uuid AND status = $2 AND NOT is_deleted
+		 RETURNING `+orgColumns, id, from, to, reason, reviewerID)
+	if err != nil {
+		return Organisation{}, err
+	}
+	o, err := pgx.CollectExactlyOneRow(rows, scanOrg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Organisation{}, ErrWrongStatus
+	}
+	return o, err
 }

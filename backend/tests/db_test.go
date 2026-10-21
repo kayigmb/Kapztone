@@ -255,6 +255,8 @@ func (e *env) register(name, kind string) org.Organisation {
 	if rec.Code != http.StatusCreated {
 		e.t.Fatalf("register %s = %d %s", name, rec.Code, rec.Body)
 	}
+	// As if the emailed link was opened; email_test.go covers the link itself.
+	e.exec(`UPDATE users SET email_verified_at = now() WHERE email = $1`, e.email(name))
 	return decodeTo[org.Organisation](e.t, rec)
 }
 
@@ -263,7 +265,7 @@ func (e *env) addUser(name, role, orgID string) (userID string) {
 	e.t.Helper()
 	hash, _ := auth.HashPassword(testPassword)
 	err := e.pool.QueryRow(context.Background(),
-		`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4) RETURNING id::text`,
+		`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now()) RETURNING id::text`,
 		e.email(name), hash, name, auth.UserActive).Scan(&userID)
 	if err != nil {
 		e.t.Fatal(err)

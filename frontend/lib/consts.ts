@@ -32,6 +32,7 @@ export const orgStatus = {
   verified: "verified",
   rejected: "rejected",
   changesRequested: "changes_requested",
+  suspended: "suspended",
 } as const;
 export type OrgStatus = (typeof orgStatus)[keyof typeof orgStatus];
 
@@ -94,7 +95,7 @@ export const documentTypes = [
 export const adminTabs = [
   { value: "organisations", statuses: [orgStatus.pending] },
   { value: "issuers", statuses: [orgStatus.verified], kinds: issuerKinds },
-  { value: "approved", statuses: [orgStatus.verified] },
+  { value: "approved", statuses: [orgStatus.verified, orgStatus.suspended] },
   {
     value: "rejected",
     statuses: [orgStatus.rejected, orgStatus.changesRequested],
@@ -509,11 +510,13 @@ export const routes = {
   forgot: "/forgot",
   reset: (token: string) => `/reset/${token}`,
   lock: (token: string) => `/lock/${token}`,
+  verifyEmail: (token: string) => `/verify-email/${token}`,
   handoff: (code: string) => `/handoff?code=${encodeURIComponent(code)}`,
   onboarding: "/onboarding",
   adminOrgs: "/admin/organisations",
   adminOrg: (tab: string, id?: string) =>
     `/admin/organisations?tab=${tab}${id ? `&id=${id}` : ""}`,
+  adminOrgDetail: (id: string) => `/admin/organisations/${id}`,
   adminTemplates: "/admin/templates",
   adminTemplate: (id: string) => `/admin/templates/${id}`,
   adminReports: "/admin/reports",
@@ -535,6 +538,7 @@ export const routes = {
   flag: (id: string) => `/flags?flag=${id}`,
   profile: "/profile",
   users: "/users",
+  userDetail: (id: string) => `/users/${id}`,
   notifications: "/notifications",
   invite: (token: string) => `/invite/${token}`,
 };
@@ -553,11 +557,15 @@ export const apiPaths = {
   forgotPassword: "/auth/password/forgot",
   resetPassword: "/auth/password/reset",
   lockAccount: "/auth/lock",
+  verifyEmail: "/auth/email/verify",
   handoff: "/auth/handoff",
   handoffAccept: "/auth/handoff/accept",
   orgs: "/orgs",
   org: (id: string) => `/orgs/${id}`,
   orgDocuments: (id: string) => `/orgs/${id}/documents`,
+  orgMembers: (id: string) => `/orgs/${id}/members`,
+  orgSuspend: (id: string) => `/orgs/${id}/suspend`,
+  orgReactivate: (id: string) => `/orgs/${id}/reactivate`,
   orgReview: (id: string) => `/orgs/${id}/verify`,
   orgAccreditations: (id: string) => `/orgs/${id}/accreditations`,
   documentFile: (id: string) => `/documents/${id}/file`,
@@ -626,6 +634,9 @@ export const apiPaths = {
   userRole: (id: string) => `/users/${id}/role`,
   userSuspend: (id: string) => `/users/${id}/suspend`,
   userReinstate: (id: string) => `/users/${id}/reinstate`,
+  user: (id: string) => `/users/${id}`,
+  userDeactivate: (id: string) => `/users/${id}/deactivate`,
+  userActivate: (id: string) => `/users/${id}/activate`,
   invites: "/invites",
   inviteAccept: (token: string) =>
     `/invites/${encodeURIComponent(token)}/accept`,
@@ -649,6 +660,7 @@ export const queryKeys = {
   stats: ["stats"] as const,
   unread: ["notifications", "unread"] as const,
   users: ["users"] as const,
+  user: (id: string) => ["users", id] as const,
   facilities: ["facilities"] as const,
   facilityKinds: ["facility-kinds"] as const,
   geocode: (query: string) => ["geocode", query] as const,
@@ -700,6 +712,11 @@ export const copy = {
   },
   profile: {
     ...copyJson.profile,
+  },
+  signin: {
+    ...copyJson.signin,
+    confirmBody: (email: string) =>
+      fill(copyJson.signin.confirmBody.$template, { email }),
   },
   users: {
     ...copyJson.users,
@@ -1188,6 +1205,36 @@ export const confirmCopy = {
     title: `Reinstate ${name}?`,
     body: "They can sign in and act for this organisation again, with their role.",
     label: "Reinstate",
+  }),
+  userDeactivate: (name: string) => ({
+    title: `Deactivate ${name}'s account?`,
+    body: "They are signed out everywhere and can't sign in to any organisation until the account is activated again. What they signed stays signed.",
+    label: "Deactivate account",
+  }),
+  userActivate: (name: string) => ({
+    title: `Activate ${name}'s account?`,
+    body: "They can sign in again, with the memberships they had.",
+    label: "Activate account",
+  }),
+  userScopeSuspend: (name: string, org: string) => ({
+    title: `Suspend ${name} in ${org}?`,
+    body: "They can't act for this organisation until reinstated. Their account and other organisations stay as they are.",
+    label: "Suspend",
+  }),
+  userScopeReinstate: (name: string, org: string) => ({
+    title: `Reinstate ${name} in ${org}?`,
+    body: "They can act for this organisation again, with their role.",
+    label: "Reinstate",
+  }),
+  orgSuspend: (name: string) => ({
+    title: `Suspend ${name}?`,
+    body: "Its members can't use the workspace or sign anything until it is reactivated. What it signed stays signed.",
+    label: "Suspend organisation",
+  }),
+  orgReactivate: (name: string) => ({
+    title: `Reactivate ${name}?`,
+    body: "It is verified again and can act at once.",
+    label: "Reactivate",
   }),
   userRole: (name: string, role: string) => ({
     title: `Make ${name} ${role}?`,

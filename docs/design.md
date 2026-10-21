@@ -52,7 +52,10 @@ Numbers are PLAN.md §2.2. "Spec" is the section of `screens.md`. "API" is what 
 | 13 | Admin: organisation verification | 03 | `/admin/organisations` (built; `?tab=&id=`) | `GET /orgs?status=`, `POST /orgs/{id}/verify` (incl. `changes_requested`), `GET/PUT /orgs/{id}/accreditations`, `GET /orgs/{id}/documents`, `GET /documents/{id}/file`, `GET /templates` (certificate types) | 3m (`VerificationQueue`) |
 | 14 | Reports and audit trail | 09 | `/admin/reports` (built with Reports and Audit log tabs; audit includes Organisation) | `GET /audit`, `/audit/verify`, `/reports/volume`, `/reports/blocked` | 3n (`Reports`) |
 | — | Profile (everyone) | — | `/profile` (built with Account and Security and signing tabs: details, name, password, signing PIN, 2FA with recovery codes) | `PUT /me`, `POST /auth/password`, `/auth/sessions/revoke`, `POST /auth/pin`, `/auth/2fa/*` | 2m (`Profile`) |
-| — | Users | 09 (Users and roles) | `/users` (built: platform admin sees all accounts; org admin invites, changes role, suspends) | `GET /users`, `POST /invites`, `PUT /users/{id}/role`, `POST /users/{id}/suspend`, `/reinstate` | (`Users`) |
+| — | Users | 09 (Users and roles) | `/users` (built: platform admin sees all accounts and deactivates / activates them; org admin invites, changes role, suspends) | `GET /users`, `POST /invites`, `PUT /users/{id}/role`, `POST /users/{id}/suspend`, `/reinstate`, `POST /users/{id}/deactivate`, `/activate` | (`Users`) |
+| — | User detail (platform admin) | 09 | `/users/[id]` (built) | `GET /users/{id}`, role / suspend / reinstate with `?organisation_id=`, `GET /audit?actor=` | — |
+| — | Organisation detail (platform admin) | 03 | `/admin/organisations/[id]` (built) | `GET /orgs/{id}`, `POST /orgs/{id}/suspend`, `/reactivate`, `GET /orgs/{id}/members`, `GET /facilities` + `/passports` with `?organisation_id=`, `GET /attestations?issuer_id=` | — |
+| — | Confirm email | — | `/verify-email/[token]` (built) | `POST /auth/email/verify` | — |
 | — | Accept invitation | — | `/invite/[token]` (built, new look) | `POST /invites/{token}/accept` | 2i (`AuthFlow`) |
 
 "Draft screen": built by an earlier agent before the new look and not yet checked against its draft (plan Step 4).
