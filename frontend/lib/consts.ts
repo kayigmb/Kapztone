@@ -135,6 +135,7 @@ export const memberRoles = [
   { value: "member", label: "Member" },
 ] as const;
 export type MemberRole = (typeof memberRoles)[number]["value"];
+export const orgAdminRole: MemberRole = "org_admin";
 export const memberStatus = {
   active: "active",
   suspended: "suspended",

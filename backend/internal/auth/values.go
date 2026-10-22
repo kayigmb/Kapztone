@@ -48,8 +48,7 @@ const (
 	HeaderOrigin = "Origin"
 	// HeaderForwardedHost carries the site's own host when the web app passes
 	// a browser's request through to the API.
-	HeaderForwardedHost  = "X-Forwarded-Host"
-	HeaderForwardedProto = "X-Forwarded-Proto"
+	HeaderForwardedHost = "X-Forwarded-Host"
 	// HeaderForwardedFor carries the visitor's address from the web app.
 	HeaderForwardedFor = "X-Forwarded-For"
 	// SessionCookie holds the sign-in token in a browser. The API sets and
@@ -103,6 +102,7 @@ const (
 	MsgForeignOrigin       = "this request did not come from the site you are signed in to"
 	MsgNoOrgSelected       = "choose an organisation to act for"
 	MsgOrgNotVerified      = "your organisation must be verified before it can do this"
+	MsgOrgSuspended        = "your organisation is suspended: it can view its records but change nothing"
 	MsgTooManyAttempts     = "Too many attempts. Wait a few minutes, then try again."
 	MsgTwoFactorCode       = "Enter the code from your authenticator app."
 	MsgBadCode             = "That code is incorrect or already used. Enter the code your app shows now."

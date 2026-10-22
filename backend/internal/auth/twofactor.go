@@ -101,13 +101,7 @@ func (a *Auth) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, MsgTwoFactorNotOn)
 		return
 	}
-	valid, err := a.checkCode(r.Context(), u, in.Code, a.now())
-	if err != nil {
-		httpx.ServerError(w, "check 2fa code", err)
-		return
-	}
-	if !valid {
-		httpx.Error(w, http.StatusBadRequest, MsgBadCode)
+	if !a.signedInCode(w, r, u, in.Code) {
 		return
 	}
 	codes, err := a.issueRecoveryCodes(r.Context(), u.ID)
@@ -116,6 +110,29 @@ func (a *Auth) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, http.StatusOK, MsgRecoveryCodes, map[string]any{"recovery_codes": codes})
+}
+
+// signedInCode checks an app code sent by a signed-in user, or writes the
+// refusal. Wrong codes are counted per user, so a stolen session cannot guess
+// its way to turning 2FA off.
+func (a *Auth) signedInCode(w http.ResponseWriter, r *http.Request, u User, code string) bool {
+	ctx := r.Context()
+	if a.Limiter.blocked(ctx, CodeRate, u.ID) {
+		httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
+		return false
+	}
+	valid, err := a.checkCode(ctx, u, code, a.now())
+	if err != nil {
+		httpx.ServerError(w, "check 2fa code", err)
+		return false
+	}
+	if !valid {
+		a.Limiter.record(ctx, CodeRate, u.ID)
+		httpx.Error(w, http.StatusBadRequest, MsgBadCode)
+		return false
+	}
+	a.Limiter.reset(ctx, CodeRate, u.ID)
+	return true
 }
 
 // freshUser reloads the signed-in user with their 2FA state.
@@ -193,13 +210,7 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 		httpx.Error(w, http.StatusConflict, MsgTwoFactorNotOn)
 		return
 	}
-	valid, err := a.checkCode(r.Context(), u, in.Code, a.now())
-	if err != nil {
-		httpx.ServerError(w, "check 2fa code", err)
-		return
-	}
-	if !valid {
-		httpx.Error(w, http.StatusBadRequest, MsgBadCode)
+	if !a.signedInCode(w, r, u, in.Code) {
 		return
 	}
 	sealed := u.TOTPSecret

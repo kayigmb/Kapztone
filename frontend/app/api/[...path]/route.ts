@@ -45,7 +45,6 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
   headers.set(requestIdHeader, crypto.randomUUID());
   // The site the browser is on: its first label names the organisation.
   headers.set("x-forwarded-host", req.headers.get("host") ?? "");
-  headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
   // The visitor's address, for the API's rate limits. Next fills this from the
   // socket when no proxy set it; behind nginx the last entry is the one nginx
   // appended. Only that one is passed on.

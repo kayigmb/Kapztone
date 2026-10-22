@@ -107,7 +107,7 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 	if err := a.Accounts.AddLink(ctx, u.ID, kind, hash, a.now().Add(ttl)); err != nil {
 		return err
 	}
-	link := FrontendOf(ctx).Origin + path + token
+	link := a.AppURL + path + token
 	if a.Dev {
 		logx.From(ctx).Info("dev: link not e-mailed", "kind", kind, "user_id", u.ID, "link", link)
 	}

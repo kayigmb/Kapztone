@@ -196,11 +196,15 @@ func Routes(d Deps) []Route {
 func NewRouter(d Deps) http.Handler {
 	a := d.Auth
 	r := chi.NewRouter()
-	r.Use(logx.Middleware(auth.ClientIP), auth.WithFrontend)
+	r.Use(logx.Middleware(auth.ClientIP))
 
 	for _, rt := range Routes(d) {
 		var chain chi.Middlewares
 		switch rt.Access {
+		case Public:
+			if rt.Method != http.MethodGet {
+				chain = chi.Middlewares{auth.SameOrigin}
+			}
 		case SignedIn:
 			chain = chi.Middlewares{a.Authenticate, a.ResolveOrg}
 		case Permission:

@@ -22,12 +22,19 @@ var (
 	// LoginRate counts failed sign-ins per email and address. Without it a
 	// 6-digit 2FA code or a weak password could simply be guessed.
 	LoginRate = Rate{Name: "login", Max: 5, Window: 15 * time.Minute}
+	// LoginEmailRate counts failed sign-ins per email from any address, so
+	// changing address does not buy more guesses. Higher than LoginRate: a
+	// stranger can lock an account out of sign-in for the window.
+	LoginEmailRate = Rate{Name: "login-email", Max: 20, Window: 15 * time.Minute}
 	// RegisterRate counts sign-ups per address.
 	RegisterRate = Rate{Name: "register", Max: 10, Window: time.Hour}
 	// VerifyRate counts public verifications per address: each one reads the chain.
 	VerifyRate = Rate{Name: "verify", Max: 60, Window: time.Minute}
 	// PINRate counts wrong signing PINs per user; a 6-digit PIN must not be guessable.
 	PINRate = Rate{Name: "pin", Max: 5, Window: 15 * time.Minute}
+	// CodeRate counts wrong 2FA codes per signed-in user (turning 2FA on or
+	// off, new recovery codes).
+	CodeRate = Rate{Name: "code", Max: 5, Window: 15 * time.Minute}
 	// ForgotRate counts password-reset requests per address, so the form
 	// can't be used to flood someone's inbox.
 	ForgotRate = Rate{Name: "forgot", Max: 5, Window: time.Hour}

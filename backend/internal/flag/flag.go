@@ -317,6 +317,14 @@ func investigator(r *http.Request) bool {
 	return o != nil && o.Kind == org.KindRegulator && o.Status == auth.OrgVerified
 }
 
+// resolver reports whether the caller may assign and resolve flags: the
+// superadmin, or an admin of a verified regulator. Confirming a flag revokes
+// whole passport trees, so a regulator's other members only look.
+func resolver(r *http.Request) bool {
+	s := auth.CurrentScope(r.Context())
+	return slices.Contains(s.Permissions, auth.FlagResolve) || (investigator(r) && s.Role == auth.RoleOrgAdmin)
+}
+
 // gate is auth.Gate, widened to every organisation for an investigator.
 func gate(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if investigator(r) {
@@ -400,9 +408,9 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, "", "get flag", f, err)
 }
 
-// Assign answers PUT /flags/{id}/assignee {"user_id": "…" | null}: an investigator only.
+// Assign answers PUT /flags/{id}/assignee {"user_id": "…" | null}: a resolver only.
 func (h *Handlers) Assign(w http.ResponseWriter, r *http.Request) {
-	if !investigator(r) {
+	if !resolver(r) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
 		return
 	}
@@ -424,9 +432,9 @@ func (h *Handlers) Assign(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, MsgAssigned, "assign flag", f, err)
 }
 
-// Resolve clears or confirms a flag: an investigator only, with their signing PIN.
+// Resolve clears or confirms a flag: a resolver only, with their signing PIN.
 func (h *Handlers) Resolve(w http.ResponseWriter, r *http.Request) {
-	if !investigator(r) {
+	if !resolver(r) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
 		return
 	}

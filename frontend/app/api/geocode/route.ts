@@ -1,6 +1,27 @@
 import { photonSuggestions } from "@/lib/geocode";
 
+// Signed-in only: otherwise anyone could run searches through this server.
+async function signedIn(request: Request): Promise<boolean> {
+  const cookie = request.headers.get("cookie");
+  if (!cookie || !process.env.API_URL) return false;
+  try {
+    const me = await fetch(`${process.env.API_URL.replace(/\/$/, "")}/me`, {
+      headers: { cookie },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return me.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: Request) {
+  if (!(await signedIn(request))) {
+    return Response.json(
+      { status: 401, message: "Sign in to search places.", data: null },
+      { status: 401 },
+    );
+  }
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   if (query.length < 3 || query.length > 120) {
     return Response.json(

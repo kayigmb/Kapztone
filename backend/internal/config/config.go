@@ -31,6 +31,7 @@ const (
 	EnvLogFormat          = "LOG_FORMAT" // json (default) or text
 	EnvLogLevel           = "LOG_LEVEL"  // debug, info (default), warn, error
 	EnvAppEnv             = "APP_ENV"
+	EnvAppURL             = "APP_URL" // the web app's bare address; e-mailed links start with it
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
 	EnvJWTSecret          = "JWT_SECRET"
@@ -88,9 +89,17 @@ var AppEnvs = []string{AppDev, AppProd}
 
 const MinJWTSecretLen = 32
 
+// HardhatKeys are Hardhat's public test accounts #0 and #1 (as in
+// .env.example): fine on a local chain, refused in prod.
+var HardhatKeys = []string{
+	"ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+	"59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+}
+
 type Config struct {
 	Port               string
 	Dev                bool
+	AppURL             string // no trailing slash
 	DatabaseURL        string
 	RedisURL           string
 	Storage            upload.Config
@@ -172,6 +181,13 @@ func Load() (Config, error) {
 	}
 	c.Dev = appEnv == AppDev
 
+	// E-mailed links start with this, never with a request header: a header
+	// is the caller's claim and would let anyone aim a reset link at their site.
+	c.AppURL = strings.TrimRight(get(EnvAppURL), "/")
+	if u, err := url.Parse(c.AppURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		invalid(c.AppURL, EnvAppURL, "must be an http or https address with no path or query, e.g. https://chaintrack.app")
+	}
+
 	jwtSecret := get(EnvJWTSecret)
 	// Any length in dev; a short secret would let anyone forge sign-ins in prod.
 	if !c.Dev && len(jwtSecret) < MinJWTSecretLen {
@@ -217,6 +233,9 @@ func Load() (Config, error) {
 	relayerKey := get(EnvChainRelayerKey)
 	if c.RelayerKey, err = chain.ParseKey(relayerKey); err != nil {
 		invalid(relayerKey, EnvChainRelayerKey, "must be a private key: 64 hex characters")
+	}
+	if !c.Dev && slices.Contains(HardhatKeys, strings.ToLower(strings.TrimPrefix(relayerKey, "0x"))) {
+		invalid(relayerKey, EnvChainRelayerKey, "is one of Hardhat's public test keys: anyone can sign with it")
 	}
 
 	address := func(name string) common.Address {

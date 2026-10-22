@@ -92,6 +92,9 @@ func TestPlatformAdminActions(t *testing.T) {
 	want(t, "suspend without reason", do(e.h, http.MethodPost, "/orgs/"+acme.ID+"/suspend", root, `{}`), http.StatusBadRequest)
 	want(t, "suspend", do(e.h, http.MethodPost, "/orgs/"+acme.ID+"/suspend", root, `{"reason":"fraud"}`), http.StatusOK)
 	want(t, "suspended organisation acts", do(e.h, http.MethodPost, as(slug, "/facilities"), admin, `{}`), http.StatusForbidden)
+	want(t, "suspended organisation invites", do(e.h, http.MethodPost, as(slug, "/invites"), admin,
+		`{"email":"`+e.email("late")+`","role":"`+auth.RoleMember+`"}`), http.StatusForbidden)
+	want(t, "suspended organisation still reads", do(e.h, http.MethodGet, as(slug, "/users"), admin, ""), http.StatusOK)
 	want(t, "reactivate", do(e.h, http.MethodPost, "/orgs/"+acme.ID+"/reactivate", root, ""), http.StatusOK)
 	if rec := do(e.h, http.MethodPost, as(slug, "/facilities"), admin, `{}`); rec.Code == http.StatusForbidden {
 		t.Fatalf("reactivated organisation still refused: %s", rec.Body)

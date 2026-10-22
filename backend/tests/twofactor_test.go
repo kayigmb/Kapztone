@@ -161,6 +161,7 @@ func TestRateLimits(t *testing.T) {
 	// would otherwise count against the shared registration limit on every run.
 	e.register(tAcme, org.KindProducer)
 	e.register(tRival, org.KindExporter)
+	e.register(tStaff, org.KindProducer)
 	e.a.Limiter = &auth.Limiter{Cache: c}
 	t.Cleanup(func() { c.DelPattern(context.Background(), "*"+e.suffix+"*") }) // drop this test's counters
 	email := e.email(tAcme)
@@ -190,6 +191,32 @@ func TestRateLimits(t *testing.T) {
 	if code := login(e.email(tRival), testPassword); code != http.StatusOK {
 		t.Fatalf("another account was locked out too: %d", code)
 	}
+
+	// Changing address does not buy more guesses at one account.
+	rival := e.email(tRival)
+	loginFrom := func(ip, password string) int {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(loginBody(rival, password)))
+		req.Header.Set(auth.HeaderForwardedFor, ip)
+		rec := httptest.NewRecorder()
+		e.h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := range auth.LoginEmailRate.Max {
+		if code := loginFrom(fmt.Sprintf("203.0.113.%d", i), "wrong-password"); code != http.StatusUnauthorized {
+			t.Fatalf("failed sign-in %d from a new address = %d, want 401", i+1, code)
+		}
+	}
+	if code := loginFrom("198.51.100.1", testPassword); code != http.StatusTooManyRequests {
+		t.Fatalf("sign-in from a fresh address over the email limit = %d, want 429", code)
+	}
+
+	// A signed-in session cannot guess 2FA codes either.
+	staff := e.login(tStaff)
+	want(t, "2fa setup", do(e.h, http.MethodPost, "/auth/2fa/setup", staff, ""), http.StatusOK)
+	for i := range auth.CodeRate.Max {
+		want(t, fmt.Sprintf("wrong code %d", i+1), do(e.h, http.MethodPost, "/auth/2fa/enable", staff, codeBody("000000")), http.StatusBadRequest)
+	}
+	want(t, "code over the limit", do(e.h, http.MethodPost, "/auth/2fa/enable", staff, codeBody("000000")), http.StatusTooManyRequests)
 
 	// LimitIP: at most Max calls per address per window.
 	rate := auth.Rate{Name: "test-" + e.suffix, Max: 2, Window: time.Minute}

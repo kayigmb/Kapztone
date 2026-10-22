@@ -117,7 +117,7 @@ func TestRegulatorResolvesEveryFlag(t *testing.T) {
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
 	root := e.login(tRoot)
 	e.verifiedOrg(tAcme, org.KindProducer, root)
-	e.verifiedOrg("reg", org.KindRegulator, root)
+	regOrg := e.verifiedOrg("reg", org.KindRegulator, root)
 	e.verifiedOrg(tRival, org.KindExporter, root)
 	f := lotForFlags(t, e, root)
 
@@ -148,6 +148,12 @@ func TestRegulatorResolvesEveryFlag(t *testing.T) {
 
 	resolve := `{"outcome":"` + flag.StatusCleared + `","note":"Scales recalibrated"}`
 	want(t, "exporter resolves", do(e.h, http.MethodPost, as(rivalSlug, "/flags/"+f.ID+"/resolve"), rival, resolve), http.StatusForbidden)
+
+	// A regulator's member reads every flag but only its admin resolves.
+	e.addUser("regmember", auth.RoleMember, regOrg.ID)
+	member := e.login("regmember")
+	want(t, "regulator member reads", do(e.h, http.MethodGet, as(regSlug, "/flags/"+f.ID), member, ""), http.StatusOK)
+	want(t, "regulator member resolves", do(e.h, http.MethodPost, as(regSlug, "/flags/"+f.ID+"/resolve"), member, resolve), http.StatusForbidden)
 
 	// Resolution is a signing action: the PIN is checked.
 	path := as(regSlug, "/flags/"+f.ID+"/resolve")
@@ -357,7 +363,7 @@ func TestUserManagement(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("invitation e-mail was not queued")
 	}
-	if sentTo != e.email("mailed") || !strings.Contains(sentBody, user.InvitePath) {
+	if sentTo != e.email("mailed") || !strings.Contains(sentBody, auth.OrgURL(testAppURL, slug)+user.InvitePath) {
 		t.Fatalf("production invite sent to %q: %q", sentTo, sentBody)
 	}
 	var plain int

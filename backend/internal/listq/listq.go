@@ -33,6 +33,7 @@ const (
 const (
 	DefaultSize = 20
 	MaxSize     = 100
+	MaxPage     = 100000        // keeps (page-1)*size far from overflowing
 	DateLayout  = time.DateOnly // 2026-01-31; RFC 3339 timestamps are accepted too
 
 	// Base columns every table has.
@@ -80,8 +81,8 @@ func Parse(v url.Values, cfg Config) (Query, error) {
 
 	if s := v.Get(ParamPage); s != "" {
 		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 {
-			return q, bad("%s must be a number from 1", ParamPage)
+		if err != nil || n < 1 || n > MaxPage {
+			return q, bad("%s must be a number from 1 to %d", ParamPage, MaxPage)
 		}
 		q.Page = n
 	}

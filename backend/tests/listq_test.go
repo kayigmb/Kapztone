@@ -49,6 +49,7 @@ func TestListParse(t *testing.T) {
 	bad := []url.Values{
 		params(listq.ParamPage, "0"),
 		params(listq.ParamPage, "abc"),
+		params(listq.ParamPage, "999999999999999999"), // OFFSET would overflow
 		params(listq.ParamSize, "-1"),
 		params(listq.ParamSort, "password_hash"),            // not an allowed column
 		params(listq.ParamSort, "name; DROP TABLE users--"), // injection attempt

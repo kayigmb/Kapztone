@@ -32,6 +32,7 @@ import {
   flagStatus,
   flagTabs,
   listSorts,
+  orgAdminRole,
   orgStatus,
   permissions,
   queryKeys,
@@ -230,10 +231,11 @@ function Investigation({ f }: { f: Flag }) {
     },
   });
   const code = lot.data?.passport.code ?? f.passport_id;
-  // Mirrors the API: the platform (flag:resolve) or a verified regulator investigates; others only read.
+  // Mirrors the API: the platform (flag:resolve) or a verified regulator's admin resolves; others only read.
   const investigator =
     me.permissions.includes(permissions.flagResolve) ||
-    (me.organisation?.kind === "regulator" &&
+    (me.role === orgAdminRole &&
+      me.organisation?.kind === "regulator" &&
       me.organisation.status === orgStatus.verified);
 
   return (

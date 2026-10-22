@@ -23,6 +23,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `ENCRYPTION_KEY` | seals 2FA secrets in the database | exactly 64 hex characters (`openssl rand -hex 32`); if it is lost or changed, every user must set 2FA up again |
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | first platform admin | used only when no superadmin exists; password 12 to 72 characters in prod, up to 72 in dev |
 | `APP_ENV` | `dev` or `prod` | `dev` also accepts `?pslug=` to choose the acting organisation |
+| `APP_URL` | the web app's bare address, no path | e-mailed links (reset, verify, lock, invite) start with it, never with a request header; an invite puts the organisation's slug in front of the host (`https://acme.chaintrack.app`) |
 | `CHAIN_RPC_URL`, `CHAIN_ID` | the chain the relayer writes to | local: `http://127.0.0.1:8545` and `31337` |
 | `CHAIN_RELAYER_KEY` | sends every transaction; relayer + operator on-chain | must hold funds on a real network; the value in `.env.example` is a public test key, local only |
 | `CHAIN_ADMIN_KEY` | deploys, wires the contracts, grants roles | read only by `make deploy`; outside a local chain it differs from the relayer key and stays offline afterwards |

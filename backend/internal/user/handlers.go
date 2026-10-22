@@ -31,6 +31,8 @@ type Handlers struct {
 	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
 	// mail; empty means the header shows the name as text.
 	LogoURL string
+	// AppURL is the web app's bare address; invitation links start with it.
+	AppURL string
 	// Dev also returns the invitation link (and logs it), since a developer
 	// usually has e-mail off. Never in production: the link is a credential.
 	Dev bool
@@ -194,7 +196,7 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The link opens the invitation on the organisation's own address.
-	link := auth.FrontendOf(r.Context()).Origin + InvitePath + token
+	link := auth.OrgURL(h.AppURL, o.Slug) + InvitePath + token
 	out := map[string]any{"invite": inv, "emailed": false}
 	if h.Mail != nil {
 		// Queued, not sent: the invitation must not wait on the mail server

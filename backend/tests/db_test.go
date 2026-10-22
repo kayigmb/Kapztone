@@ -186,7 +186,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 	counting := &countingStore{Store: auth.PgStore{Pool: pool}}
 	var store auth.Store = counting
 	invalidate := func(context.Context, string) {}
-	e.users = &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: invalidate, Dev: true}
+	e.users = &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: invalidate, AppURL: testAppURL, Dev: true}
 	var cached *auth.CachedStore
 	if useCache {
 		redisURL := os.Getenv(envTestRedis)
@@ -212,7 +212,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 	e.verify = &verify.Handlers{Pool: pool, Passports: passport.Store{Pool: pool}, Certificates: e.certificates.Store,
 		Files: files}
 	e.a = &auth.Auth{Store: store, Accounts: auth.PgStore{Pool: pool}, Secret: []byte(testSecret),
-		TokenTTL: time.Hour, RememberTTL: 30 * 24 * time.Hour, Dev: true, Secrets: testBox(t)}
+		TokenTTL: time.Hour, RememberTTL: 30 * 24 * time.Hour, AppURL: testAppURL, Dev: true, Secrets: testBox(t)}
 	e.audit = &audit.Handlers{Store: audit.Store{Pool: pool}}
 	e.h = server.NewRouter(server.Deps{
 		Ping: pool.Ping,

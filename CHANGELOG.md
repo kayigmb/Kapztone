@@ -53,12 +53,42 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [ ] Tag `v1.0-eval`
 - [ ] Tick PLAN.md §7 checklist (several items already true)
 
+### Security review leftovers (2026-10-22, low)
+- [x] Origin check on public cookie POSTs (login, logout, handoff/accept): closes handoff login-CSRF
+- [x] `/api/geocode` open proxy to Photon: no sign-in, no limit
+- [x] Passport stays visible to the receiver of a rejected / cancelled handover (`passport/store.go` `visible`, no status filter)
+- [x] Suspended organisations keep `Permission` routes (revoke certificates, invite, delete facilities)
+- [x] Any regulator member, not only its admin, can confirm flags
+- [x] Huge `?page=` overflows OFFSET (500); saved report with a non-uuid actor (500)
+- [x] Logout leaves a bearer token valid until expiry (by design: the cookie is HttpOnly and cleared; bearer tokens are for scripts; `/auth/sessions/revoke` voids every token)
+- [x] `http.Server`: add ReadTimeout / IdleTimeout
+- [x] CSP and HSTS; CI `permissions:` block and SHA-pinned actions
+- [x] Refuse Hardhat test keys when `APP_ENV=prod`
+
 ## Pending decisions
 
 - How the API learns the real client address behind the web app. Rate limits now see the web app's address for every user, so sign-in and registration limits apply to the whole site.
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-22 — Security leftovers closed
+- **Public POSTs:** `auth.SameOrigin` refuses a public change (sign-in, handoff, forgot, register…) sent from another site's page; callers without an `Origin` (scripts) pass. Closes the handoff login-CSRF.
+- **Geocode:** `/api/geocode` asks the API's `/me` with the visitor's cookie first and answers 401 to strangers.
+- **Visibility:** the receiver of a handover sees the lot only while it awaits them (not after reject, cancel or expiry).
+- **Suspended organisations** can read but every non-GET answers 403 (`MsgOrgSuspended`, in `auth.Require`).
+- **Flags:** assigning and resolving need the superadmin or a verified regulator's **admin**; regulator members still read every flag. The flags screen mirrors it (`orgAdminRole`).
+- **Bad input:** `?page=` capped at `listq.MaxPage` (100000); a saved report with a non-uuid `actor` is refused when saved (400).
+- **Server:** `ReadTimeout` and `IdleTimeout` 2 min (no WriteTimeout, for long exports). Web: CSP `frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'`, HSTS in production. CI: `permissions: contents: read`, actions pinned by commit SHA.
+- **Config:** prod refuses Hardhat's public test keys as `CHAIN_RELAYER_KEY`; `APP_URL` refuses a query or fragment.
+- **Cleanup from review:** `Frontend` type and `X-Forwarded-Proto` removed (`frontendHost` only); `attempts_left` reports the tighter of the two sign-in limits.
+- **Tests:** `TestRejectedReceiverLosesSight`, `TestSavedReportActorChecked`, `TestConfigHardhatKeyByEnvironment`, regulator member 403, suspended invite 403 / read 200, forgot from another site 403, page overflow 400; full `make test-db`, frontend lint / build / 77 node tests green.
+
+### 2026-10-22 — Security review fixes
+- **E-mailed links from config:** new required `APP_URL`. Reset, verify, lock and invite links started with the request's `Origin` / forwarded host, so `POST /auth/password/forgot` with a forged `Origin` mailed a victim a real reset token pointing at another site. Links now start with `APP_URL`; invites with `auth.OrgURL(APP_URL, slug)`. `auth.WithFrontend` / `FrontendOf` removed (no users left).
+- **Certificates scoped:** `GET /attestations/{id}` and `/file` answered any organisation; `Store.Get` now applies the same visibility as the list (issuer, holder of the lot, owner of the facility, platform).
+- **Rate limits:** failed sign-ins also count per email from any address (`LoginEmailRate`, 20 / 15 min), since the forwarded address can still be faked until nginx is in front; wrong 2FA codes from a signed-in user (enable, disable, recovery codes) are limited (`CodeRate`, 5 / 15 min).
+- **Tests:** forgot-password with a forged Origin, invite link on the org address, other-org certificate 404, per-email and 2FA limits, `TestOrgURL`; full `make test-db` green.
 
 ### 2026-10-21 — Email confirmation, platform admin user and organisation pages
 - **Email confirmation:** migration `000024_email_verified` adds `users.email_verified_at` (existing accounts backfilled as confirmed). Sign-up emails a one-use link (24 h, `/verify-email/<token>`, `POST /auth/email/verify`); invited and seeded accounts count as confirmed. Signing in with the right password but an unconfirmed email answers 403 and sends a fresh link (at most 5 an hour per email). Migration `000025_users_is_verified` adds `users.is_verified`, a boolean generated from `email_verified_at`; sign-in checks it.

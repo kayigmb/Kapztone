@@ -253,3 +253,27 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 		t.Fatalf("notifications of the flag = %d, want 2", notes)
 	}
 }
+
+// The receiver sees a lot only while its handover awaits them: once rejected,
+// the lot is not theirs to follow.
+func TestRejectedReceiverLosesSight(t *testing.T) {
+	w := newPassportWorld(t)
+	e := w.e
+	tpl := w.template(t, withoutOriginEvidence(coffeeTemplate("coffee_"+e.suffix)))
+	rec := w.issue(tpl, 1000)
+	want(t, "issue", rec, http.StatusCreated)
+	lot := decodeTo[passport.Passport](t, rec)
+
+	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, Stage: stageWashing})
+	want(t, "handover", rec, http.StatusCreated)
+	h := decodeTo[passport.Handover](t, rec)
+	view := func() int { return do(e.h, http.MethodGet, as(w.procSlug, "/passports/"+lot.ID), w.procTok, "").Code }
+	if got := view(); got != http.StatusOK {
+		t.Fatalf("receiver of an awaiting handover = %d, want 200", got)
+	}
+	want(t, "reject", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/reject"),
+		passport.RejectInput{Reasons: []string{passport.RejectNotExpected}}), http.StatusOK)
+	if got := view(); got != http.StatusNotFound {
+		t.Fatalf("receiver of a rejected handover = %d, want 404", got)
+	}
+}

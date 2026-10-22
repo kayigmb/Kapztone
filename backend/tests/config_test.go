@@ -19,6 +19,7 @@ func fullEnv() map[string]string {
 	return map[string]string{
 		config.EnvPort:                "8080",
 		config.EnvAppEnv:              config.AppDev,
+		config.EnvAppURL:              "http://localhost:3000",
 		config.EnvDatabaseURL:         "postgres://u:p@localhost:5478/db",
 		config.EnvRedisURL:            "redis://localhost:6379/0",
 		config.EnvStorageEndpoint:     "http://localhost:9000",
@@ -105,6 +106,9 @@ func TestConfigRejectsInvalidValues(t *testing.T) {
 		{"zero chain id", config.EnvChainID, "0"},
 		{"relayer key too short", config.EnvChainRelayerKey, "abcd1234"},
 		{"contract address too short", config.EnvCustodyManager, "0x1234"},
+		{"app url with a path", config.EnvAppURL, "https://chaintrack.test/app"},
+		{"app url with a query", config.EnvAppURL, "https://chaintrack.test?x=1"},
+		{"app url without a scheme", config.EnvAppURL, "chaintrack.test"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,6 +143,20 @@ func TestConfigShortSecretsByEnvironment(t *testing.T) {
 		if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), key) {
 			t.Errorf("short %s accepted in prod: %v", key, err)
 		}
+	}
+}
+
+// Hardhat's public test key signs on a local chain, never in prod.
+func TestConfigHardhatKeyByEnvironment(t *testing.T) {
+	env := fullEnv()
+	env[config.EnvChainRelayerKey] = "0x" + strings.ToUpper(config.HardhatKeys[1])
+	setEnv(t, env)
+	if _, err := config.Load(); err != nil {
+		t.Fatalf("test key refused in dev: %v", err)
+	}
+	t.Setenv(config.EnvAppEnv, config.AppProd)
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "Hardhat") {
+		t.Fatalf("test key accepted in prod: %v", err)
 	}
 }
 

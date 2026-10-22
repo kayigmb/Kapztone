@@ -286,6 +286,12 @@ func (h *Handlers) CreateSaved(w http.ResponseWriter, r *http.Request) {
 	if len(in.Params) == 0 {
 		in.Params = json.RawMessage(`{}`)
 	}
+	// Checked now, so running the report later cannot fail on it.
+	var p reportParams
+	if json.Unmarshal(in.Params, &p) == nil && p.Actor != "" && !httpx.IsUUID(strings.TrimSpace(p.Actor)) {
+		httpx.Error(w, http.StatusBadRequest, MsgBadActor)
+		return
+	}
 	var actor *string
 	if u := auth.CurrentUser(r.Context()); u.ID != "" {
 		actor = &u.ID

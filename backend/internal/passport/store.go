@@ -201,7 +201,8 @@ const (
 	  OR EXISTS (SELECT 1 FROM trace_events e WHERE e.passport_id = p.id AND NOT e.is_deleted
 	             AND (e.from_org = NULLIF($%[1]d, '')::uuid OR e.to_org = NULLIF($%[1]d, '')::uuid))
 	  OR EXISTS (SELECT 1 FROM handovers h WHERE h.passport_id = p.id AND NOT h.is_deleted
-	             AND h.to_org = NULLIF($%[1]d, '')::uuid))`
+	             AND h.to_org = NULLIF($%[1]d, '')::uuid
+	             AND h.status = '` + HandoverAwaiting + `' AND h.deadline >= now()))`
 
 	// partyFmt: who may see a handover: its sender and its receiver.
 	partyFmt = `($%[1]d = '' OR h.from_org = NULLIF($%[1]d, '')::uuid OR h.to_org = NULLIF($%[1]d, '')::uuid)`

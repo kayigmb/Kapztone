@@ -93,6 +93,7 @@ func main() {
 		Secret:      cfg.JWTSecret,
 		TokenTTL:    cfg.TokenTTL,
 		RememberTTL: cfg.RememberTTL,
+		AppURL:      cfg.AppURL,
 		Accounts:    pg,
 		Dev:         cfg.Dev,
 		Secrets:     cfg.Secrets,
@@ -113,7 +114,7 @@ func main() {
 		retrier := &attestation.Retrier{Store: certificates.Store, Files: files, Pin: certificates.Pin}
 		go retrier.Run(ctx)
 	}
-	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, Dev: cfg.Dev, LogoURL: cfg.MailLogoURL}
+	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, AppURL: cfg.AppURL, Dev: cfg.Dev, LogoURL: cfg.MailLogoURL}
 	a.LogoURL = cfg.MailLogoURL
 	if cfg.SMTP != nil {
 		mailer := notify.NewMailer(pool, *cfg.SMTP)
@@ -156,6 +157,10 @@ func main() {
 			Stats: &stats.Handlers{Store: stats.Store{Pool: pool}},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
+		// Generous for photo uploads on slow links. No WriteTimeout: PDF and
+		// CSV exports may take a while.
+		ReadTimeout: 2 * time.Minute,
+		IdleTimeout: 2 * time.Minute,
 	}
 
 	go func() {

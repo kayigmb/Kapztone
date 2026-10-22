@@ -484,6 +484,8 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "bad scope", get(procTok, procSlug, "/attestations?"+attestation.ParamScope+"=mine"), http.StatusBadRequest)
 	want(t, "get certificate", get(procTok, procSlug, "/attestations/"+cert.ID), http.StatusOK)
 	want(t, "unknown certificate", get(procTok, procSlug, "/attestations/"+fakeOrgID), http.StatusNotFound)
+	want(t, "another organisation's certificate", get(prodTok, prodSlug, "/attestations/"+cert.ID), http.StatusNotFound)
+	want(t, "another organisation's certificate file", get(prodTok, prodSlug, "/attestations/"+cert.ID+"/file"), http.StatusNotFound)
 	file := get(procTok, procSlug, "/attestations/"+cert.ID+"/file")
 	want(t, "download certificate", file, http.StatusOK)
 	if !bytes.Equal(file.Body.Bytes(), pdfBytes) {

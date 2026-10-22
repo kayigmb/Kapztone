@@ -179,21 +179,29 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
+	gate, ok := auth.Gate(w, r)
+	if !ok {
+		return
+	}
 	id, ok := httpx.URLID(w, r)
 	if !ok {
 		return
 	}
-	a, err := h.Store.Get(r.Context(), id)
+	a, err := h.Store.Get(r.Context(), id, gate)
 	respond(w, http.StatusOK, "", "get certificate", a, err)
 }
 
 // Download streams the certificate's file.
 func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
+	gate, ok := auth.Gate(w, r)
+	if !ok {
+		return
+	}
 	id, ok := httpx.URLID(w, r)
 	if !ok {
 		return
 	}
-	a, err := h.Store.Get(r.Context(), id)
+	a, err := h.Store.Get(r.Context(), id, gate)
 	if err != nil {
 		respond(w, 0, "", "get certificate", nil, err)
 		return

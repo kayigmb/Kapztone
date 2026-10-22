@@ -40,6 +40,10 @@ func (m mailbox) next(t *testing.T, subject string) (token string) {
 		if match == nil {
 			t.Fatalf("mail without a link: %q", mail)
 		}
+		// Never the address the request claimed (see the forgot request below).
+		if !strings.Contains(mail, testAppURL+"/") {
+			t.Fatalf("link not on %s: %q", testAppURL, mail)
+		}
 		return match[1]
 	case <-time.After(5 * time.Second):
 		t.Fatalf("no %q mail", subject)
@@ -81,8 +85,19 @@ func TestPasswordResetAndLock(t *testing.T) {
 		t.Fatal("a reset link was stored for an unknown email")
 	}
 
-	want(t, "forgot", do(e.h, http.MethodPost, "/auth/password/forgot", "",
-		`{"email":"`+strings.ToUpper(e.email(tStaff))+`"}`), http.StatusAccepted)
+	// Another site's page is refused outright.
+	forgot := func(host string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/auth/password/forgot",
+			strings.NewReader(`{"email":"`+strings.ToUpper(e.email(tStaff))+`"}`))
+		req.Host = host
+		req.Header.Set(auth.HeaderOrigin, "https://evil.test")
+		rec := httptest.NewRecorder()
+		e.h.ServeHTTP(rec, req)
+		return rec
+	}
+	want(t, "forgot from another site", forgot("example.com"), http.StatusForbidden)
+	// A script forging Host and Origin alike still cannot aim the link elsewhere.
+	want(t, "forgot", forgot("evil.test"), http.StatusAccepted)
 	token := box.next(t, auth.MailResetSubject)
 	if resets() != 1 {
 		t.Fatal("reset link not stored")

@@ -142,23 +142,12 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-// The frontend's address is recorded for every request and readable anywhere.
-func TestFrontendIsKnownToHandlers(t *testing.T) {
-	var got auth.Frontend
-	h := auth.WithFrontend(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		got = auth.FrontendOf(r.Context())
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "http://api.internal:8080/x", nil)
-	req.Header.Set(auth.HeaderOrigin, "https://Acme.chaintrack.app:8443")
-	h.ServeHTTP(httptest.NewRecorder(), req)
-	if got.Host != "acme.chaintrack.app" || got.Origin != "https://Acme.chaintrack.app:8443" {
-		t.Fatalf("from Origin: %+v", got)
+func TestOrgURL(t *testing.T) {
+	if got := auth.OrgURL("https://chaintrack.app", ""); got != "https://chaintrack.app" {
+		t.Fatalf("bare = %q", got)
 	}
-
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://acme.localhost:8080/x", nil))
-	if got.Host != "acme.localhost" || got.Origin != "http://acme.localhost:8080" {
-		t.Fatalf("from Host: %+v", got)
+	if got := auth.OrgURL("http://localhost:3000", "acme"); got != "http://acme.localhost:3000" {
+		t.Fatalf("org = %q", got)
 	}
 }
 

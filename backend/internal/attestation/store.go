@@ -171,31 +171,38 @@ type Filter struct {
 	Gate, Scope, SubjectID, IssuerID, Status string
 }
 
-// aboutGate: the certificate is about a passport the organisation holds or a facility it owns.
-const aboutGate = `(a.subject_type = '` + SubjectPassport + `' AND EXISTS (SELECT 1 FROM passports p
-		WHERE p.id = a.subject_id AND p.organisation_id = NULLIF($6, '')::uuid AND NOT p.is_deleted))
-	OR (a.subject_type = '` + SubjectFacility + `' AND EXISTS (SELECT 1 FROM facilities f
-		WHERE f.id = a.subject_id AND f.organisation_id = NULLIF($6, '')::uuid AND NOT f.is_deleted))`
+// aboutGate: the certificate is about a passport the organisation ($n) holds or a facility it owns.
+func aboutGate(n int) string {
+	return fmt.Sprintf(`(a.subject_type = '`+SubjectPassport+`' AND EXISTS (SELECT 1 FROM passports p
+		WHERE p.id = a.subject_id AND p.organisation_id = NULLIF($%[1]d, '')::uuid AND NOT p.is_deleted))
+	OR (a.subject_type = '`+SubjectFacility+`' AND EXISTS (SELECT 1 FROM facilities f
+		WHERE f.id = a.subject_id AND f.organisation_id = NULLIF($%[1]d, '')::uuid AND NOT f.is_deleted))`, n)
+}
+
+// visibleTo: the organisation ($n, "" for the platform) issued the certificate or it is about its own.
+func visibleTo(n int) string {
+	return fmt.Sprintf(`($%[1]d = '' OR a.issuer_org_id = NULLIF($%[1]d, '')::uuid OR %[2]s)`, n, aboutGate(n))
+}
 
 func (s Store) Find(ctx context.Context, q listq.Query, f Filter) (listq.Page[Attestation], error) {
 	issued := `a.issuer_org_id = NULLIF($6, '')::uuid`
-	visible := `($6 = '' OR ` + issued + ` OR ` + aboutGate + `)`
-	scoped := `($7 = '' OR $6 = '' OR ($7 = '` + ScopeIssued + `' AND ` + issued + `) OR ($7 = '` + ScopeAbout + `' AND (` + aboutGate + `)))`
+	scoped := `($7 = '' OR $6 = '' OR ($7 = '` + ScopeIssued + `' AND ` + issued + `) OR ($7 = '` + ScopeAbout + `' AND (` + aboutGate(6) + `)))`
 	// The status filter is applied to the status as read, so "expired" works.
 	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns(1, 2), "FROM attestations a",
 		[]string{
 			`($3 = '' OR a.subject_id = NULLIF($3, '')::uuid)`,
 			`($4 = '' OR ` + fmt.Sprintf(shownStatusFmt, 1, 2) + ` = $4)`,
 			`($5 = '' OR a.issuer_org_id = NULLIF($5, '')::uuid)`,
-			visible, scoped,
+			visibleTo(6), scoped,
 		},
 		[]any{StatusValid, StatusExpired, f.SubjectID, f.Status, f.IssuerID, f.Gate, f.Scope}, scan)
 }
 
-func (s Store) Get(ctx context.Context, id string) (Attestation, error) {
+// Get returns one certificate the organisation gate may see (see Find).
+func (s Store) Get(ctx context.Context, id, gate string) (Attestation, error) {
 	return one(s.Pool.Query(ctx,
-		`SELECT `+columns(1, 2)+` FROM attestations a WHERE a.id = $3::uuid AND NOT a.is_deleted`,
-		StatusValid, StatusExpired, id))
+		`SELECT `+columns(1, 2)+` FROM attestations a WHERE a.id = $3::uuid AND NOT a.is_deleted AND `+visibleTo(4),
+		StatusValid, StatusExpired, id, gate))
 }
 
 // Revoke withdraws a certificate for good. Only its issuer (or the platform)

@@ -13,6 +13,7 @@ services:
     environment: &api-env
       PORT: ${PORT:?set PORT in .env}
       APP_ENV: ${APP_ENV:?set APP_ENV in .env}
+      APP_URL: ${APP_URL:?set APP_URL in .env}
       # Addresses of the other containers; the values in .env are for running the API on your machine.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis://redis:6379/0

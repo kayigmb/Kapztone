@@ -17,22 +17,7 @@ type ctxKey int
 const (
 	userKey ctxKey = iota
 	scopeKey
-	frontendKey
 )
-
-// WithFrontend records, for every request, which site the user's browser is
-// on, so any handler can ask with FrontendOf.
-func WithFrontend(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), frontendKey, frontendOf(r))))
-	})
-}
-
-// FrontendOf returns the site the request came from. Valid behind WithFrontend.
-func FrontendOf(ctx context.Context) Frontend {
-	f, _ := ctx.Value(frontendKey).(Frontend)
-	return f
-}
 
 // CurrentUser returns the signed-in user. Only valid behind Authenticate.
 func CurrentUser(ctx context.Context) User {
@@ -67,6 +52,19 @@ func sessionToken(r *http.Request) (token string, fromCookie bool) {
 func sameSite(r *http.Request) bool {
 	u, err := url.Parse(r.Header.Get(HeaderOrigin))
 	return err == nil && u.Host != "" && strings.EqualFold(u.Host, siteHost(r))
+}
+
+// SameOrigin refuses a browser's request made from another site's page. It
+// guards public changes (sign-in, handoff) the way Authenticate guards the
+// signed-in ones; a caller that sends no Origin (a script) is let through.
+func SameOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(HeaderOrigin) != "" && !sameSite(r) {
+			httpx.Error(w, http.StatusForbidden, MsgForeignOrigin)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (a *Auth) sessionCookie(value string, maxAge int) *http.Cookie {
@@ -141,8 +139,14 @@ func (a *Auth) ResolveOrg(next http.Handler) http.Handler {
 func (a *Auth) Require(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !slices.Contains(CurrentScope(r.Context()).Permissions, permission) {
+			scope := CurrentScope(r.Context())
+			if !slices.Contains(scope.Permissions, permission) {
 				httpx.Error(w, http.StatusForbidden, MsgNotAllowed)
+				return
+			}
+			// A suspended organisation may still look, but changes nothing.
+			if o := scope.Organisation; o != nil && o.Status == OrgSuspended && r.Method != http.MethodGet {
+				httpx.Error(w, http.StatusForbidden, MsgOrgSuspended)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -207,14 +211,15 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	ctx, ip := r.Context(), clientIP(r)
 
-	if a.Limiter.blocked(ctx, LoginRate, in.Email, ip) {
+	if a.Limiter.blocked(ctx, LoginRate, in.Email, ip) || a.Limiter.blocked(ctx, LoginEmailRate, in.Email) {
 		httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
 		return
 	}
 	fail := func(msg string, details map[string]any) {
 		a.Limiter.record(ctx, LoginRate, in.Email, ip)
+		a.Limiter.record(ctx, LoginEmailRate, in.Email)
 		if a.Limiter != nil {
-			left := a.Limiter.left(ctx, LoginRate, in.Email, ip)
+			left := min(a.Limiter.left(ctx, LoginRate, in.Email, ip), a.Limiter.left(ctx, LoginEmailRate, in.Email))
 			details["attempts_left"] = left
 			msg += " " + MsgAttemptsLeft(left)
 		}
@@ -258,6 +263,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
+	a.Limiter.reset(ctx, LoginEmailRate, in.Email)
 
 	// The password is right, so saying the email is unconfirmed gives nothing away.
 	if user.EmailUnverified {

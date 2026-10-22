@@ -204,3 +204,13 @@ func TestVolumeReport(t *testing.T) {
 	}
 	want(t, "unknown format", do(e.h, http.MethodGet, as(e.slug(tAcme), "/reports/volume?format=xlsx"), admin, ""), http.StatusBadRequest)
 }
+
+// A saved audit report naming an actor that is not a user id is refused when
+// saved, not later when it runs.
+func TestSavedReportActorChecked(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.addUser(tRoot, auth.RoleSuperadmin, "")
+	root := e.login(tRoot)
+	body := `{"name":"Bob's changes","kind":"` + audit.SavedAudit + `","params":{"actor":"bob"}}`
+	want(t, "bad actor", do(e.h, http.MethodPost, "/reports/saved", root, body), http.StatusBadRequest)
+}

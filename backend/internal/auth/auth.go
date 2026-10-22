@@ -133,6 +133,8 @@ type Auth struct {
 	TokenTTL time.Duration // how long a sign-in lasts
 	// RememberTTL is how long a sign-in lasts with "keep me signed in".
 	RememberTTL time.Duration
+	// AppURL is the web app's bare address; e-mailed links start with it.
+	AppURL string
 	// Mail sends one email now; nil when e-mail is off (links are then only logged in dev).
 	Mail func(to, subject, text, html string) error
 	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
@@ -208,12 +210,6 @@ func (a *Auth) parse(token string) (userID string, ver int, err error) {
 	return claims.Subject, claims.Ver, nil
 }
 
-// Frontend is where the user's browser is: the site that made the request.
-type Frontend struct {
-	Origin string // scheme://host[:port], usable as the base of links back to the site
-	Host   string // lowercase host without port, e.g. "acme.chaintrack.app"
-}
-
 // siteHost is the host (with port) of the site the browser is on: the one
 // the web app forwarded, or the request's own when called directly.
 func siteHost(r *http.Request) string {
@@ -223,24 +219,29 @@ func siteHost(r *http.Request) string {
 	return r.Host
 }
 
-// frontendOf works out the frontend from the request. A browser names the
-// calling site in the Origin header; without one (a page load, curl) it is
-// the host the web app forwarded, or the request's own. Either way it is
-// only a claim.
-func frontendOf(r *http.Request) Frontend {
-	if u, err := url.Parse(r.Header.Get(HeaderOrigin)); err == nil && u.Host != "" {
-		return Frontend{Origin: u.Scheme + "://" + u.Host, Host: strings.ToLower(u.Hostname())}
+// OrgURL is an organisation's own address under appURL (acme.chaintrack.app),
+// or appURL itself for slug "". appURL is checked at start-up (config.Load).
+func OrgURL(appURL, slug string) string {
+	if slug == "" {
+		return appURL
 	}
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get(HeaderForwardedProto) == "https" {
-		scheme = "https"
+	scheme, host, _ := strings.Cut(appURL, "://")
+	return scheme + "://" + slug + "." + host
+}
+
+// frontendHost is the lowercase host, without port, of the site the request
+// came from. A browser names the calling site in the Origin header; without
+// one (a page load, curl) it is the host the web app forwarded, or the
+// request's own. Either way it is only a claim.
+func frontendHost(r *http.Request) string {
+	if u, err := url.Parse(r.Header.Get(HeaderOrigin)); err == nil && u.Host != "" {
+		return strings.ToLower(u.Hostname())
 	}
 	host := siteHost(r)
-	full := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	return Frontend{Origin: scheme + "://" + full, Host: strings.ToLower(host)}
+	return strings.ToLower(host)
 }
 
 // Slug returns the organisation slug the request names, or "" if none: the
@@ -257,7 +258,7 @@ func (a *Auth) Slug(r *http.Request) string {
 		slug = r.URL.Query().Get(ParamOrgSlug)
 	}
 	if slug == "" {
-		host := frontendOf(r).Host
+		host := frontendHost(r)
 		label, _, hasMore := strings.Cut(host, ".")
 		if !hasMore || net.ParseIP(host) != nil {
 			return "" // "localhost" or an IP address has no subdomain
