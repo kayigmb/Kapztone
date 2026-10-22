@@ -1,5 +1,3 @@
-// Where a notification leads. Pure: `node --test` runs it.
-
 import { routes } from "./consts.ts";
 
 /** Certificate notifications name the certificate; its page is its subject's, looked up when opened. */

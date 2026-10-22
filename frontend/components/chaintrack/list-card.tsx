@@ -3,10 +3,7 @@ import Link from "next/link";
 import { Loading } from "@/components/chaintrack/page-state";
 import { copy } from "@/lib/consts";
 
-/**
- * A titled card holding one list, with its empty, loading and failed states
- * (Figma .app-card + .app-card-head). Rows are `<li>`s; give them `px-5`.
- */
+/** A titled card holding one list, with its empty, loading and failed states. */
 export function ListCard({
   title,
   sub,

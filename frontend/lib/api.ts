@@ -1,7 +1,3 @@
-// The browser's access to the API. Every call goes through this site's
-// pass-through (app/api/[...path]/route.ts), so the session cookie and the
-// organisation in the address travel with it. Every answer is checked
-// against a zod schema; every failure becomes one ApiError.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -36,8 +32,6 @@ declare module "@tanstack/react-query" {
   }
 }
 
-// ---- Errors ----
-
 // Every JSON answer is {status, message, data}; on a refusal `data` may hold details.
 const envelope = z.object({
   status: z.number(),
@@ -52,7 +46,7 @@ const errorDetails = z
   .nullable()
   .catch(null);
 
-/** One kind of failure for every call. `status` 0 means the API could not be reached. */
+/** One kind of failure for every call. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -84,8 +78,6 @@ export function problemOf(err: unknown): string {
   if (err instanceof z.ZodError) return copy.errors.badAnswer;
   return copy.errors.unexpected;
 }
-
-// ---- Calls ----
 
 /** A write's answer: what changed, and the API's sentence about it (the toast). */
 export type Sent<T> = { data: T; message: string };
@@ -137,8 +129,6 @@ const send = (method: string, body: unknown, pin?: string): RequestInit => ({
     : { "content-type": "application/json" },
   body: JSON.stringify(body),
 });
-
-// ---- Shapes (backend JSON) ----
 
 const orgSummary = z.object({
   id: z.string(),
@@ -385,8 +375,6 @@ const directoryRow = z.object({
   kind: z.string(),
   slug: z.string(),
 });
-
-// ---- Full records (the work screens) ----
 
 const geometry = z
   .object({ type: z.string(), coordinates: z.unknown() })
@@ -673,8 +661,6 @@ const paged =
   (p: ListParams) =>
     api(path + listQuery(p), page(item));
 
-// ---- Endpoints ----
-
 export const endpoints = {
   /** Search map locations through this app's Photon proxy. */
   searchPlaces: (query: string, signal?: AbortSignal) =>
@@ -771,8 +757,6 @@ export const endpoints = {
       ].sort(),
     ),
 
-  // ---- Dashboard ----
-
   /** How many rows a list holds: one row is asked for and its `total` read. */
   count: (tile: Exclude<TileKey, "incoming" | "outgoing">) => {
     const [path, query] = countSources[tile];
@@ -780,7 +764,7 @@ export const endpoints = {
       (p) => p.total,
     );
   },
-  /** Handovers waiting for a receiver, to or from the acting organisation. One page; few are ever open at once. */
+  /** Handovers waiting for a receiver, to or from the acting organisation. */
   awaitingHandovers: () =>
     api(
       `${apiPaths.handovers}${all}&status=${handoverStatus.awaiting}`,
@@ -808,14 +792,12 @@ export const endpoints = {
     api(`${apiPaths.directory}${all}`, page(directoryRow)).then(
       (p) => new Map(p.data.map((o) => [o.id, o.name])),
     ),
-  /** Verified organisations other than mine, by name (draft 3g "Receiving organisation"). */
+  /** Verified organisations other than mine, by name. */
   directorySearch: (search: string) =>
     api(
       `${apiPaths.directory}?size=${panelRows * 2}&sort=name&search=${encodeURIComponent(search)}`,
       page(directoryRow),
     ).then((p) => p.data),
-
-  // ---- Shell ----
 
   unreadCount: () =>
     api(
@@ -833,8 +815,6 @@ export const endpoints = {
     write(apiPaths.notificationRead(id), nothing, { method: "POST" }),
   myOrganisations: () => api(apiPaths.myOrganisations, z.array(myOrganisation)),
 
-  // ---- Profile ----
-
   setName: (name: string) => write(apiPaths.me, nothing, send("PUT", { name })),
   changePassword: (body: { current: string; new: string }) =>
     write(apiPaths.password, nothing, send("POST", body)),
@@ -848,8 +828,6 @@ export const endpoints = {
     write(apiPaths.twoFactorDisable, twoFactorSwitch, send("POST", { code })),
   newRecoveryCodes: (code: string) =>
     write(apiPaths.twoFactorRecovery, recoveryCodes, send("POST", { code })),
-
-  // ---- Users ----
 
   members: paged(apiPaths.users, memberRow),
   allUsers: paged(apiPaths.users, platformUserRow),
@@ -883,8 +861,6 @@ export const endpoints = {
       if (err instanceof ApiError && err.status === 404) return null;
       throw err;
     }),
-
-  // ---- Facilities ----
 
   facilitiesPage: paged(apiPaths.facilities, facilitySchema),
   facilityKinds: () =>
@@ -941,8 +917,6 @@ export const endpoints = {
   deleteFacility: (id: string) =>
     write(apiPaths.facility(id), nothing, { method: "DELETE" }),
 
-  // ---- Templates ----
-
   templatesPage: paged(apiPaths.templates, templateSchema),
   templatesList: () =>
     api(`${apiPaths.templates}${all}&sort=name`, page(templateSchema)).then(
@@ -961,8 +935,6 @@ export const endpoints = {
       templateSchema,
       send("PUT", withFractions(body)),
     ),
-
-  // ---- Passports ----
 
   passportsList: (status?: string) =>
     api(
@@ -987,8 +959,6 @@ export const endpoints = {
       send("POST", {}, pin),
     ),
 
-  // ---- Handovers ----
-
   handoversPage: paged(apiPaths.handovers, handoverDetailSchema),
   handoversList: (status?: string) =>
     api(
@@ -996,7 +966,7 @@ export const endpoints = {
       page(handoverDetailSchema),
     ).then((p) => p.data),
   handover: (id: string) => api(apiPaths.handover(id), handoverDetailSchema),
-  /** Starts a handover; less than the whole passport splits it first (the API does that). Photos go as multipart. */
+  /** Starts a handover; less than the whole passport splits it first (the API does that). */
   startHandover: (
     passportId: string,
     body: HandoverStart,
@@ -1032,8 +1002,6 @@ export const endpoints = {
   cancelHandover: (id: string) =>
     write(apiPaths.handoverCancel(id), handoverDetailSchema, send("POST", {})),
 
-  // ---- Transform ----
-
   transform: (
     body: {
       stage: string;
@@ -1049,8 +1017,6 @@ export const endpoints = {
         .transform((t) => t.outputs),
       send("POST", body, pin),
     ),
-
-  // ---- Certificates ----
 
   attestationsPage: paged(apiPaths.attestations, certificateSchema),
   attestationsList: (subjectId?: string, status?: string) =>
@@ -1074,8 +1040,6 @@ export const endpoints = {
       send("POST", { reason }, pin),
     ),
 
-  // ---- Flags ----
-
   flagsPage: paged(apiPaths.flags, flagSchema),
   flagsList: (status?: string) =>
     api(
@@ -1097,8 +1061,6 @@ export const endpoints = {
     body: { outcome: string; note: string },
     pin: string,
   ) => write(apiPaths.flagResolve(id), flagSchema, send("POST", body, pin)),
-
-  // ---- Audit and reports ----
 
   auditPage: paged(apiPaths.audit, auditEntry),
   auditVerify: () => api(apiPaths.auditVerify, chainCheck),
@@ -1255,10 +1217,7 @@ export const documentFileURL = (id: string) =>
 export const facilityLicenceURL = (id: string) =>
   apiBase + apiPaths.facilityLicence(id);
 
-/**
- * Opens an organisation's address (null: the bare one, the workspace picker)
- * with this session carried over: a one-time code made here, spent there.
- */
+/** Opens an organisation's address (null: the bare one, the workspace picker) with this session carried over: a one-time code made here, spent there. */
 export async function switchOrganisation(
   slug: string | null,
   currentSlug?: string,
@@ -1268,8 +1227,6 @@ export async function switchOrganisation(
     orgAddress(slug, window.location, currentSlug, routes.handoff(code)),
   );
 }
-
-// ---- Hooks ----
 
 /** One page of a list; the previous page stays on screen while the next loads. */
 export function usePaged<T>(
@@ -1288,11 +1245,7 @@ export function useMe() {
   return useQuery({ queryKey: queryKeys.me, queryFn: endpoints.me });
 }
 
-/**
- * Who is signed in, sending them elsewhere when this page isn't for them.
- * `where` gets the signed-in person (or null) and returns the page they
- * belong on, or undefined to stay. `ready` is false until they may see this page.
- */
+/** Who is signed in, sending them elsewhere when this page isn't for them. */
 export function useMeGuard(where: (me: Me | null) => string | undefined) {
   const router = useRouter();
   const me = useMe();

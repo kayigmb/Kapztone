@@ -119,8 +119,7 @@ export function SignUpForm() {
 
   if (create.isSuccess) {
     const { slug, email } = create.variables as Registration;
-    // The organisation's address is built from the address this page is on, which is right when
-    // sign-up is opened on the main site. There is no domain setting to build it from otherwise.
+    // The organisation's address is built from the address this page is on, which is right when sign-up is opened on the main site.
     const { protocol, host } = window.location;
     const site = `${slug}.${host}`;
     return (
@@ -162,7 +161,6 @@ export function SignUpForm() {
         </Notice>
       )}
 
-      {/* Both steps stay mounted so the form keeps every value; only one is shown. */}
       <div className={step === 0 ? "grid gap-4" : "hidden"}>
         <TextField
           label={t.fullName}

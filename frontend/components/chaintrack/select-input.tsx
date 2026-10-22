@@ -11,10 +11,7 @@ import { cn } from "@/lib/utils";
 
 export type SelectOption = { value: string; label: string };
 
-/**
- * The one select of the app (shadcn Select): filters, sorts and form fields.
- * In a form, wire it with react-hook-form's Controller.
- */
+/** The one select of the app (shadcn Select): filters, sorts and form fields. */
 export function SelectInput({
   options,
   value,

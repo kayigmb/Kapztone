@@ -1,5 +1,3 @@
-// End-to-end tests against the running stack (`make infra`, `make api`, `make web`).
-// Run with `make e2e`, which loads the repo .env for the superadmin sign-in.
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({

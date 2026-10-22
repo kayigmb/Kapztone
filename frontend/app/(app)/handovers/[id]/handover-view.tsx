@@ -254,7 +254,7 @@ export function HandoverView({ id }: { id: string }) {
   );
 }
 
-/** The receiver's confirmation. Shown from the handover's status too: accepting refreshes it, which unmounts the form. */
+/** The receiver's confirmation. */
 function Complete({ hv, unit }: { hv: HandoverDetail; unit: string }) {
   return (
     <section className="grid gap-3" role="status">

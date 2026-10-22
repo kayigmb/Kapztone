@@ -47,11 +47,7 @@ export function LoadingWithLogo() {
   );
 }
 
-/**
- * The one Suspense wrapper for every `page.tsx`: pages read search params on
- * the client inside `<Suspense>`, and this keeps the one fallback (the page
- * frame's padding) in a single place. Never write another `fallback={<Loading`.
- */
+/** The one Suspense wrapper for every `page.tsx`: pages read search params on the client inside `<Suspense>`, and this keeps the one fallback (the page frame's padding) in a single place. */
 export function PageSuspense({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingWithLogo />}>{children}</Suspense>;
 }

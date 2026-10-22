@@ -7,7 +7,7 @@ const t = copy.signup;
 
 export const metadata = { title: copy.meta.signup };
 
-// Phone-first, inside the access layout (screens.md §03, steps 1 and 2; Figma AuthFlow → sign up).
+// Phone-first, inside the access layout.
 export default function Page() {
   return (
     <main className="mx-auto grid w-full max-w-135 gap-6">

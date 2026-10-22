@@ -1,5 +1,3 @@
-// What a facility's status chip and map shape show. Pure: `node --test` runs it.
-
 import { facilityStatus } from "./consts.ts";
 
 export type FacilityState = "active" | "pending" | "suspended" | "expired";

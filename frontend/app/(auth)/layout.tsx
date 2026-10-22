@@ -4,8 +4,7 @@ import { copy } from "@/lib/consts";
 
 const t = copy.auth;
 
-// Every access screen (Figma AuthFlow): a navy brand panel on the left, the
-// form on the right; on phones only the form, under the logo.
+// Every access screen: a navy brand panel on the left, the form on the right; on phones only the form, under the logo.
 export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="min-h-dvh bg-surface lg:grid lg:grid-cols-[minmax(--spacing(87),0.8fr)_1.4fr]">
@@ -25,7 +24,6 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
         <small className="relative z-10 text-xs text-hero-subtle">
           {t.foot}
         </small>
-        {/* Rings in the corner: decoration only. */}
         <span
           className="pointer-events-none absolute -right-52.5 -bottom-25 size-105 rounded-full border border-hero-line shadow-[0_0_0_60px_var(--hero-line),0_0_0_120px_var(--hero-line)] opacity-40"
           aria-hidden

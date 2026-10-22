@@ -1,6 +1,3 @@
-// Handing a passport on, and answering one: mirrors passport.HandoverInput,
-// AcceptInput and RejectInput. The weight / tolerance rule lives in ../handover.ts.
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, limits, rejectReasons } from "../consts.ts";

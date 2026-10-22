@@ -1,7 +1,3 @@
-// Screenshots of the built screens at phone and desktop width, light and dark,
-// for a person to review (CHANGELOG: visual check). Asserts nothing.
-// Run: SCREENS=1 pnpm exec playwright test e2e/screens.spec.ts (stack running).
-// Images land in screens/ (gitignored; test-results/ is wiped on every run).
 import { test } from "@playwright/test";
 
 import { routes } from "../lib/consts";

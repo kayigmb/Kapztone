@@ -4,7 +4,7 @@ import { type View } from "@/lib/verification";
 import { verdictIcon } from "./status";
 import { tone, verdictTone } from "./tone";
 
-/** "What we checked" (Figma .checks-list): one row per rule, an icon and a word for what was found. */
+/** "What we checked": one row per rule, an icon and a word for what was found. */
 export function ChecksList({ checks }: { checks: View["checks"] }) {
   return (
     <ul>

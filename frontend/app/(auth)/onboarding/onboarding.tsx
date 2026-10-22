@@ -17,7 +17,7 @@ import { DocumentsUpload } from "./documents-upload";
 
 const t = copy.onboarding;
 
-// Steps 3 and 4 of onboarding (screens.md §03): upload documents, then wait for the review.
+// Steps 3 and 4 of onboarding: upload documents, then wait for the review.
 export function Onboarding() {
   const me = useMeGuard((me) =>
     !me

@@ -1,9 +1,5 @@
 "use client";
 
-// The last step before a signed record exists (patterns.md → Signing):
-// what is being signed, what the signature means, then the PIN, then a
-// button that names the result.
-
 import { useRef, useState } from "react";
 import { PenLine } from "lucide-react";
 
@@ -84,11 +80,7 @@ export function PinBoxes({
   );
 }
 
-/**
- * What is being signed, one sentence on what the signature means, then the
- * PIN panel and the button that names the result. The panel owns the PIN;
- * the page owns the mutation and passes `busy` and `error` back in.
- */
+/** What is being signed, one sentence on what the signature means, then the PIN panel and the button that names the result. */
 export function SigningPanel({
   facts,
   meaning,

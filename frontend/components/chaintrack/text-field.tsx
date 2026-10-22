@@ -4,12 +4,7 @@ import { cn } from "@/lib/utils";
 
 import { FieldNote } from "./field-note";
 
-/**
- * One labelled input with its help or its error (components.md → Form fields).
- * Spread react-hook-form's `register(...)` onto it:
- *
- *   <TextField label="Email" error={errors.email?.message} {...register("email")} />
- */
+/** One labelled input with its help or its error. */
 export function TextField({
   label,
   help,

@@ -1,8 +1,5 @@
 "use client";
 
-// Scanning a QR label (or typing a lot code) checks the lot's records here:
-// the verdict, what the lot is, who holds it, and where to read more.
-
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
 import type { IScannerControls } from "@zxing/browser";
@@ -81,11 +78,6 @@ export function Scan() {
   );
 }
 
-/**
- * The camera reader plus the typed code, handing the parsed reference to the
- * caller. (components/chaintrack/scan-button.tsx navigates to the public page
- * on its own; this screen keeps the result here, so it reads the label itself.)
- */
 export function LotScanner({
   onCode,
   disabled,

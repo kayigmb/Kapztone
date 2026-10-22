@@ -1,8 +1,3 @@
-// Turns the API's answer to GET /verify/{id} into what the public
-// verification page shows. The page's copy lives in lib/consts.ts.
-//
-// Pure: no imports with side effects, so `node --test lib/verification.test.ts` can run it.
-
 import { copy } from "./consts.ts";
 import type { Geometry } from "./geo.ts";
 
@@ -155,8 +150,6 @@ const t = copy.verification;
 const checks = t.checks;
 const eventTitles = t.eventTitles;
 
-// ---- Formatting (content.md → Formatting) ----
-
 const zone = "Africa/Kigali"; // Central Africa Time
 const months = [
   "Jan",
@@ -220,7 +213,7 @@ function certificateState(c: ApiCertificate, now: Date): CertificateState {
 const maxReasons = 4;
 const order: Record<Verdict, number> = { failed: 0, warning: 1, verified: 2 };
 
-/** At most four reasons: failures first, then warnings, then what passed. Repeats are said once. */
+/** At most four reasons: failures first, then warnings, then what passed. */
 function topReasons(api: ApiVerification): View["reasons"] {
   const seen = new Set<string>();
   const found = [...api.reasons]

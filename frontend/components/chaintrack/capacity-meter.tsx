@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const t = copy.dashboard;
 
-/** How much of a facility's declared capacity this period has used (components.md → Meter, compact; Figma .meter-block). */
+/** How much of a facility's declared capacity this period has used. */
 export function CapacityMeter({
   title,
   used,

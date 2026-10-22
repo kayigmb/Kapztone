@@ -1,5 +1,3 @@
-// Turning lots into new lots: mirrors passport.TransformInput.Validate().
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, limits } from "../consts.ts";
@@ -34,11 +32,7 @@ export type TransformForm = z.infer<typeof transformFormSchema>;
 /** What the form holds before zod coerces it (numbers typed as text). */
 export type TransformFormInput = z.input<typeof transformFormSchema>;
 
-/**
- * The yield of a transform: output over input, as a percentage. With a
- * template's maximum yield, going over is refused by the API — this mirrors
- * that limit so the form can say so before the PIN is asked for.
- */
+/** The yield of a transform: output over input, as a percentage. */
 export function yieldOf(
   inputs: number[],
   outputs: number[],

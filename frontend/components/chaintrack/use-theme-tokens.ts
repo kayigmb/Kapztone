@@ -10,10 +10,7 @@ const read = (name: string) =>
         .getPropertyValue(`--${name}`)
         .trim();
 
-/**
- * Theme colours for code that can't take a CSS class (MapLibre paint, chart
- * strokes): read from the tokens and read again when the theme flips.
- */
+/** Theme colours for code that can't take a CSS class (MapLibre paint, chart strokes): read from the tokens and read again when the theme flips. */
 export function useThemeTokens<K extends string>(
   names: readonly K[],
 ): Record<K, string> {

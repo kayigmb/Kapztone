@@ -3,7 +3,6 @@ import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
-// Figma .metric-card: a quiet card; only an alert turns its border and number red.
 const look = {
   neutral: {
     card: "border-border",
@@ -25,7 +24,7 @@ const look = {
   }, // e.g. open flags
 } as const;
 
-/** A dashboard number (components.md → StatTile / metric card). `value` undefined: still loading. */
+/** A dashboard number. */
 export function StatTile({
   label,
   note,

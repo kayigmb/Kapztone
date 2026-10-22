@@ -67,15 +67,31 @@ browser ──▶ Caddy (TLS, prod only) ──▶ Next.js web app ──/api─
 - Docker with the Compose plugin
 - uv, only for `make slither`
 
-## Start (dev)
+## Development
 
-1. Copy `.env.example` to `.env` and fill every value. Use `APP_URL=http://localhost:3000`; organisations then open at `<slug>.localhost:3000`.
+### On this machine (recommended)
+
+1. Copy `.env.example` to `.env` and fill every value. Keep `APP_ENV=dev` and `APP_URL=http://localhost:3000`. The Hardhat test keys in the example are fine here.
 2. `make infra` starts Postgres + PostGIS, Redis and the RustFS bucket, and runs the migrations.
-3. `make chain` starts the local chain. Then `make deploy` and paste the 5 `*_ADDRESS` lines it prints into `.env`.
-4. `make api`, `make relayer` and `make web` run the API on :8080, the relayer, and the web app on :3000.
-5. Or `make dev` runs everything in containers instead.
+3. `make chain` starts the local chain (leave it running). In another terminal, `make deploy` and paste the 5 `*_ADDRESS` lines it prints into `.env`.
+4. `make api`, `make relayer` and `make web`, each in its own terminal: the API on :8080, the relayer, and the web app on :3000.
+5. Check `http://localhost:3000/api/healthz` answers `"mode":"dev"`.
 
-Sign in with `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` from `.env`; the first superadmin is created on start-up.
+Sign in at `http://localhost:3000` with `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` from `.env`; the first superadmin is created on start-up. Organisations open at `<slug>.localhost:3000`.
+
+Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks the acting organisation, and reset links are written to the API log. `SMTP_HOST=none` and `PINATA_JWT=none` are fine.
+
+### In containers
+
+`make dev` runs the database, Redis, RustFS, migrations, API, relayer and web app in containers. The API and web app reload on save; restart the relayer after changing its code. `make logs` follows them, `make down` stops them.
+
+- The chain still runs on this machine (`make chain`, `make deploy`), and the contract addresses must be in `.env` before `make dev`.
+- From a container the chain is `CHAIN_RPC_URL=http://host.docker.internal:8545`, not `127.0.0.1`. Switch it back to run `make api` / `make relayer` natively.
+
+### Resetting
+
+- Restarting `make chain` wipes the chain: run `make deploy` again, paste the new addresses, and clear `chain_outbox`. Or start from an empty database: `make down`, `docker volume rm chaintrack-dev_db-data`, `make infra`.
+- `make storage-reset` deletes every dev upload.
 
 ## Make targets
 
@@ -112,11 +128,55 @@ CI (`.github/workflows/ci.yml`) runs the Go, frontend (including the dependency 
 
 ## Production
 
-1. DNS: point A records for `DOMAIN` and `*.DOMAIN` at the server.
-2. Write a `.env` with `APP_ENV=prod`, `APP_URL=https://DOMAIN`, `DOMAIN`, the Polygon Amoy contract addresses, a managed bucket and fresh secrets. Prod refuses Hardhat's test keys.
-3. Run `make prod`. Caddy on ports 80 and 443 is the only open entry point, and it gets every certificate itself.
+### 1. Server
 
-Caddy asks the API (`GET /tls/allowed`) before getting a certificate, so only the platform's own domain and registered organisations' subdomains get one. Full steps are in `docs/operations.md` under "Deploying to a VPS".
+- A Linux server with Docker and the Compose plugin; clone the repository there.
+- DNS: two A records to the server, `DOMAIN` and `*.DOMAIN`.
+- Firewall: open 22, 80 and 443 only. The database and Redis bind to 127.0.0.1; the API and web app publish no port, and none must ever be opened.
+
+### 2. Chain (Polygon Amoy)
+
+1. Make two keys used for nothing else (`openssl rand -hex 32` each): an admin key and a relayer key.
+2. Send both addresses test POL from the Amoy faucet (the admin pays for the deploy, the relayer for everything after).
+3. In `.env`: `CHAIN_RPC_URL=<Amoy RPC URL>`, `CHAIN_ID=80002`, `CHAIN_ADMIN_KEY=0x<admin>`, `CHAIN_RELAYER_KEY=0x<relayer>`.
+4. `make deploy` and paste the 5 printed address lines into `.env`.
+5. Remove `CHAIN_ADMIN_KEY` from the server's `.env` and keep it offline; it is only needed to grant or revoke roles.
+
+### 3. `.env`
+
+Start from `.env.example`. The API refuses to start in prod if any of these is wrong:
+
+| Setting | Prod value |
+| --- | --- |
+| `APP_ENV` | `prod` |
+| `APP_URL` / `DOMAIN` | `https://DOMAIN` / `DOMAIN` (bare, e.g. `chaintrack.app`) |
+| `JWT_SECRET` | at least 32 characters (`openssl rand -hex 32`) |
+| `ENCRYPTION_KEY` | exactly 64 hex characters (`openssl rand -hex 32`); changing it makes stored secrets unreadable |
+| `SUPERADMIN_PASSWORD` | 12 to 72 characters |
+| `CHAIN_RELAYER_KEY` | not a Hardhat test key |
+| `STORAGE_*` | a private managed bucket (AWS S3 or GCS, see `.env.example`); RustFS does not run in prod |
+| `SMTP_USE_TLS` | `true` (unless `SMTP_HOST=none`) |
+
+Also set `LOG_FORMAT=json` and fresh `POSTGRES_PASSWORD`. Leave `PINATA_JWT=none` unless certificates may be public: a pinned file can be read by anyone and cannot be taken back.
+
+### 4. Deploy
+
+`make prod` builds the images, runs the migrations and starts everything behind Caddy, the only service on ports 80 and 443. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (answers `"mode":"prod"`).
+
+Caddy gets a Let's Encrypt certificate for each host on its first visit, after asking the API (`GET /tls/allowed`), so only the platform's own domain and registered organisations' subdomains get one. The first visit to a new subdomain takes a few seconds. Keep the `caddy_data` volume, or every restart re-issues certificates and runs into Let's Encrypt's limits.
+
+### 5. Running it
+
+```sh
+PROD="docker compose --env-file .env -p chaintrack-prod -f infra/compose.infra.yml -f infra/compose.prod.yml"
+
+git pull && make prod                                  # update (rebuilds, applies new migrations)
+make prod-down                                         # stop
+$PROD logs -f api relayer                              # logs
+$PROD exec -T db pg_dump -U chaintrack chaintrack > backup.sql   # back up (use your POSTGRES_USER / POSTGRES_DB)
+```
+
+Watch `chain_outbox` for `failed` items (refused by a contract, never retried) and old `pending` ones (chain unreachable or relayer down). Queries, key rotation, lockouts and the audit log are in `docs/operations.md`.
 
 ## Security notes
 

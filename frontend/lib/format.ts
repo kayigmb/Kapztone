@@ -1,8 +1,3 @@
-/**
- * Fill a copy template from JSON (`lib/copy/*.json`): every `{name}` becomes
- * `vars.name`. Templates come from the extractor, so an unknown placeholder
- * is a bug — it stays visible instead of rendering blank.
- */
 export function fill(
   template: string,
   vars: Record<string, string | number> = {},

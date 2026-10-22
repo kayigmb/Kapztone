@@ -1,11 +1,5 @@
 "use client";
 
-// Every table in the app is tablecn's data table: sorting by header, rows per
-// page, column visibility, a Table | Cards toggle (cards on phones by
-// default), and an `actions` column always pinned to the end.
-// ListTable shows one page from the API (the API pages and sorts);
-// ClientTable shows a short list the screen already has (reports, rankings).
-
 import {
   FlexRender,
   type ColumnDef,
@@ -32,7 +26,7 @@ import { tableSort } from "@/lib/list";
 import { listKeys, type ListParamsState } from "@/lib/list-params";
 import { cn } from "@/lib/utils";
 
-/** A table column. Its id is the API's sort column when it sorts. The actions column's id is `actions`. */
+/** A table column. */
 export type ListColumn<T extends RowData> = ColumnDef<
   DataTableFeatures,
   T,
@@ -95,7 +89,7 @@ export function ListTable<T extends RowData>({
   );
 }
 
-/** A short list already on the page: sorted and paged in the browser. `id` keeps its address keys apart from other tables. */
+/** A short list already on the page: sorted and paged in the browser. */
 export function ClientTable<T extends RowData>({
   id,
   ...p
@@ -272,10 +266,7 @@ function Frame<T extends RowData>({
   );
 }
 
-/**
- * A column with tablecn's header (sort menu, hide). With `sortable`, `id` is
- * the API's sort column (ListTable); with `value`, the browser sorts on it (ClientTable).
- */
+/** A column with tablecn's header (sort menu, hide). */
 export function column<T extends RowData>(
   id: string,
   label: string,

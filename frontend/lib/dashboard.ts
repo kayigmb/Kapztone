@@ -1,6 +1,3 @@
-// Which nav items, dashboard and quick actions a signed-in person gets.
-// Pure: no imports with side effects, so `node --test` can run it.
-
 import {
   dashboardOfKind,
   dashboards,

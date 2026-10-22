@@ -4,8 +4,7 @@ import { Notice } from "@/components/chaintrack/notice";
 import { Loading, PageState } from "@/components/chaintrack/page-state";
 import { problemOf } from "@/lib/api";
 
-/** The query half every section needs: pending, failed or answered. TanStack's
- *  useQuery and usePaged both return this shape, so one component fits all. */
+/** The query half every section needs: pending, failed or answered. */
 export type QueryState<T> = {
   isPending: boolean;
   isError: boolean;
@@ -14,22 +13,7 @@ export type QueryState<T> = {
   refetch?: () => void;
 };
 
-/**
- * One loading / error / data branch for every section (patterns.md → Lists).
- * Pending shows Loading, failure shows the API's message in a blocking
- * Notice with a retry when the query offers one, and answers render through
- * the render fn. Empty lists stay the table's own `empty` state. A query
- * that settles with no data is a load failure, not an empty page.
- *
- *   <DataWidget query={volume}>{(rows) => <ClientTable rows={rows} ... />}</DataWidget>
- *
- * Whole pages pass `page`: pending keeps the page frame (`className`), and
- * failure renders a `PageState` instead of an inline Notice:
- *
- *   <DataWidget query={passport} className="p-4 lg:p-8" page={{ icon: Search, title: copy.errors.loadTitle }}>
- *     {(p) => <main>…</main>}
- *   </DataWidget>
- */
+/** One loading / error / data branch for every section. */
 export function DataWidget<T>({
   query,
   retryLabel,

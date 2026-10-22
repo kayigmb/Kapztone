@@ -2,7 +2,7 @@ import type { Verdict } from "@/lib/verification";
 
 export type Tone = "verified" | "warning" | "danger" | "pending" | "neutral";
 
-// Tone → token set. Status colours only ever mean status.
+// Tone → token set.
 export const tone = {
   verified: {
     solid: "bg-verified text-on-verified",

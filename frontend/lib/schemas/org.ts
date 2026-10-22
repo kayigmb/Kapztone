@@ -11,10 +11,7 @@ import {
 } from "../consts.ts";
 import { strongPasswordSchema } from "./password.ts";
 
-// What a new organisation submits, and what a reviewer decides. Each rule
-// mirrors the API's own check (backend/internal/org/validate.go,
-// auth/values.go), so a form refuses what the API would refuse; the API
-// stays the authority.
+// What a new organisation submits, and what a reviewer decides.
 
 const v = copy.validation;
 
@@ -59,8 +56,7 @@ export const registrationSchema = accountSchema
   .refine((r) => r.password === r.confirm_password, {
     path: ["confirm_password"],
     message: v.passwordsDiffer,
-    // zod skips an object refine while any field is invalid; the organisation
-    // fields are still empty on step 1, so check whenever both passwords are there.
+    // zod skips an object refine while any field is invalid; the organisation fields are still empty on step 1, so check whenever both passwords are there.
     when: ({ value }) => {
       const r = value as Partial<
         Record<"password" | "confirm_password", unknown>
@@ -114,7 +110,6 @@ export const reviewSchema = z
 export type Review = z.infer<typeof reviewSchema>;
 
 // Accreditation (PUT /orgs/{id}/accreditations): which certificate types, from when, until when.
-// The form sets one window for every type it sends; the API takes one per type.
 const isoDay = /^\d{4}-\d{2}-\d{2}$/;
 export const accreditationSchema = z
   .object({

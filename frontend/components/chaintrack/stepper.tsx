@@ -3,11 +3,7 @@ import { Check } from "lucide-react";
 import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
-/**
- * Where someone is in a focused flow (Figma .flow-stepper): numbered circles
- * joined by a line. `current` counts from 0; `error` marks the current step red.
- * On phones only the current step keeps its name.
- */
+/** Where someone is in a focused flow: numbered circles joined by a line. */
 export function Stepper({
   steps,
   current,

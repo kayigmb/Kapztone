@@ -1,11 +1,8 @@
-// Passes a browser's request through to the API, so the browser only ever
-// talks to this site. That is what lets the API's session cookie belong to
-// this host alone, with no domain configured anywhere.
 import type { NextRequest } from "next/server";
 
 const requestIdHeader = "x-request-id";
 
-// The API's address as this server reaches it. Required: there is no default.
+// The API's address as this server reaches it.
 function apiURL(): string {
   const url = process.env.API_URL;
   if (!url) {
@@ -14,8 +11,7 @@ function apiURL(): string {
   return url.replace(/\/$/, "");
 }
 
-// Only what the API needs travels on; in particular the browser's Origin,
-// which the API checks before letting a cookie change anything.
+// Only what the API needs travels on; in particular the browser's Origin, which the API checks before letting a cookie change anything.
 const forwarded = [
   "cookie",
   "content-type",
@@ -40,15 +36,11 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
-  // One id per request, on the API's log lines and back to the page, so a
-  // reported failure can be found in the logs.
+  // One id per request, on the API's log lines and back to the page, so a reported failure can be found in the logs.
   headers.set(requestIdHeader, crypto.randomUUID());
   // The site the browser is on: its first label names the organisation.
   headers.set("x-forwarded-host", req.headers.get("host") ?? "");
-  // The visitor's address, for the API's rate limits. Next fills this from the
-  // socket when no proxy set it; behind Caddy the last entry is the one Caddy
-  // set. Only that one is passed on.
-  // Without a proxy in front, a visitor can send their own header.
+  // The visitor's address, for the API's rate limits.
   const visitor = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
   if (visitor) headers.set("x-forwarded-for", visitor);
 

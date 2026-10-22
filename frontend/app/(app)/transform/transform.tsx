@@ -1,9 +1,5 @@
 "use client";
 
-// Turning lots into new lots: pick the input lots and how much of each goes
-// in, choose the stage the new lots enter, say how much comes out, then sign.
-// The mass balance is checked here before the PIN is asked for.
-
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -531,7 +527,7 @@ export function Transform() {
   );
 }
 
-/** One quantity input with its unit, help and error (components.md → Form fields). */
+/** One quantity input with its unit, help and error. */
 function QuantityField({
   label,
   unit,

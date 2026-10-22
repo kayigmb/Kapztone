@@ -20,7 +20,7 @@ import {
 import { confirmCopy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
-/** What a confirmation says. `danger` for what can't be undone (it turns the button red). */
+/** What a confirmation says. */
 export type ConfirmOptions = {
   title: string;
   body: React.ReactNode;
@@ -32,11 +32,7 @@ export type ConfirmOptions = {
 type Ask = (o: ConfirmOptions) => Promise<boolean>;
 const ConfirmContext = createContext<Ask | null>(null);
 
-/**
- * Every decision asks first (patterns.md → Destructive actions):
- * `if (await confirm({...})) mutate()`. One dialog for the whole app,
- * mounted in app/providers.tsx.
- */
+/** Every decision asks first: `if (await confirm({...})) mutate()`. */
 export function useConfirm(): Ask {
   const ask = useContext(ConfirmContext);
   if (!ask)

@@ -3,9 +3,6 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { LoaderCircle } from "lucide-react";
 import { cn } from "cn";
 
-// ChainTrack's buttons (chaintrack-ui → components.md → Button; Figma
-// .primary-button / .outline-button / .danger-button). One primary per
-// screen; solid danger only for irreversible confirmations.
 const buttonVariants = cva(
   "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border px-3.5 text-sm lg:h-9 font-semibold whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/40 aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-surface-sunken aria-disabled:text-ink-subtle aria-disabled:shadow-none disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-sunken disabled:text-ink-subtle disabled:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
@@ -38,15 +35,7 @@ const buttonVariants = cva(
   },
 );
 
-/**
- * A busy button: `loading` disables it, spins a `LoaderCircle` and shows
- * `loadingText` instead of the children. Never write
- * `disabled={m.isPending}` + `{m.isPending ? t.submitting : t.submit}` again:
- *
- *   <Button type="submit" block loading={lock.isPending} loadingText={t.submitting}>
- *     {t.submit}
- *   </Button>
- */
+/** A busy button: `loading` disables it, spins a `LoaderCircle` and shows `loadingText` instead of the children. */
 function Button({
   className,
   variant,

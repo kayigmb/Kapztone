@@ -6,10 +6,7 @@ import { StatusChip } from "./status";
 
 const t = copy.handover;
 
-/**
- * Where a handover stands, from the reader's side. "Signed by both parties"
- * only once the receiver has signed (hard rule 8).
- */
+/** Where a handover stands, from the reader's side. */
 export function HandoverStatusChip({
   h,
   mine,

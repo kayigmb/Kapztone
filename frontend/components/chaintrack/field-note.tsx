@@ -1,10 +1,6 @@
 import { OctagonX } from "lucide-react";
 
-/**
- * The line under a field: its error or its help, never both (patterns.md →
- * Form fields). An error wins and is announced; otherwise the help shows.
- * Every hand-written `errors.x?.message ?? help` paragraph should be this.
- */
+/** The line under a field: its error or its help, never both. */
 export function FieldNote({
   id,
   error,

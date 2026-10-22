@@ -33,7 +33,7 @@ export function KeyValue({
   );
 }
 
-/** The product summary of one lot. The lot code is never truncated. */
+/** The product summary of one lot. */
 export function PassportCard({
   product,
   lotCode,

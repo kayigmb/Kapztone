@@ -1,6 +1,3 @@
-// Issuing and revoking certificates: mirrors attestation.IssueInput.Validate()
-// and attestation.RevokeInput.Validate().
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, limits, subjectTypes } from "../consts.ts";

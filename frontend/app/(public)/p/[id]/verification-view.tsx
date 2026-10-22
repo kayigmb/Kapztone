@@ -69,7 +69,7 @@ const facilityIcons: Record<string, LucideIcon> = {
 };
 const firstWord = (s: string) => s.split(/[\s_]/)[0];
 
-// A passport id, or a lot code (ACME-2026-0412). Anything else is simply not found; the API is not asked.
+// A passport id, or a lot code (ACME-2026-0412).
 const reference =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9][A-Za-z0-9-]{2,79})$/i;
 
@@ -131,7 +131,7 @@ function Card({
   );
 }
 
-// Public: no sign-in. Opened by scanning the QR label on the goods (Figma PublicVerification).
+// Public: no sign-in.
 export function VerificationView({ id }: { id: string }) {
   const valid = reference.test(id);
   const query = useQuery({
@@ -278,7 +278,7 @@ function Passport({ v }: { v: View }) {
   );
 }
 
-/** The navy hero with the verdict (Figma .passport-hero): an icon and a word, never colour alone. */
+/** The navy hero with the verdict: an icon and a word, never colour alone. */
 function Hero({ v }: { v: View }) {
   const Mark = verdictMark[v.verdict];
   return (
@@ -402,7 +402,6 @@ function ProductCard({ v }: { v: View }) {
   );
   return (
     <Card className="grid sm:grid-cols-[--spacing(53)_1fr]">
-      {/* Product art: decoration only, allowed on this page. */}
       <div
         className="product-art relative min-h-40 overflow-hidden sm:min-h-[238px]"
         aria-hidden
@@ -540,10 +539,7 @@ function JourneyCard({ v }: { v: View }) {
   );
 }
 
-/**
- * Facility points only (M3): origin to current holder as named points.
- * No leg is invented: old handovers without GPS still show their facilities.
- */
+/** Facility points only: origin to current holder as named points. */
 function RouteArt({ v }: { v: View }) {
   const origin = v.origins[0]?.name;
   return (
@@ -641,7 +637,7 @@ function RouteLabel({
   );
 }
 
-/** The lot and every lot it was made from, back to origin (Figma .tree). */
+/** The lot and every lot it was made from, back to origin. */
 function Genealogy({ v }: { v: View }) {
   const p = v.product;
   const node = (

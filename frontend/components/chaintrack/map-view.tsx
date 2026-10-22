@@ -1,9 +1,5 @@
 "use client";
 
-// A MapLibre map of facility shapes, optionally clickable for drawing a pin or
-// a boundary. Loaded only in the browser (see map.tsx). Colours come from the
-// theme tokens at runtime, so the map follows light / dark like everything else.
-
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { useEffect, useRef } from "react";

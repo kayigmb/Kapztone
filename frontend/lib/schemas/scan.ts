@@ -1,13 +1,8 @@
-// What a scanned QR label or a typed lot code points to.
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy } from "../consts.ts";
 
-/**
- * A QR label holds the passport's public address (…/p/{code}); a typed value is
- * the lot code (or a passport id) itself. Either way: the part /p/ is followed by.
- */
+/** A QR label holds the passport's public address (…/p/{code}); a typed value is the lot code (or a passport id) itself. */
 export function passportRef(text: string): string {
   const value = text.trim();
   try {

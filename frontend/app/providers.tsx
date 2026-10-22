@@ -24,8 +24,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
     () =>
       new QueryClient({
-        // One toast path: a write's message comes from the API; a failure says
-        // what went wrong, unless the screen shows it in place (`meta: { inPlace: true }`).
+        // One toast path: a write's message comes from the API; a failure says what went wrong, unless the screen shows it in place (`meta: { inPlace: true }`).
         mutationCache: new MutationCache({
           onSuccess: (data) => {
             if (isSent(data) && data.message) toast.success(data.message);

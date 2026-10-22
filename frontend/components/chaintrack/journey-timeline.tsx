@@ -22,7 +22,6 @@ const icons: Record<string, LucideIcon> = {
   REVOKE: OctagonX,
 };
 
-// Figma .timeline-dot: a soft teal circle; a concern is amber, a revocation red.
 const marker: Record<View["journey"][number]["state"], string> = {
   done: "border-primary/25 bg-primary-soft text-primary",
   current: "border-primary bg-primary text-on-primary",
@@ -30,7 +29,7 @@ const marker: Record<View["journey"][number]["state"], string> = {
   failed: "border-danger bg-danger text-on-danger",
 };
 
-/** The ordered history of a lot, origin first (Figma .timeline). */
+/** The ordered history of a lot, origin first. */
 export function JourneyTimeline({ steps }: { steps: View["journey"] }) {
   return (
     <ol>

@@ -4,9 +4,6 @@ import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 
-// Figma .tabs: an underlined row; the active tab is teal with a 2 px bar.
-// `pill` is the segmented look for small filters inside a card.
-
 function Tabs({
   className,
   orientation = "horizontal",

@@ -3,7 +3,6 @@ import { Link2 } from "lucide-react";
 import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
-/** The ChainTrack mark: a teal square with a link, and the name (Figma .brand). */
 export function Brand({
   onNavy,
   small,

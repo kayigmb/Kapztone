@@ -2,7 +2,6 @@ import { CircleCheck, Info, OctagonX, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// Figma .notice: a tinted box with a hairline border in the same tone.
 const kinds = {
   info: {
     icon: Info,
@@ -22,7 +21,7 @@ const kinds = {
   },
 };
 
-/** Inline notice. A blocking notice leads with a bold sentence and is announced. */
+/** Inline notice. */
 export function Notice({
   kind,
   children,

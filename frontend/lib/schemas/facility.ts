@@ -1,5 +1,3 @@
-// Registering a facility: mirrors facility.RegisterInput.Validate().
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, limits } from "../consts.ts";

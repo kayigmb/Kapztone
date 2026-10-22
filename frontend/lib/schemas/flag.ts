@@ -1,6 +1,3 @@
-// Raising and resolving flags on a lot: mirrors flag.RaiseInput.Validate()
-// and flag.ResolveInput.Validate().
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, flagOutcomes, limits } from "../consts.ts";

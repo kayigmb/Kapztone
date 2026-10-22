@@ -5,7 +5,7 @@ import { DM_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
-// Inter for the interface, DM Mono for lot codes, IDs and quantities (ui/figma-make).
+// Inter for the interface, DM Mono for lot codes, IDs and quantities.
 const sans = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const mono = DM_Mono({

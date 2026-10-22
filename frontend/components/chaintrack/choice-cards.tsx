@@ -2,11 +2,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { FieldNote } from "@/components/chaintrack/field-note";
 
-/**
- * A radio group shown as cards (components.md → Choice cards). Spread
- * react-hook-form's `register(...)` onto it; the chosen card is styled by CSS
- * from the radio's own state, so it needs no script.
- */
+/** A radio group shown as cards. */
 export function ChoiceCards({
   legend,
   options,

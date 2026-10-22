@@ -46,7 +46,7 @@ export function ResetForm({ token }: { token: string }) {
     onError: (err) => {
       if (err instanceof ApiError && err.status === 404)
         return setOutcome("expired");
-      // 400: too short or used recently. The API's message names which.
+      // 400: too short or used recently.
       if (err instanceof ApiError && err.status === 400)
         return setError("new", { message: err.message });
       toast.error(problemOf(err));

@@ -8,10 +8,7 @@ import { copy as ui, maxHandoverPhotos, upload } from "@/lib/consts";
 
 export type Place = { lat: number; lon: number } | undefined;
 
-/**
- * Where it happened (the device's GPS, optional) and photos (optional): both
- * end up in the signed record. Used when sending and when receiving a lot.
- */
+/** Where it happened (the device's GPS, optional) and photos (optional): both end up in the signed record. */
 export function PlaceAndPhotos({
   place,
   onPlace,

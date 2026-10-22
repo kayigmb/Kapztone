@@ -96,7 +96,7 @@ export function Choice({
   );
 }
 
-/** "1–10 of 86", rows per page, previous / next. Nothing when the list fits the smallest page. */
+/** "1–10 of 86", rows per page, previous / next. */
 export function Pager({
   page,
   total,

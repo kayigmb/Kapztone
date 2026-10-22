@@ -105,11 +105,7 @@ const saveFolded = (v: boolean) => {
   }
 };
 
-/**
- * The signed-in frame (patterns.md → App shell; Figma BusinessApp): a navy
- * sidebar with grouped nav on desktop, folding to an icon rail; a top bar
- * with the page title, bell, theme and Scan; four tabs on phones.
- */
+/** The signed-in frame: a navy sidebar with grouped nav on desktop, folding to an icon rail; a top bar with the page title, bell, theme and Scan; four tabs on phones. */
 export function AppShell({
   me,
   children,
@@ -200,7 +196,6 @@ export function AppShell({
           : "lg:grid-cols-[--spacing(64)_1fr]",
       )}
     >
-      {/* Desktop sidebar: navy in both themes; folds to an icon rail */}
       <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar-bg text-sidebar-fg lg:flex">
         <div
           className={cn(
@@ -249,7 +244,6 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-col pb-24 lg:pb-0">
-        {/* Top bar: 56 px on phones, 64 px on desktop */}
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur lg:h-16 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
             <Link
@@ -325,10 +319,7 @@ export function AppShell({
   );
 }
 
-/**
- * Phone tab bar (Figma .mobile-tabs): Home, the person's first workspace
- * screen, Scan and More, each 56 px tall; a live count rides on its tab.
- */
+/** Phone tab bar: Home, the person's first workspace screen, Scan and More, each 56 px tall; a live count rides on its tab. */
 function PhoneTabs({
   me,
   path,

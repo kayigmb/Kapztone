@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 const icon = { system: Monitor, light: Sun, dark: Moon };
 const t = copy.shell;
 
-/** Light / Dark / System menu. The shell only renders after sign-in has loaded, so the stored choice is known. */
+/** Light / Dark / System menu. */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);

@@ -1,5 +1,3 @@
-// Shared by the end-to-end specs: sign-in, businesses set up through the API,
-// and the signing step. Run them through `make e2e` (needs the API and the web app).
 import {
   expect,
   type Browser,
@@ -69,8 +67,7 @@ export async function business(
     baseURL: origin(),
     extraHTTPHeaders: {
       Origin: origin(),
-      // The pass-through forwards this as the visitor's address, which dodges the
-      // 10 sign-ups/hour limit across runs. Stops working behind Caddy, which sets the real address.
+      // The pass-through forwards this as the visitor's address, which dodges the 10 sign-ups/hour limit across runs.
       "X-Forwarded-For": `10.${run.length}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
     },
   });

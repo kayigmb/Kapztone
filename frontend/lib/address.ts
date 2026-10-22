@@ -1,7 +1,3 @@
-// An organisation's own address: its slug as the first label of this site's
-// host (acme.example.com; acme.localhost:3000 in development). The platform
-// itself is the bare host. Pure, so `node --test` runs it.
-
 type Here = { protocol: string; host: string };
 
 /** This site's host without the acting organisation's label in front. */

@@ -14,12 +14,12 @@ test("a weight inside the tolerance can be accepted; outside it can't", () => {
     difference: -4,
     pct: 0.3,
     within: true,
-  }); // draft 1f
+  });
   assert.deepEqual(weigh(640, 588, 1), {
     difference: -52,
     pct: 8.1,
     within: false,
-  }); // draft 3h
+  });
   assert.equal(weigh(1000, 1010, 1).within, true); // exactly at the limit
   assert.equal(weigh(1000, 1011, 1).within, false); // more than sent counts too
 });

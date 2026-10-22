@@ -14,10 +14,7 @@ import { humanize } from "@/lib/verification";
 
 const t = copy.shell;
 
-/**
- * The organisations this person belongs to; picking one opens that
- * organisation's own address with the session carried over (a handoff).
- */
+/** The organisations this person belongs to; picking one opens that organisation's own address with the session carried over (a handoff). */
 export function OrgSwitcher({ me, onNavy }: { me: Me; onNavy?: boolean }) {
   const orgs = useQuery({
     queryKey: queryKeys.myOrganisations,

@@ -1,6 +1,3 @@
-// Run: node --test lib/copy.test.ts
-// Guards the JSON split: the assembled copy keeps its shape and every
-// wrapper fills its template.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

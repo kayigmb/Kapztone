@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { copy } from "@/lib/consts";
 import { cn } from "@/lib/utils";
 
-/** A password input with a show / hide button. Works with react-hook-form's `register` (uncontrolled). */
+/** A password input with a show / hide button. */
 function PasswordInput({ className, ...props }: React.ComponentProps<"input">) {
   const [shown, setShown] = useState(false);
   return (

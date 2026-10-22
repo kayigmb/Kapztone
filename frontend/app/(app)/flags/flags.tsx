@@ -296,7 +296,6 @@ function Investigation({ f }: { f: Flag }) {
     },
   });
   const code = lot.data?.passport.code ?? f.passport_id;
-  // Mirrors the API: the platform (flag:resolve) or a verified regulator's admin resolves; others only read.
   const investigator =
     me.permissions.includes(permissions.flagResolve) ||
     (me.role === orgAdminRole &&

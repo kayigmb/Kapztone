@@ -7,7 +7,7 @@ const t = copy.signin;
 
 export const metadata = { title: copy.meta.signin };
 
-// Phone-first, inside the access layout (screens.md §03; Figma AuthFlow → sign in).
+// Phone-first, inside the access layout.
 export default async function Page({ searchParams }: PageProps<"/signin">) {
   const { email } = await searchParams;
   return (

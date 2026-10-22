@@ -5,8 +5,7 @@ import { Building2, Eye, Flag, Package, Users } from "lucide-react";
 
 import dynamic from "next/dynamic";
 
-// Recharts is heavy and needs the browser: it ships in its own chunk behind
-// a skeleton instead of weighing down the dashboard route (map.tsx precedent).
+// Recharts is heavy and needs the browser: it ships in its own chunk behind a skeleton instead of weighing down the dashboard route.
 const Bars = dynamic(
   () => import("@/components/chaintrack/charts").then((m) => m.Bars),
   { ssr: false, loading: () => <ChartSkeleton /> },

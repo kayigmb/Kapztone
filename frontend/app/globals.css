@@ -1,6 +1,3 @@
-/* app/globals.css — ChainTrack theme for Tailwind CSS v4 (look: ui/figma-make, Inter + DM Mono, teal + navy).
-   Copy this file as-is. Colours swap between light and dark through CSS variables,
-   so components never need `dark:` variants for colour. Text never goes below 12 px. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -17,7 +14,6 @@
   }
 }
 
-/* ---------- Raw values (light) ---------- */
 :root,
 [data-theme="light"] {
   --bg: #f5f7f7;
@@ -65,7 +61,7 @@
     0 1px 2px rgba(8, 31, 43, 0.03), 0 8px 28px rgba(8, 31, 43, 0.05);
   --elevation-overlay: 0 12px 35px rgba(7, 28, 44, 0.18);
   --elevation-button: 0 3px 9px rgba(8, 117, 102, 0.16);
-  /* Navy: the sidebar, the public hero, the auth brand panel and dark banners. Same in both themes. */
+  /* Navy: the sidebar, the public hero, the auth brand panel and dark banners. */
   --navy-950: #071c2c;
   --navy-900: #0b2639;
   --navy-800: #12364c;
@@ -94,7 +90,6 @@
   --art-bean-deep: #502918;
 }
 
-/* ---------- Raw values (dark): Figma [data-theme="dark"], with teal lifted for contrast ---------- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #081c29;
@@ -190,7 +185,6 @@
   --sidebar-bg: #061823;
 }
 
-/* ---------- Tailwind theme ---------- */
 @theme inline {
   /* Colours → bg-surface, text-ink-muted, border-border-strong, bg-verified-soft, text-on-primary … */
   --color-*: initial;
@@ -322,7 +316,6 @@
   /* Content width → max-w-content */
   --container-content: 1180px;
 }
-/* ---------- shadcn/ui colour names → ChainTrack tokens ---------- */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--ink);
@@ -351,7 +344,6 @@
   --color-sidebar-ring: var(--focus);
 }
 
-/* ---------- Base ---------- */
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -374,19 +366,14 @@
   }
 }
 
-/* ---------- Two helpers used everywhere ---------- */
-/* Plain CSS on purpose (not @utility): these rules must ship even when class
-   scanning misses a file. Covers .no-scrollbar (tab rows, chip lists) and the
-   active tab underline from components/ui/tabs.tsx (data-active comes from
-   Base UI; the stacked Tailwind equivalents in tabs.tsx stay as backup). */
+/* Plain CSS on purpose (not @utility): these rules must ship even when class scanning misses a file. */
 .no-scrollbar {
   scrollbar-width: none;
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-/* Line tabs: a teal 2 px bar under the active tab (Figma .tabs). The list
-   scrolls instead of overflowing on narrow screens; triggers never wrap. */
+/* Line tabs: a teal 2 px bar under the active tab. */
 [data-slot="tabs-list"] {
   overflow-x: auto;
 }
@@ -414,8 +401,7 @@
   @apply font-mono font-medium tabular-nums;
 } /* quantities and percentages */
 
-/* ---------- Public page decoration (glow, grid, product art): the public page only ---------- */
-/* A faint grid over the navy hero, fading out to the right (Figma .passport-hero::before). */
+/* A faint grid over the navy hero, fading out to the right. */
 @utility hero-grid {
   background-image:
     linear-gradient(var(--hero-line) 1px, transparent 1px),
@@ -423,7 +409,7 @@
   background-size: 32px 32px;
   mask-image: linear-gradient(90deg, black, transparent 70%);
 }
-/* The product panel behind the bean art (Figma .product-image). */
+/* The product panel behind the bean art. */
 @utility product-art {
   background:
     radial-gradient(
@@ -434,7 +420,7 @@
     radial-gradient(circle at 70% 75%, var(--art-leaf) 0, transparent 32%),
     linear-gradient(145deg, var(--art-leaf), var(--art-leaf-deep));
 }
-/* One coffee bean, split down the middle (Figma .bean). */
+/* One coffee bean, split down the middle. */
 @utility bean {
   border-radius: 50%;
   background: linear-gradient(

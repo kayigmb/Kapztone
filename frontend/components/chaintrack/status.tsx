@@ -59,7 +59,7 @@ export function VerdictStatus({
   );
 }
 
-/** Pill for where a record stands: "Signed by both parties", "Expired" (Figma .status-chip). */
+/** Pill for where a record stands: "Signed by both parties", "Expired". */
 export function StatusChip({
   tone: t,
   icon: Icon,

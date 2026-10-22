@@ -69,8 +69,7 @@ interface Table_DataTableFiltering {
   resetJoinOperator: (defaultState?: boolean) => void;
 }
 
-// TanStack's module augmentation requires both generics even though this
-// feature's additional members don't depend on either one.
+// TanStack's module augmentation requires both generics even though this feature's additional members don't depend on either one.
 /* eslint-disable @typescript-eslint/no-unused-vars */
 declare module "@tanstack/react-table" {
   interface Plugins {
@@ -99,10 +98,7 @@ declare module "@tanstack/react-table" {
 
 type DataTableInstance = Table<DataTableFeatures, RowData>;
 
-/**
- * Feature hooks get a `Table` generic over any features. This feature is only
- * registered in `dataTableFeatures`, so its hooks can use that table's types.
- */
+/** Feature hooks get a `Table` generic over any features. */
 function asDataTable(table: object) {
   return table as DataTableInstance;
 }
@@ -250,11 +246,7 @@ function setPlainFilter(
   });
 }
 
-/**
- * TanStack's `autoRemove` rules for plain filters. Filters with an
- * `operator` are only removed by an `undefined` value, so empty drafts in the
- * filter list survive a column `filterFn` whose `autoRemove` would drop them.
- */
+/** TanStack's `autoRemove` rules for plain filters. */
 function getShouldRemoveFilter(
   filter: ColumnFilter,
   instance: DataTableInstance,

@@ -1,11 +1,5 @@
 "use client";
 
-// A list's page, rows per page, search and sort, plus its own filters, typed
-// and kept in the address (nuqs), so a reload or a shared link shows the same
-// page. The keys are tablecn's (page, perPage, sort=name.asc), so card lists
-// and tables (useDataTable) read and write the same address. Any change other
-// than the page goes back to page 1.
-
 import {
   parseAsInteger,
   parseAsNumberLiteral,

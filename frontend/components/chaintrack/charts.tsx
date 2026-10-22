@@ -1,10 +1,5 @@
 "use client";
 
-// The dashboard's charts (Recharts), following the dataviz rules: thin marks,
-// one axis, categorical colours in a fixed order from the theme tokens
-// (--chart-1…5), a legend for two or more series, a tooltip on hover, and a
-// table view beside every chart (light-mode colours rely on it, see globals.css).
-
 import {
   Bar,
   BarChart,

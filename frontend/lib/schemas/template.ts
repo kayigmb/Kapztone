@@ -1,5 +1,3 @@
-// A lot passport template: mirrors template.CreateInput.Validate().
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy, limits, templateEvents } from "../consts.ts";
@@ -57,11 +55,7 @@ export type TemplateForm = z.infer<typeof templateFormSchema>;
 /** What the form holds before zod coerces it (numbers typed as text). */
 export type TemplateFormInput = z.input<typeof templateFormSchema>;
 
-/**
- * The API holds a stage's maximum yield as a fraction (0.2: output ≤ input × 0.2);
- * every screen shows and takes it as a percentage (20). lib/api.ts converts at the
- * boundary with these two, so nothing else has to know.
- */
+/** The API holds a stage's maximum yield as a fraction (0.2: output ≤ input × 0.2); every screen shows and takes it as a percentage (20). */
 export const yieldToPct = (fraction: number) =>
   Math.round(fraction * 1e6) / 1e4;
 export const yieldToFraction = (pct: number) => Math.round(pct * 1e4) / 1e6;

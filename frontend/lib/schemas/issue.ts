@@ -1,6 +1,3 @@
-// Issuing a passport: mirrors passport.IssueInput.Validate()'s field rules.
-// The capacity check lives here as a pure helper so the form can show it live.
-// Pure: `node --test` runs it.
 import { z } from "zod";
 
 import { copy } from "../consts.ts";
@@ -28,11 +25,7 @@ export function capacityLeft(
   return Math.max(0, facility.capacity - facility.capacity_used);
 }
 
-/**
- * Issuing more than the facility's remaining capacity is refused by the API
- * with the numbers in the message; this mirrors that limit so the form can
- * block the button and say why before the PIN is asked for.
- */
+/** Issuing more than the facility's remaining capacity is refused by the API with the numbers in the message; this mirrors that limit so the form can block the button and say why before the PIN is asked for. */
 export function issueBlock(
   facility: Pick<Facility, "capacity" | "capacity_used">,
   quantity: number,

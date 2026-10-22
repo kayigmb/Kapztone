@@ -3,7 +3,7 @@ import { ChevronDown, Lock } from "lucide-react";
 import { copy } from "@/lib/consts";
 import { type View } from "@/lib/verification";
 
-/** The only place fingerprints and ledger words appear. Open by default when the verdict is Failed. */
+/** The only place fingerprints and ledger words appear. */
 export function TechnicalDetails({
   rows,
   open,

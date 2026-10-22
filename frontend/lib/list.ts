@@ -1,7 +1,3 @@
-// Lists are paged, searched and sorted by the API (listq). This builds the
-// query string and the "1–10 of 86" range. Pure: `node --test` runs it.
-
-/** Rows-per-page choices on every list; the first is the default. */
 export const pageSizes = [10, 20, 50] as const;
 export type PageSize = (typeof pageSizes)[number];
 export const pageSize: PageSize = pageSizes[0];

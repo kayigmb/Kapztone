@@ -1,18 +1,17 @@
 # Design reference
 
-The design is the reference for Sprint 4 (PLAN.md §2). It lives in two places:
+The design is the reference for Sprint 4 (PLAN.md §2).
 
-- **Content and flows:** the Claude Design drafts, saved as `ui/ChainTrack Drafts.dc.html` (with `support.js`), 35 drafts with ids `1a`–`3o`. The "Drafts" column below names them per screen.
-- **Look:** the Figma Make app, saved as reference only in `ui/figma-make/App.tsx` and `ui/figma-make/styles.css`: Inter + DM Mono, teal primary, navy sidebar and hero. Adopted with readable minimums (text ≥ 12 px, targets ≥ 44 px, 56 px on scan / handover).
-- **Rules in words:** `.claude/skills/chaintrack-ui/` — tokens, components, patterns, copy, icons and a spec for every screen. Anything built in `frontend/` follows it.
+- **Content and flows:** 35 drafts with ids `1a`–`3o`. The "Drafts" column below names them per screen.
+- **Look:** Inter + DM Mono, teal primary, navy sidebar and hero. Adopted with readable minimums (text ≥ 12 px, targets ≥ 44 px, 56 px on scan / handover).
 
 ## Phase 0 checklist (PLAN.md §2.5)
 
 | Item | State | Where |
 | --- | --- | --- |
-| Design system with tokens and components, light and dark | Done | `chaintrack-ui/reference/tokens.md`, `components.md`; theme in `frontend/app/globals.css` |
-| All 14 screens at mobile and desktop widths | Visuals linked: drafts (content) and Figma Make (look) | `ui/ChainTrack Drafts.dc.html`, `ui/figma-make/`; `chaintrack-ui/reference/screens.md` maps them |
-| Three clickable flows (coffee, mineral, fraud) | Drafts cover the moments; a click-through prototype is not linked | `screens.md` §10 |
+| Design system with tokens and components, light and dark | Done | `frontend/app/globals.css` |
+| All 14 screens at mobile and desktop widths | Drafts (content) and look | "Drafts" column below |
+| Three clickable flows (coffee, mineral, fraud) | Drafts cover the moments; a click-through prototype is not linked | — |
 | Reviewed with at least 3 experts; changes logged | Not started | "Expert review log" below |
 | Screens exported and linked here | Done: draft ids per screen | "Drafts" column below |
 
@@ -29,36 +28,34 @@ The design is the reference for Sprint 4 (PLAN.md §2). It lives in two places:
 
 Installed primitives: button, input, label, textarea, select, checkbox, tabs, dialog, drawer, tooltip, sonner, table, field, separator.
 
-Changed from shadcn's defaults: every `dark:` colour override removed (ChainTrack tokens switch with `data-theme` and the system theme), Button (primary teal / secondary outline / ghost / danger-soft / danger-outline / danger), Input (44 px, teal focus ring) and Tabs (underlined teal, or `pill`) restyled to the Figma look, as in `components.md`.
+Changed from shadcn's defaults: every `dark:` colour override removed (ChainTrack tokens switch with `data-theme` and the system theme), Button (primary teal / secondary outline / ghost / danger-soft / danger-outline / danger), Input (44 px, teal focus ring) and Tabs (underlined teal, or `pill`) restyled to the app's look.
 
 ## Screens
 
-Numbers are PLAN.md §2.2. "Spec" is the section of `screens.md`. "API" is what the backend offers today.
+Numbers are PLAN.md §2.2. "API" is what the backend offers today.
 
-| # | Screen | Spec | Route | API | Drafts (Figma) |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Public verification | 01 | `/p/[id]` (built, new look; lot code or uuid) | `GET /verify/{id}` | 1a, 1b, 1c (`PublicVerification`) |
-| 2 | Sign-in and onboarding (KYB) | 03 | `/signup`, `/signin`, `/onboarding` (built, new look; email availability checked before continuing) | `POST /orgs`, `GET /auth/email/availability`, `POST /auth/login` (`remember`, `trust_device`), `GET /me`, `POST /orgs/{id}/documents`, `/auth/2fa/*`, `/auth/password/forgot`, `/reset`, `/auth/lock` | 2a–2l (`AuthFlow`) |
-| 3 | Dashboard | 02 | `/` (built, new look: navy shell, metric cards, quick actions, per-kind config in `lib/consts.ts` → `dashboards`) | `GET /passports`, `/handovers`, `/flags`, `/facilities`, `/notifications` | 1d, 3o (`Dashboard`) |
-| 4 | Facility registry | 04 | `/facilities` (list, map, approve, licence), `/facilities/new` (Photon place search, pin or boundary on a map; two-column desktop form) | `POST /facilities`, `GET /facilities?bbox=&status=`, `GET /facilities/{id}`, `/approve`, `/licence`, `GET /facility-kinds` | 3a, 3b (`Facilities`, `RegisterFacility`) |
-| 5 | Issue origin passport | 05 | `/issue` (built) | `GET /templates`, `GET /facilities`, `POST /passports` | 3c, 3d (`IssuePassport`) |
-| 6 | Passport detail (business view) | routes in `patterns.md` | `/passports/[id]` (built with Journey, Certificates and flags, and Record details tabs) | `GET /passports/{id}`, `/passports/{id}/genealogy`, `GET /attestations?subject_id=` | 3e (`Passports`) |
-| 7 | Hand over custody (sender) | 06 | `/handover` (built, seal + checklist) | `POST /passports/{id}/handovers` (quantity, stage, place, seal_number, checklist, photos), `POST /handovers/{id}/cancel` | 3g (`Handovers`) |
-| 8 | Accept custody (receiver) | 06 | `/handovers/[id]` (built) | `GET /handovers`, `POST /handovers/{id}/accept` (`received_quantity`, photos), `/reject` (`reasons`, `also_flag`), `GET /handovers/{id}/photos/{photoId}` | 1f, 3h (`Handovers`) |
-| 9 | Transform / split / merge | 07 | `/transform` (built) | `POST /transforms` | 1e (`Transform`) |
-| 10 | Attach / issue certificate | 08 | `/certificates`, `/certificates/new` (built, number + notes) | `POST /attestations`, `GET /attestations?scope=issued\|about`, `POST /attestations/{id}/revoke` | 3i, 3j (`Certificates`) |
-| 11 | Flags and investigations | 08 | `/flags` (built, code + severity) | `GET /flags`, `GET /flags/{id}`, `POST /flags/{id}/resolve`, `PUT /flags/{id}/assignee` | 3k (`Flags`) |
-| 12 | Commodity template builder | 09 | `/admin/templates`, `/admin/templates/[id]` (built; includes facility-kind management) | `/templates` (create, list, get, draft, publish, delete), `/facility-kinds` (create, list, update, delete) | 3l (`Templates`) |
-| 13 | Admin: organisation verification | 03 | `/admin/organisations` (built; `?tab=&id=`) | `GET /orgs?status=`, `POST /orgs/{id}/verify` (incl. `changes_requested`), `GET/PUT /orgs/{id}/accreditations`, `GET /orgs/{id}/documents`, `GET /documents/{id}/file`, `GET /templates` (certificate types) | 3m (`VerificationQueue`) |
-| 14 | Reports and audit trail | 09 | `/admin/reports` (built with Reports and Audit log tabs; audit includes Organisation) | `GET /audit`, `/audit/verify`, `/reports/volume`, `/reports/blocked` | 3n (`Reports`) |
-| — | Profile (everyone) | — | `/profile` (built with Account and Security and signing tabs: details, name, password, signing PIN, 2FA with recovery codes) | `PUT /me`, `POST /auth/password`, `/auth/sessions/revoke`, `POST /auth/pin`, `/auth/2fa/*` | 2m (`Profile`) |
-| — | Users | 09 (Users and roles) | `/users` (built: platform admin sees all accounts and deactivates / activates them; org admin invites, changes role, suspends) | `GET /users`, `POST /invites`, `PUT /users/{id}/role`, `POST /users/{id}/suspend`, `/reinstate`, `POST /users/{id}/deactivate`, `/activate` | (`Users`) |
-| — | User detail (platform admin) | 09 | `/users/[id]` (built) | `GET /users/{id}`, role / suspend / reinstate with `?organisation_id=`, `GET /audit?actor=` | — |
-| — | Organisation detail (platform admin) | 03 | `/admin/organisations/[id]` (built) | `GET /orgs/{id}`, `POST /orgs/{id}/suspend`, `/reactivate`, `GET /orgs/{id}/members`, `GET /facilities` + `/passports` with `?organisation_id=`, `GET /attestations?issuer_id=` | — |
-| — | Confirm email | — | `/verify-email/[token]` (built) | `POST /auth/email/verify` | — |
-| — | Accept invitation | — | `/invite/[token]` (built, new look) | `POST /invites/{token}/accept` | 2i (`AuthFlow`) |
-
-"Draft screen": built by an earlier agent before the new look and not yet checked against its draft (plan Step 4).
+| # | Screen | Route | API | Drafts |
+| --- | --- | --- | --- | --- |
+| 1 | Public verification | `/p/[id]` (built, new look; lot code or uuid) | `GET /verify/{id}` | 1a, 1b, 1c |
+| 2 | Sign-in and onboarding (KYB) | `/signup`, `/signin`, `/onboarding` (built, new look; email availability checked before continuing) | `POST /orgs`, `GET /auth/email/availability`, `POST /auth/login` (`remember`, `trust_device`), `GET /me`, `POST /orgs/{id}/documents`, `/auth/2fa/*`, `/auth/password/forgot`, `/reset`, `/auth/lock` | 2a–2l |
+| 3 | Dashboard | `/` (built, new look: navy shell, metric cards, quick actions, per-kind config in `lib/consts.ts` → `dashboards`) | `GET /passports`, `/handovers`, `/flags`, `/facilities`, `/notifications` | 1d, 3o |
+| 4 | Facility registry | `/facilities` (list, map, approve, licence), `/facilities/new` (Photon place search, pin or boundary on a map; two-column desktop form) | `POST /facilities`, `GET /facilities?bbox=&status=`, `GET /facilities/{id}`, `/approve`, `/licence`, `GET /facility-kinds` | 3a, 3b |
+| 5 | Issue origin passport | `/issue` (built) | `GET /templates`, `GET /facilities`, `POST /passports` | 3c, 3d |
+| 6 | Passport detail (business view) | `/passports/[id]` (built with Journey, Certificates and flags, and Record details tabs) | `GET /passports/{id}`, `/passports/{id}/genealogy`, `GET /attestations?subject_id=` | 3e |
+| 7 | Hand over custody (sender) | `/handover` (built, seal + checklist) | `POST /passports/{id}/handovers` (quantity, stage, place, seal_number, checklist, photos), `POST /handovers/{id}/cancel` | 3g |
+| 8 | Accept custody (receiver) | `/handovers/[id]` (built) | `GET /handovers`, `POST /handovers/{id}/accept` (`received_quantity`, photos), `/reject` (`reasons`, `also_flag`), `GET /handovers/{id}/photos/{photoId}` | 1f, 3h |
+| 9 | Transform / split / merge | `/transform` (built) | `POST /transforms` | 1e |
+| 10 | Attach / issue certificate | `/certificates`, `/certificates/new` (built, number + notes) | `POST /attestations`, `GET /attestations?scope=issued\|about`, `POST /attestations/{id}/revoke` | 3i, 3j |
+| 11 | Flags and investigations | `/flags` (built, code + severity) | `GET /flags`, `GET /flags/{id}`, `POST /flags/{id}/resolve`, `PUT /flags/{id}/assignee` | 3k |
+| 12 | Commodity template builder | `/admin/templates`, `/admin/templates/[id]` (built; includes facility-kind management) | `/templates` (create, list, get, draft, publish, delete), `/facility-kinds` (create, list, update, delete) | 3l |
+| 13 | Admin: organisation verification | `/admin/organisations` (built; `?tab=&id=`) | `GET /orgs?status=`, `POST /orgs/{id}/verify` (incl. `changes_requested`), `GET/PUT /orgs/{id}/accreditations`, `GET /orgs/{id}/documents`, `GET /documents/{id}/file`, `GET /templates` (certificate types) | 3m |
+| 14 | Reports and audit trail | `/admin/reports` (built with Reports and Audit log tabs; audit includes Organisation) | `GET /audit`, `/audit/verify`, `/reports/volume`, `/reports/blocked` | 3n |
+| — | Profile (everyone) | `/profile` (built with Account and Security and signing tabs: details, name, password, signing PIN, 2FA with recovery codes) | `PUT /me`, `POST /auth/password`, `/auth/sessions/revoke`, `POST /auth/pin`, `/auth/2fa/*` | 2m |
+| — | Users | `/users` (built: platform admin sees all accounts and deactivates / activates them; org admin invites, changes role, suspends) | `GET /users`, `POST /invites`, `PUT /users/{id}/role`, `POST /users/{id}/suspend`, `/reinstate`, `POST /users/{id}/deactivate`, `/activate` | — |
+| — | User detail (platform admin) | `/users/[id]` (built) | `GET /users/{id}`, role / suspend / reinstate with `?organisation_id=`, `GET /audit?actor=` | — |
+| — | Organisation detail (platform admin) | `/admin/organisations/[id]` (built) | `GET /orgs/{id}`, `POST /orgs/{id}/suspend`, `/reactivate`, `GET /orgs/{id}/members`, `GET /facilities` + `/passports` with `?organisation_id=`, `GET /attestations?issuer_id=` | — |
+| — | Confirm email | `/verify-email/[token]` (built) | `POST /auth/email/verify` | — |
+| — | Accept invitation | `/invite/[token]` (built, new look) | `POST /invites/{token}/accept` | 2i |
 
 ## Where the design and the backend disagree
 
@@ -98,9 +95,9 @@ The screens were specified before the backend was built, and they ask for more t
 | 3 | Counts for tiles, certificates expiring, volume by commodity | List totals only | Built from list totals. Cut: waiting-for-signature, lots verified/month, verified volume, expiring certs, active users, issuers-to-accredit |
 | all | SMS; EXPORT, IMPORT and deliver steps on the journey | E-mail and in-app; issue, handover, transform, flag, revoke | Cut SMS/deliver; EXPORT/IMPORT stay as template events where defined |
 
-**Fields the Figma screens show that the API does not have.** Hidden in the UI until the backend has them; never faked.
+**Fields the designs show that the API does not have.** Hidden in the UI until the backend has them; never faked.
 
-| Screen | Figma shows | The backend has | Decision |
+| Screen | Design shows | The backend has | Decision |
 | --- | --- | --- | --- |
 | Profile, sign-up | Language (English / Kinyarwanda / Français) | No language setting | Hidden |
 | Profile, users, sign-up | Phone number ("Email or phone") | Email only | Hidden |

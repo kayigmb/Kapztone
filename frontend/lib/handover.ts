@@ -1,7 +1,3 @@
-// Handover rules the screens show before anything is signed. The API checks
-// the same rules and stays the authority. Pure: `node --test` runs it.
-
-/** Used when a template stage sets no tolerance (backend template.DefaultHandoverTolerance). */
 export const defaultTolerancePct = 1;
 
 export type Weighing = {

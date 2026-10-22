@@ -7,7 +7,6 @@ export const metadata = {
   description: copy.meta.landingDescription,
 };
 
-// The public home: what ChainTrack is, and a way to verify a label.
 export default function Page() {
   return (
     <LandingGate>

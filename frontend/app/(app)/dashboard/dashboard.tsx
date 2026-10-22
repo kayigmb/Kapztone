@@ -238,7 +238,6 @@ function CountTile({
   );
 }
 
-// Figma .quick-actions: a card per action with a teal icon square; 56 px tall.
 const actionCard =
   "grid grid-cols-[auto_1fr_auto] py-2.5 items-center gap-3 rounded-lg border border-border bg-surface px-3 text-left text-sm font-semibold text-ink transition-colors hover:border-primary";
 

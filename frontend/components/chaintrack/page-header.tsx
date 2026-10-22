@@ -1,4 +1,3 @@
-/** Every screen's title row: heading, one line under it, actions on the right, and anything else (a stepper) below. */
 export function PageHeader({
   title,
   sub,

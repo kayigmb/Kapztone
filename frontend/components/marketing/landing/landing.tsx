@@ -5,8 +5,7 @@ import { Nav } from "./nav";
 import { SectionSkeleton } from "./shared";
 import { VerifyStrip } from "./verify-strip";
 
-// Below the fold: each section ships in its own chunk and streams in behind
-// a skeleton (map.tsx sets the precedent with next/dynamic).
+// Below the fold: each section ships in its own chunk and streams in behind a skeleton.
 const HowItWorks = dynamic(
   () => import("./how-it-works").then((m) => m.HowItWorks),
   {
@@ -39,7 +38,6 @@ const Footer = dynamic(() => import("./footer").then((m) => m.Footer), {
   loading: () => <SectionSkeleton />,
 });
 
-/** The public home: what ChainTrack is, how it works per role, and a way to verify a label. */
 export function Landing() {
   return (
     <div className="min-h-dvh bg-bg text-ink">

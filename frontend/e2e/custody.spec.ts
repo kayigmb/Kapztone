@@ -1,7 +1,3 @@
-// The custody paths beside the happy one, through the real UI: a receiver
-// rejects a handover, a sender cancels one, a certifier issues and revokes a
-// certificate, and a regulator's admin clears a flag a producer raised.
-// Businesses, the template, a facility and the lots are set up through the API.
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 import { copy, routes } from "../lib/consts";

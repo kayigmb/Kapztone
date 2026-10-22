@@ -26,11 +26,7 @@ import {
 
 const t = copy.scan;
 
-/**
- * Opens the camera to read a passport's QR label, with a typed lot code beside it.
- * The camera needs a secure page (https, localhost); elsewhere only typing works.
- * `trigger` renders the button that opens it, so the tab bar and the dashboard can each style their own.
- */
+/** Opens the camera to read a passport's QR label, with a typed lot code beside it. */
 export function ScanButton({
   trigger,
 }: {

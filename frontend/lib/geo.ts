@@ -1,5 +1,3 @@
-// Clicked points → the GeoJSON the facility API expects. Pure: `node --test` runs it.
-
 export type LonLat = [number, number];
 export type DrawMode = "pin" | "area";
 export type Geometry =

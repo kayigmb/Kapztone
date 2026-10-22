@@ -1,5 +1,3 @@
-// Forms on the profile, users and invitation pages. Each mirrors the API's
-// own check for the same input; the API stays the authority.
 import { z } from "zod";
 
 import { copy, limits, memberRoles } from "../consts.ts";
@@ -67,8 +65,7 @@ export const acceptSchema = z
     password: passwordLengthSchema,
   })
   .superRefine(({ name, password }, ctx) => {
-    // A non-empty name denotes a new account; existing members use their
-    // current password, which may predate today's new-account policy.
+    // A non-empty name denotes a new account; existing members use their current password, which may predate today's new-account policy.
     if (
       name &&
       !passwordLengthProblem(password) &&

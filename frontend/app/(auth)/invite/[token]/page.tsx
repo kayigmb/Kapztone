@@ -5,7 +5,7 @@ const t = copy.invite;
 
 export const metadata = { title: copy.meta.invite };
 
-// Opened from the invitation e-mail. Phone-first, inside the access layout (screens.md §03).
+// Opened from the invitation e-mail.
 export default async function Page({ params }: PageProps<"/invite/[token]">) {
   const { token } = await params;
   return (

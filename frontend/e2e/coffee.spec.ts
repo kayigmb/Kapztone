@@ -1,7 +1,3 @@
-// The coffee happy path through the real UI: a producer registers a farm plot,
-// issues a lot and hands it to a washing station, which accepts and processes
-// it; the public page then verifies the new lot. Organisations, the template
-// and PINs are set up through the API: they are not what this test checks.
 import { expect, test } from "@playwright/test";
 
 import { copy } from "../lib/consts";
@@ -20,7 +16,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   );
   const admin = await signedIn(browser, adminEmail!, adminPassword!);
 
-  // ---- Setup (API) ----
   const template = await ok(
     await admin.request.post("/api/templates", {
       data: {
@@ -48,7 +43,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
     `E2E Washing ${run}`,
   );
 
-  // ---- Producer: register a farm plot ----
   const p = await farm.context.newPage();
   const f = copy.facilities.new;
   const plot = `Plot ${run}`;
@@ -73,7 +67,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   const facility = facilities.data.find((x) => x.name === plot)!;
   await ok(await admin.request.post(`/api/facilities/${facility.id}/approve`));
 
-  // ---- Producer: issue a lot ----
   const i = copy.issue;
   await p.goto("/issue");
   // The pickers are paged by the API: search for this run's template and plot.
@@ -90,7 +83,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   const code = (await p.locator(".code").first().textContent())!.trim();
   expect(code).not.toBe("");
 
-  // ---- Producer: hand it to the washing station ----
   const h = copy.handover;
   await p.getByRole("link", { name: i.handOver }).click();
   await p.getByRole("combobox", { name: h.stage }).click();
@@ -105,7 +97,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
     .getByRole("link", { name: copy.receiver.open })
     .getAttribute("href");
 
-  // ---- Washing station: weigh, accept ----
   const w = await wash.context.newPage();
   const r = copy.receiver;
   await w.goto(handoverURL!);
@@ -113,7 +104,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   await sign(w, r.accept);
   await expect(w.getByRole("heading", { name: r.completeTitle })).toBeVisible();
 
-  // ---- Washing station: process 1,000 kg cherry into 180 kg (≤ 20%) ----
   const t = copy.transform;
   await w.goto("/transform");
   await w.getByLabel(copy.scan.codeLabel).fill(code);
@@ -127,7 +117,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   ).toBeVisible();
   const child = (await w.locator("ul .code").first().textContent())!.trim();
 
-  // ---- Anyone: the public page ----
   const visitor = await browser.newContext();
   const v = await visitor.newPage();
   await v.goto(`${origin()}/p/${encodeURIComponent(child)}`);

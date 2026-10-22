@@ -1,10 +1,3 @@
-// Every value and every piece of UI copy the frontend uses, declared once.
-// Statuses, kinds and paths mirror the API (backend/internal/*/values.go);
-// copy lives in `lib/copy/*.json` (a second language is a translation of
-// those files, not a rewrite of the pages); only plurals, conditions and
-// locale formatting stay here as functions.
-//
-// Pure besides JSON: format.ts has no imports, so `node --test` can load it.
 import { fill } from "./format.ts";
 import copyJson from "./copy/copy.json" with { type: "json" };
 import marketingJson from "./copy/marketing.json" with { type: "json" };
@@ -14,9 +7,6 @@ import screenCopyJson from "./copy/screenCopy.json" with { type: "json" };
 import confirmCopyJson from "./copy/confirmCopy.json" with { type: "json" };
 
 // Copy lives in JSON (lib/copy/*.json) so translators never touch code.
-// Only functions stay here: plurals, conditions and locale formatting.
-// JSON leaves are untyped maps; the two aliases below are the one place that
-// says so — never write `Record<string, string>` at a use site again.
 /** A flat copy table from JSON: every leaf is a finished string. */
 export type StrMap = Record<string, string>;
 /** A copy table whose leaves are `{ label, pass, reason }` check rows. */
@@ -24,8 +14,6 @@ export type CheckMap = Record<
   string,
   { label: string; pass: string; reason: string }
 >;
-
-// ---- Values shared with the API ----
 
 export const orgStatus = {
   pending: "pending",
@@ -230,10 +218,8 @@ export const capacityRuleTypes = {
   facility: "facility_capacity",
 } as const;
 
-// ---- Shell and dashboard (patterns.md → App shell, Role-based dashboards) ----
-
-/** Sidebar / More items. Only screens that exist are listed; a new screen adds a line. */
-/** Sidebar groups (Figma BusinessApp), in order. */
+/** Sidebar / More items. */
+/** Sidebar groups, in order. */
 export const navGroups = ["workspace", "trust", "manage"] as const;
 export type NavGroup = (typeof navGroups)[number];
 
@@ -333,7 +319,7 @@ export const navItems = [
 export const sidebarStorageKey = "ct:sidebar-collapsed";
 /** How often the notification bell asks for the unread count. */
 export const notificationRefetchMs = 60_000;
-/** Theme choices, in the top bar's menu. next-themes writes `data-theme` on <html>. */
+/** Theme choices, in the top bar's menu. */
 export const themes = ["light", "dark", "system"] as const;
 export type ThemeChoice = (typeof themes)[number];
 export type NavKey = (typeof navItems)[number]["key"];
@@ -371,7 +357,7 @@ export type ActionKey =
   | "users"
   | "reports";
 
-/** Which dashboard each kind of organisation gets. "platform" is the platform admin (no organisation). */
+/** Which dashboard each kind of organisation gets. */
 export const dashboards = {
   trader: {
     tiles: ["passportsHeld", "incoming", "outgoing", "openFlags"],
@@ -423,7 +409,7 @@ export const dashboardOfKind: Record<string, DashboardKey> = {
   regulator: "regulator",
 };
 
-/** Quick actions a dashboard shows; each is a screen that exists. `actionsFor` picks the ones the person may use. */
+/** Quick actions a dashboard shows; each is a screen that exists. */
 export const quickActions = [
   { key: "scan" },
   { key: "issue", href: "/issue", permission: permissions.passportIssue },
@@ -501,8 +487,6 @@ export const limits = {
   pageSize: 100,
 };
 
-// ---- Where things live ----
-
 export const routes = {
   home: "/dashboard",
   landing: "/",
@@ -544,7 +528,7 @@ export const routes = {
   invite: (token: string) => `/invite/${token}`,
 };
 
-/** Keyless street map (OpenFreeMap). No satellite layer; add one if a keyless source with an acceptable licence turns up. */
+/** Keyless street map (OpenFreeMap). */
 export const mapStyleURL = "https://tiles.openfreemap.org/styles/liberty";
 
 /** The browser's way to the API: the pass-through in app/api/[...path]/route.ts. */
@@ -680,8 +664,6 @@ export const queryKeys = {
   outcomes: ["audit", "outcomes"] as const,
   saved: ["audit", "saved"] as const,
 };
-
-// ---- Copy ----
 
 export const copy = {
   ...copyJson,
@@ -1044,8 +1026,6 @@ export const copy = {
   },
 };
 
-// ---- Lists: tabs and sorts shared by the list screens ----
-
 /** Handover boxes (?box=), as the API sorts them for the acting organisation. */
 export const handoverBoxes = ["incoming", "outgoing", "done"] as const;
 export type HandoverBox = (typeof handoverBoxes)[number];
@@ -1083,11 +1063,6 @@ export const listSorts = {
   ],
 };
 
-// ---- Marketing home (/) ----
-// Only what the product does today: no offline sync, no other languages, no
-// help centre, no seal or certificate numbers, no flag severity. Example lots
-// and places are labelled as examples.
-
 export const marketingRoles = [
   "producer",
   "logistics",
@@ -1113,8 +1088,6 @@ export const marketing = {
   },
 };
 
-// ---- Platform dashboard (/dashboard for the platform; GET /stats) ----
-
 export const platformCopy = {
   ...platformCopyJson,
   updated: (when: string) => fill(platformCopyJson.updated.$template, { when }),
@@ -1137,8 +1110,6 @@ export const platformCopy = {
   },
 };
 
-// ---- Reports and audit (/admin/reports) ----
-
 /** Download formats the report endpoints take (?format=). */
 export const exportFormats = ["csv", "pdf"] as const;
 
@@ -1147,8 +1118,6 @@ export const reportsCopy = {
   checked: (n: number) => fill(reportsCopyJson.checked.$template, { n }),
   brokenAt: (n: number | null) => (n ? `Broken at seq ${n}` : "Broken"),
 };
-
-// ---- Screen copy that grew inside the screens; kept per screen ----
 
 export const screenCopy = {
   ...screenCopyJson,
@@ -1182,8 +1151,6 @@ export const screenCopy = {
       fill(screenCopyJson.transform.formula.$template, { into, pct, max }),
   },
 };
-
-// ---- Confirmations (components/chaintrack/confirm.tsx) ----
 
 export const confirmCopy = {
   ...confirmCopyJson,
