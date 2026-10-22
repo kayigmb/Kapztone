@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
@@ -39,6 +40,16 @@ func TestEmailVerification(t *testing.T) {
 	want(t, "confirm", do(e.h, http.MethodPost, "/auth/email/verify", "", body), http.StatusOK)
 	want(t, "confirm twice", do(e.h, http.MethodPost, "/auth/email/verify", "", body), http.StatusNotFound)
 	e.login(tAcme)
+
+	// Dev hands the link back too (scripts, browser tests); prod never does.
+	if link := e.a.SendVerifyTo(t.Context(), e.email(tAcme)); !strings.HasPrefix(link, testAppURL+auth.PathVerify) {
+		t.Fatalf("dev link = %q", link)
+	}
+	e.a.Dev = false
+	defer func() { e.a.Dev = true }()
+	if link := e.a.SendVerifyTo(t.Context(), e.email(tAcme)); link != "" {
+		t.Fatalf("prod returned the link: %q", link)
+	}
 }
 
 // The platform admin turns accounts, memberships and organisations off and on.

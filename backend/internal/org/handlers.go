@@ -24,7 +24,8 @@ type Handlers struct {
 	// Secrets seals each organisation's signing key before it is stored.
 	Secrets *secret.Box
 	// SendVerify emails a new account the link that confirms its email; nil sends nothing.
-	SendVerify func(ctx context.Context, email string)
+	// It returns the link in dev only (see auth.SendVerifyTo).
+	SendVerify func(ctx context.Context, email string) (devLink string)
 }
 
 // newSigningKey makes the key an organisation receives when first verified.
@@ -84,10 +85,14 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ServerError(w, "register organisation", err)
 	default:
+		var link string
 		if h.SendVerify != nil {
-			h.SendVerify(r.Context(), in.Email)
+			link = h.SendVerify(r.Context(), in.Email)
 		}
-		httpx.OK(w, http.StatusCreated, MsgRegistered, o)
+		httpx.OK(w, http.StatusCreated, MsgRegistered, struct {
+			Organisation
+			VerifyLink string `json:"verify_link,omitempty"` // dev only
+		}{o, link})
 	}
 }
 

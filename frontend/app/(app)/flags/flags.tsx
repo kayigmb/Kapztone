@@ -16,6 +16,7 @@ import { useForm } from "react-hook-form";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
 import { DataWidget } from "@/components/chaintrack/data-widget";
+import { FieldNote } from "@/components/chaintrack/field-note";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
@@ -43,7 +44,9 @@ import {
 import { liveValidation } from "@/lib/form";
 import { useListParams } from "@/lib/list-params";
 import {
+  raiseFlagFormSchema,
   resolveFlagFormSchema,
+  type RaiseFlagForm,
   type ResolveFlagForm,
 } from "@/lib/schemas/flag";
 import { cn } from "@/lib/utils";
@@ -75,12 +78,15 @@ function FlagChip({ status }: { status: string }) {
 const listFilters = {
   tab: parseAsStringLiteral(flagTabs).withDefault(flagTabs[0]),
   flag: parseAsString,
+  // Set by the passport page's "Raise a flag" link.
+  passport: parseAsString,
 };
 
 export function FlagQueue() {
   const state = useListParams("-created_at", listFilters);
   const tab = state.filters.tab;
   const selected = state.filters.flag ?? "";
+  const raising = state.filters.passport ?? "";
   // "resolved" is cleared or confirmed (the API's list filter).
   const list = usePaged(
     queryKeys.flags,
@@ -178,6 +184,13 @@ export function FlagQueue() {
         </section>
         {current ? (
           <Investigation key={current.id} f={current} />
+        ) : raising ? (
+          <RaiseFlag
+            passportId={raising}
+            onRaised={(id) =>
+              state.setFilters({ flag: id, passport: null }, { keepPage: true })
+            }
+          />
         ) : (
           <section className="hidden rounded-lg border border-dashed border-border p-8 text-center text-sm text-ink-muted lg:block">
             {t.selectOne}
@@ -185,6 +198,58 @@ export function FlagQueue() {
         )}
       </div>
     </main>
+  );
+}
+
+function RaiseFlag({
+  passportId,
+  onRaised,
+}: {
+  passportId: string;
+  onRaised: (flagId: string) => void;
+}) {
+  const client = useQueryClient();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RaiseFlagForm>({
+    ...liveValidation,
+    resolver: zodResolver(raiseFlagFormSchema),
+    defaultValues: { passport_id: passportId, reason: "" },
+  });
+  const raise = useMutation({
+    mutationFn: (v: RaiseFlagForm) => endpoints.raiseFlag(v),
+    onSuccess: (f) => {
+      client.invalidateQueries({ queryKey: queryKeys.flags });
+      onRaised(f.data.id);
+    },
+  });
+  return (
+    <form
+      onSubmit={handleSubmit((v) => raise.mutate(v))}
+      className="grid min-w-0 gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6"
+    >
+      <h2 className="text-title">{t.raiseTitle}</h2>
+      <p className="text-sm text-ink-muted">{t.raiseBody}</p>
+      <label className="grid gap-1.5">
+        <span className="text-sm font-semibold">{t.raiseReason}</span>
+        <Textarea
+          {...register("reason")}
+          aria-invalid={errors.reason ? true : undefined}
+        />
+        <FieldNote error={errors.reason?.message} help={t.raiseReasonHelp} />
+      </label>
+      <Button
+        type="submit"
+        variant="danger"
+        className="w-fit"
+        loading={raise.isPending}
+      >
+        <FlagIcon aria-hidden />
+        {t.raiseConfirm}
+      </Button>
+    </form>
   );
 }
 

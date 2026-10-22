@@ -890,13 +890,13 @@ export const endpoints = {
   facilityKinds: () =>
     api(
       apiPaths.facilityKinds,
-      z.object({ data: z.object({ data: z.array(facilityKindSchema) }) }),
-    ).then((r) => r.data.data),
+      z.object({ data: z.array(facilityKindSchema) }),
+    ).then((r) => r.data),
   facilityKindsAll: () =>
     api(
       apiPaths.facilityKindsAll,
-      z.object({ data: z.object({ data: z.array(facilityKindSchema) }) }),
-    ).then((r) => r.data.data),
+      z.object({ data: z.array(facilityKindSchema) }),
+    ).then((r) => r.data),
   createFacilityKind: (body: { key: string; label: string; sub: string }) =>
     write(apiPaths.facilityKinds, facilityKindSchema, send("POST", body)),
   updateFacilityKind: (

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -260,4 +261,43 @@ func TestPublicVerification(t *testing.T) {
 		last = do(e.h, http.MethodGet, "/verify/"+lot.ID, "", "")
 	}
 	want(t, "one request over the limit", last, http.StatusTooManyRequests)
+}
+
+// PLAN.md §5: a lot with 50 ancestors verifies in under 5 s (here against the
+// simulated chain; a real network adds its latency per chain read).
+func TestVerifyFiftyAncestors(t *testing.T) {
+	w := newPassportWorld(t)
+	e := w.e
+	tplIn := withoutOriginEvidence(coffeeTemplate("deep_" + e.suffix))
+	whole := 1.0
+	tplIn.Stages[1].MaxYield = &whole // a split stage: each transform keeps every kilo
+	tpl := w.template(t, tplIn)
+
+	rec := w.issue(tpl, 1000)
+	want(t, "issue", rec, http.StatusCreated)
+	id := decodeTo[passport.Passport](t, rec).ID
+	const depth = 50
+	for i := range depth {
+		rec = post(e, w.prodTok, as(w.prodSlug, "/transforms"), passport.TransformInput{
+			Stage:   stageWashing,
+			Inputs:  []passport.TransformSource{{PassportID: id, Quantity: 1000}},
+			Outputs: []passport.TransformOutput{{Quantity: 1000}},
+		})
+		want(t, fmt.Sprintf("transform %d", i+1), rec, http.StatusCreated)
+		id = decodeTo[passport.Transform](t, rec).Outputs[0].ID
+	}
+	w.chain.drain()
+
+	start := time.Now()
+	rec = do(e.h, http.MethodGet, "/verify/"+id, "", "")
+	took := time.Since(start)
+	want(t, "verify", rec, http.StatusOK)
+	res := decodeTo[verify.Result](t, rec)
+	if len(res.Genealogy.Nodes) != depth+1 || res.Verdict != verify.Verified {
+		t.Fatalf("deep lot: %d nodes, verdict %s, reasons %+v", len(res.Genealogy.Nodes), res.Verdict, res.Reasons)
+	}
+	if took > 5*time.Second {
+		t.Fatalf("verifying %d ancestors took %s, want under 5s", depth, took)
+	}
+	t.Logf("verified %d ancestors in %s", depth, took)
 }

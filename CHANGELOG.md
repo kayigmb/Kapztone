@@ -39,19 +39,19 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Tables (TanStack Table, server-side)
 - [x] Route map points-only (facility points in verify `route`, no invented legs)
 - [x] Playwright happy-path test (coffee: facility → issue → handover → accept → transform → public)
-- [ ] Playwright: certificates, reject / cancel, flags
-- [ ] Verification of a 50-ancestor lot in under 5 s
-- [ ] Visual check of built screens at 390 px and 1280 px, light and dark
+- [x] Playwright: certificates, reject / cancel, flags
+- [x] Verification of a 50-ancestor lot in under 5 s (35 ms against the simulated chain)
+- [ ] Visual check of built screens at 390 px and 1280 px, light and dark (screenshots: `SCREENS=1 pnpm exec playwright test e2e/screens.spec.ts` → `frontend/screens/`; review pending)
 
 ### Sprint 5
-- [ ] `tools/sim`: built (300 lots + 90 fraud cases, fixed seed); first run pending
+- [x] `tools/sim`: first full run (seed 42): 90/90 fraud cases prevented or detected; 16 of 249 legit lots carry a rules yield warning
 - [x] `tools/baseline`: document-based comparison built (dev; first run pending)
-- [ ] k6 load test: 1,000 events/hour
+- [x] Load: 1,000 events/hour (measured by the sim instead of k6: 1,300 events in 3m34s ≈ 21,800/hour on a laptop)
 - [x] OWASP top-10 dev hardening (headers, caps, validation; full review + test runs later)
 - [x] Medicine template added without code change (`tools/sim/templates/medicine.json`)
 - [ ] nginx and VPS deployment
 - [ ] Tag `v1.0-eval`
-- [ ] Tick PLAN.md §7 checklist (several items already true)
+- [x] Tick PLAN.md §7 checklist (true items ticked; key rotation, backups, monitoring, data law remain)
 
 ### Security review leftovers (2026-10-22, low)
 - [x] Origin check on public cookie POSTs (login, logout, handoff/accept): closes handoff login-CSRF
@@ -71,6 +71,36 @@ What has been built and what is left. Every finished piece of work adds an entry
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-22 — Dev-side Left items: e2e, deep verify, first sim run
+- **Bugs found on the way:**
+  - Facility registration showed no kinds: `endpoints.facilityKinds` / `facilityKindsAll` parsed the envelope twice (`{data:{data:[]}}`), so nobody could register a facility in the UI.
+  - "Raise a flag" on a passport led to `/flags?passport=` that ignored the parameter. The flags page now shows a raise form (existing schema, endpoint and copy) and opens the new flag.
+- **e2e and sim follow the 2026-10-21 account rules:** passwords meet the strength rule. In dev, `POST /orgs` returns `verify_link` (as invites already return their link; never in prod), and the e2e helper and the sim spend it.
+- **Playwright:**
+  - Helpers moved to `e2e/helpers.ts`.
+  - `e2e/custody.spec.ts`: receiver rejects (and loses sight of the lot), sender cancels, certifier issues + revokes a certificate, producer raises a flag that a regulator admin clears.
+  - `e2e/screens.spec.ts` (opt-in, `SCREENS=1`): 72 screenshots, 390 / 1280 px, light / dark.
+- **Deep verify:** `TestVerifyFiftyAncestors`, 50 chained transforms, verified in 35 ms against the simulated chain.
+- **Sim:**
+  - Fixed the F2 database tamper: for a lot never transformed it "moved" the holder to itself, which showed as 2 misses. It now moves custody to the origin facility's owner and fails if nothing changes.
+  - The summary prints events/hour.
+  - Full run (seed 42):
+
+    | Case | Result |
+    |---|---|
+    | F1 | 15 detected |
+    | F2 | 9 prevented + 6 detected |
+    | F3 | 15 prevented |
+    | F4 | 15 prevented |
+    | F5 | 15 detected |
+    | F6 | 15 detected |
+    | legit | 233 / 249 verified |
+    | throughput | about 21,800 events/hour |
+
+  - The 16 legit warnings are the rules engine's yield flag: the sim draws legit yields at 80–100 % of the maximum, and the rule flags at 98 % or more.
+- **Local chain:** contracts deployed on Hardhat, addresses in `.env`. Don't run `make relayer` during `make test-db`: both use the dev database, and the live relayer seals the tests' outbox onto the wrong chain.
+- **Verification:** `make test-db`, `make e2e` (5 passed), frontend lint / build / 77 node tests green.
 
 ### 2026-10-22 — Security leftovers closed
 - **Public POSTs:** `auth.SameOrigin` refuses a public change (sign-in, handoff, forgot, register…) sent from another site's page; callers without an `Origin` (scripts) pass. Closes the handoff login-CSRF.

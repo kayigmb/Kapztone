@@ -13,9 +13,17 @@ func (s *sim) tamper(ctx context.Context, l lot) (string, error) {
 		_, err := s.db.Exec(ctx, `UPDATE passports SET quantity = quantity + quantity / 10 + 1 WHERE id = $1`, l.final)
 		return l.final, err
 	case F2: // custody moved with no handover: the record names a holder nobody signed for
-		_, err := s.db.Exec(ctx,
-			`UPDATE passports SET organisation_id = (SELECT organisation_id FROM passports WHERE id = $2) WHERE id = $1`,
+		// Back to the producer that owns the origin facility. Not the origin
+		// passport's holder: a lot never transformed is its own origin, and
+		// that "move" would change nothing.
+		tag, err := s.db.Exec(ctx,
+			`UPDATE passports SET organisation_id = owner.id
+			 FROM (SELECT f.organisation_id AS id FROM passports o JOIN facilities f ON f.id = o.facility_id WHERE o.id = $2) owner
+			 WHERE passports.id = $1 AND passports.organisation_id <> owner.id`,
 			l.final, l.passports[0])
+		if err == nil && tag.RowsAffected() != 1 {
+			err = fmt.Errorf("lot %s: no other holder to move it to", l.code)
+		}
 		return l.final, err
 	case F5: // a copy of a sealed passport under a new id and code, hash and seal included
 		var id string

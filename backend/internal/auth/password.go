@@ -99,15 +99,15 @@ func linkHash(token string) string {
 // sendLink stores a one-use link and emails it. In dev the link is also
 // logged (never returned: the reset form must not say whether an account
 // exists). A mail failure is logged, not returned, for the same reason.
-func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time.Duration, subject, bodyFmt, actionLabel, footnote string) error {
+func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time.Duration, subject, bodyFmt, actionLabel, footnote string) (link string, err error) {
 	token, hash, err := newLinkToken()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := a.Accounts.AddLink(ctx, u.ID, kind, hash, a.now().Add(ttl)); err != nil {
-		return err
+		return "", err
 	}
-	link := a.AppURL + path + token
+	link = a.AppURL + path + token
 	if a.Dev {
 		logx.From(ctx).Info("dev: link not e-mailed", "kind", kind, "user_id", u.ID, "link", link)
 	}
@@ -130,12 +130,12 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 			}
 		}()
 	}
-	return nil
+	return link, nil
 }
 
 // passwordChanged tells the user, with a link to lock the account if it wasn't them.
 func (a *Auth) passwordChanged(ctx context.Context, u User) {
-	if err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody,
+	if _, err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody,
 		"Lock my account", "This link works once, for 7 days."); err != nil {
 		logx.From(ctx).Error("password changed notice failed", logx.KeyUser, u.ID, logx.KeyError, err)
 	}
@@ -219,7 +219,7 @@ func (a *Auth) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		u, err := a.Store.UserByEmail(ctx, email)
 		if err == nil {
-			err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody,
+			_, err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody,
 				"Choose a new password", "This link works once, for 30 minutes. If you didn't ask for it, ignore this email.")
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -282,20 +282,32 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 // SendVerify emails the user a link that confirms their email.
 func (a *Auth) SendVerify(ctx context.Context, u User) error {
+	_, err := a.sendVerify(ctx, u)
+	return err
+}
+
+func (a *Auth) sendVerify(ctx context.Context, u User) (string, error) {
 	return a.sendLink(ctx, u, LinkVerify, PathVerify, VerifyLinkTTL, MailVerifySubject, MailVerifyBody,
 		"Confirm my email", "This link works once, for 24 hours.")
 }
 
 // SendVerifyTo sends the confirmation link to a just-registered email. A
 // failure is logged: the account exists, and signing in sends a new link.
-func (a *Auth) SendVerifyTo(ctx context.Context, email string) {
+// In dev it also returns the link, as invites do, so scripts and the browser
+// tests can confirm without a mailbox; elsewhere it returns "".
+func (a *Auth) SendVerifyTo(ctx context.Context, email string) (devLink string) {
 	u, err := a.Store.UserByEmail(ctx, email)
+	var link string
 	if err == nil {
-		err = a.SendVerify(ctx, u)
+		link, err = a.sendVerify(ctx, u)
 	}
 	if err != nil {
 		logx.From(ctx).Error("verify link failed", logx.KeyError, err)
 	}
+	if !a.Dev {
+		return ""
+	}
+	return link
 }
 
 // VerifyEmail answers POST /auth/email/verify (public), the link in the

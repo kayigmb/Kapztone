@@ -271,12 +271,12 @@ Buffer: one week is held in reserve (use the Christmas–New Year period careful
 
 ## 7. Quality, security and privacy checklist
 
-- [ ] Canonical JSON + SHA-256 hashing library shared by API, relayer and verifier (with test vectors)
-- [ ] No personal or price data on-chain; only IDs, hashes, addresses, quantities, status
-- [ ] Keys encrypted at rest; master key never in the repo; rotate the relayer key before the evaluation
-- [ ] Replay protection (nonces, deadlines) on all EIP-712 messages
-- [ ] Rate limiting and caching on the public `/verify` endpoint
-- [ ] OWASP top-10 review of the API; input validation on all endpoints
-- [ ] Slither + unit tests for every contract rule, including failure paths
+- [x] Canonical JSON + SHA-256 hashing library shared by API, relayer and verifier (with test vectors)
+- [x] No personal or price data on-chain; only IDs, hashes, addresses, quantities, status
+- [ ] Keys encrypted at rest; master key never in the repo; rotate the relayer key before the evaluation (encrypted and kept out of the repo: done; rotation: before the evaluation)
+- [x] Replay protection (nonces, deadlines) on all EIP-712 messages
+- [x] Rate limiting and caching on the public `/verify` endpoint
+- [x] OWASP top-10 review of the API; input validation on all endpoints
+- [x] Slither + unit tests for every contract rule, including failure paths
 - [ ] Backups of PostgreSQL during the evaluation; uptime monitoring
 - [ ] Data handled per Rwanda's Law No. 058/2021; delete or anonymise personal data after the study

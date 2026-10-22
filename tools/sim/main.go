@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	password = "sim-password-123456"
+	password = "Sim-password-123456!" // upper, lower, number and symbol, as the API asks
 	pin      = "246810"
 )
 
@@ -208,11 +208,19 @@ func (s *sim) business(kind, name string) (org, error) {
 	slug = strings.TrimRight(slug, "-")
 	email := slug + "@example.test"
 	anon := &client{base: s.api}
-	var o struct{ ID string }
+	var o struct {
+		ID         string
+		VerifyLink string `json:"verify_link"` // dev only
+	}
 	if err := anon.json(http.MethodPost, "/orgs", map[string]string{
 		"name": name + " " + s.run, "slug": slug, "kind": kind, "user_name": name + " manager", "email": email, "password": password,
 	}, false, &o); err != nil {
 		return org{}, fmt.Errorf("register %s: %w", slug, err)
+	}
+	// Spend the confirmation link as the inbox would (the API hands it back in dev).
+	token := o.VerifyLink[strings.LastIndex(o.VerifyLink, "/")+1:]
+	if err := anon.json(http.MethodPost, "/auth/email/verify", map[string]string{"token": token}, false, nil); err != nil {
+		return org{}, fmt.Errorf("confirm email %s: %w", slug, err)
 	}
 	c, err := login(s.api, slug+".localhost", email, password, pin)
 	if err != nil {
@@ -529,7 +537,8 @@ func (s *sim) summary(took time.Duration, out string) {
 			t.falseAlarm++
 		}
 	}
-	fmt.Printf("\n%d events, %d certificates, %d cases in %s → %s\n\n", s.events, s.certs, len(s.rows), took.Round(time.Second), out)
+	fmt.Printf("\n%d events, %d certificates, %d cases in %s (%.0f events/hour) → %s\n\n",
+		s.events, s.certs, len(s.rows), took.Round(time.Second), float64(s.events)/took.Hours(), out)
 	fmt.Printf("%-6s %5s %9s %8s %6s\n", "kind", "cases", "prevented", "detected", "missed")
 	for _, k := range []string{F1, F2, F3, F4, F5, F6} {
 		if t := by[k]; t != nil {
