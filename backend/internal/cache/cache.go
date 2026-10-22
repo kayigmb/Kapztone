@@ -67,7 +67,7 @@ func (c *Cache) Del(ctx context.Context, keys ...string) {
 }
 
 // DelPattern deletes every key matching a glob pattern.
-// ponytail: SCAN walks the whole keyspace, fine while invalidations are rare
+// SCAN walks the whole keyspace, fine while invalidations are rare
 // (a role or organisation change); switch to tag sets if they become frequent.
 func (c *Cache) DelPattern(ctx context.Context, pattern string) {
 	iter := c.rdb.Scan(ctx, 0, pattern, 500).Iterator()

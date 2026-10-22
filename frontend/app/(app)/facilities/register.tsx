@@ -110,7 +110,7 @@ export function Register() {
         capacity_period: v.capacity_period,
         location: v.location,
       });
-      // ponytail: two calls (the API takes the licence as its own upload); a failed upload leaves the facility without one.
+      // Two calls (the API takes the licence as its own upload); a failed upload leaves the facility without one.
       if (licence)
         await endpoints
           .uploadLicence(f.data.id, licence)

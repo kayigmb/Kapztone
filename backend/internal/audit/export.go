@@ -81,7 +81,7 @@ const (
 	pdfRowH     = 5.5
 	pdfFontSize = 7.5
 	// MaxPDFRows caps a PDF; past it the last line says how many were left out
-	// and points to the CSV. ponytail: a cap, not streaming; raise it or page the PDF if anyone needs more.
+	// and points to the CSV. A cap, not streaming; raise it or page the PDF if anyone needs more.
 	MaxPDFRows = 5000
 )
 
@@ -110,15 +110,7 @@ func (p *pdfExport) Close(ctx context.Context) {
 	pageW, _ := doc.GetPageSize()
 	colW := (pageW - 2*pdfMargin) / float64(len(p.columns))
 
-	header := func() {
-		doc.SetFont("Helvetica", "B", pdfFontSize)
-		doc.SetFillColor(238, 242, 241)
-		for _, c := range p.columns {
-			doc.CellFormat(colW, pdfRowH+1, tr(fit(doc, c, colW)), "B", 0, "L", true, 0, "")
-		}
-		doc.Ln(-1)
-		doc.SetFont("Helvetica", "", pdfFontSize)
-	}
+	header := func() { p.header(doc, tr, colW) }
 	doc.SetHeaderFunc(func() {
 		if doc.PageNo() > 1 {
 			header()
@@ -129,7 +121,6 @@ func (p *pdfExport) Close(ctx context.Context) {
 		doc.SetFont("Helvetica", "", 7)
 		doc.CellFormat(0, 4, fmt.Sprintf("ChainTrack · %s · page %d", p.title, doc.PageNo()), "", 0, "R", false, 0, "")
 	})
-
 	doc.AddPage()
 	doc.SetFont("Helvetica", "B", 14)
 	doc.CellFormat(0, 8, tr(p.title), "", 1, "L", false, 0, "")
@@ -137,6 +128,26 @@ func (p *pdfExport) Close(ctx context.Context) {
 	doc.CellFormat(0, 5, tr(fmt.Sprintf("Generated %s UTC · %s", time.Now().UTC().Format("2 Jan 2006 15:04"), p.filters)), "", 1, "L", false, 0, "")
 	doc.Ln(2)
 	header()
+	p.body(doc, tr, colW)
+
+	p.w.Header().Set("Content-Type", "application/pdf")
+	p.w.Header().Set("Content-Disposition", attachment(p.name+".pdf"))
+	if err := doc.Output(p.w); err != nil {
+		logx.From(ctx).Error("pdf export failed", "export", p.name, logx.KeyError, err)
+	}
+}
+
+func (p *pdfExport) header(doc *fpdf.Fpdf, tr func(string) string, colW float64) {
+	doc.SetFont("Helvetica", "B", pdfFontSize)
+	doc.SetFillColor(238, 242, 241)
+	for _, c := range p.columns {
+		doc.CellFormat(colW, pdfRowH+1, tr(fit(doc, c, colW)), "B", 0, "L", true, 0, "")
+	}
+	doc.Ln(-1)
+	doc.SetFont("Helvetica", "", pdfFontSize)
+}
+
+func (p *pdfExport) body(doc *fpdf.Fpdf, tr func(string) string, colW float64) {
 	for _, row := range p.rows {
 		for i := range p.columns {
 			cell := ""
@@ -153,12 +164,6 @@ func (p *pdfExport) Close(ctx context.Context) {
 	if p.dropped > 0 {
 		doc.Ln(2)
 		doc.CellFormat(0, pdfRowH, fmt.Sprintf("%d more rows left out; download the CSV for every row.", p.dropped), "", 1, "L", false, 0, "")
-	}
-
-	p.w.Header().Set("Content-Type", "application/pdf")
-	p.w.Header().Set("Content-Disposition", attachment(p.name+".pdf"))
-	if err := doc.Output(p.w); err != nil {
-		logx.From(ctx).Error("pdf export failed", "export", p.name, logx.KeyError, err)
 	}
 }
 

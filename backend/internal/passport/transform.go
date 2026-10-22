@@ -205,178 +205,233 @@ func (s Store) Transform(ctx context.Context, orgID, userID string, in Transform
 // is the platform's own split stage (yield 1, no evidence): a handover of part
 // of a lot cuts that part into its own passport this way first.
 func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in TransformInput, now time.Time, split bool) (Transform, error) {
-	// Lock the inputs, always in id order so two transforms cannot deadlock.
-	ids := make([]string, len(in.Inputs))
-	for i, src := range in.Inputs {
-		ids[i] = src.PassportID
+	j := &transformJob{tx: tx, orgID: orgID, userID: userID, in: in, now: now}
+	locked, err := lockInputs(ctx, tx, in.Inputs)
+	if err != nil {
+		return Transform{}, err
 	}
-	type held struct {
-		holder, status, commodity, unit string
-		remaining                       int64
+	totalIn, err := j.checkInputs(locked)
+	if err != nil {
+		return Transform{}, err
+	}
+	stage, err := j.rule(ctx, split)
+	if err != nil {
+		return Transform{}, err
+	}
+	for _, u := range j.used {
+		if err := requireEvidence(ctx, tx, stage, attestation.SubjectPassport, u.PassportID); err != nil {
+			return Transform{}, err
+		}
+	}
+	if err := j.checkYield(totalIn); err != nil {
+		return Transform{}, err
+	}
+	if err := j.plan(ctx); err != nil {
+		return Transform{}, err
+	}
+	return j.write(ctx)
+}
+
+// transformJob carries one transform from its checks to its rows.
+type transformJob struct {
+	tx                          pgx.Tx
+	orgID, userID               string
+	in                          TransformInput
+	now                         time.Time
+	commodity, unit, templateID string
+	ppm                         int64
+	used                        []Used
+	id, dataHash                string
+	queued                      []chain.TransformOutput
+}
+
+type heldInput struct {
+	holder, status, commodity, unit string
+	remaining                       int64
+}
+
+// lockInputs locks the input passports, always in id order so two transforms cannot deadlock.
+func lockInputs(ctx context.Context, tx pgx.Tx, inputs []TransformSource) (map[string]heldInput, error) {
+	ids := make([]string, len(inputs))
+	for i, src := range inputs {
+		ids[i] = src.PassportID
 	}
 	rows, err := tx.Query(ctx,
 		`SELECT id::text, organisation_id::text, status, commodity, unit, remaining FROM passports
 		 WHERE id = ANY($1::uuid[]) AND NOT is_deleted ORDER BY id FOR UPDATE`, ids)
 	if err != nil {
-		return Transform{}, err
+		return nil, err
 	}
-	locked := map[string]held{}
+	defer rows.Close()
+	locked := map[string]heldInput{}
 	for rows.Next() {
 		var id string
-		var h held
+		var h heldInput
 		if err := rows.Scan(&id, &h.holder, &h.status, &h.commodity, &h.unit, &h.remaining); err != nil {
-			rows.Close()
-			return Transform{}, err
+			return nil, err
 		}
 		locked[id] = h
 	}
-	if err := rows.Err(); err != nil {
-		return Transform{}, err
-	}
+	return locked, rows.Err()
+}
 
-	var (
-		commodity, unit string
-		totalIn         int64
-		used            = make([]Used, len(in.Inputs))
-	)
-	for i, src := range in.Inputs {
+// checkInputs: every input is held and active, all of one commodity and unit,
+// with enough left. It returns the total going in.
+func (j *transformJob) checkInputs(locked map[string]heldInput) (totalIn int64, err error) {
+	j.used = make([]Used, len(j.in.Inputs))
+	for i, src := range j.in.Inputs {
 		id := strings.ToLower(src.PassportID)
 		h, ok := locked[id]
 		switch {
-		case !ok || h.holder != orgID:
-			return Transform{}, ErrInputNotHeld
+		case !ok || h.holder != j.orgID:
+			return 0, ErrInputNotHeld
 		case h.status != StatusActive:
-			return Transform{}, ErrNotActive
-		case i > 0 && (h.commodity != commodity || h.unit != unit):
-			return Transform{}, ErrMixedInputs
+			return 0, ErrNotActive
+		case i > 0 && (h.commodity != j.commodity || h.unit != j.unit):
+			return 0, ErrMixedInputs
 		case src.Quantity > h.remaining:
-			return Transform{}, InsufficientError{PassportID: id, Requested: src.Quantity, Remaining: h.remaining, Unit: h.unit}
+			return 0, InsufficientError{PassportID: id, Requested: src.Quantity, Remaining: h.remaining, Unit: h.unit}
 		}
-		commodity, unit = h.commodity, h.unit
+		j.commodity, j.unit = h.commodity, h.unit
 		totalIn += src.Quantity
-		used[i] = Used{PassportID: id, QuantityUsed: src.Quantity}
+		j.used[i] = Used{PassportID: id, QuantityUsed: src.Quantity}
 	}
+	return totalIn, nil
+}
 
-	var (
-		templateID string
-		stage      template.Stage
-	)
+// rule finds the stage and its yield. A split keeps everything (yield 1);
+// publishing a template queues the split yield, and one published before
+// splits existed gets it now, ahead of this transform.
+func (j *transformJob) rule(ctx context.Context, split bool) (template.Stage, error) {
+	var stage template.Stage
+	var err error
 	if split {
-		if templateID, _, err = liveStages(ctx, tx, commodity); err != nil {
-			return Transform{}, err
+		if j.templateID, _, err = liveStages(ctx, j.tx, j.commodity); err != nil {
+			return stage, err
 		}
 		whole := 1.0
 		stage = template.Stage{Key: template.StageSplit, MaxYield: &whole}
-		// Publishing a template queues the split yield; one published before
-		// splits existed gets it now, ahead of this transform.
-		err = template.QueueSplitYield(ctx, tx, templateID, commodity)
+		err = template.QueueSplitYield(ctx, j.tx, j.templateID, j.commodity)
 	} else {
-		templateID, stage, err = transformStage(ctx, tx, commodity, in.Stage)
+		j.templateID, stage, err = transformStage(ctx, j.tx, j.commodity, j.in.Stage)
 	}
 	if err != nil {
-		return Transform{}, err
+		return stage, err
 	}
-	ppm := template.YieldPPM(*stage.MaxYield)
-	// The stage's evidence must be on every input.
-	for _, u := range used {
-		if err := requireEvidence(ctx, tx, stage, attestation.SubjectPassport, u.PassportID); err != nil {
-			return Transform{}, err
-		}
-	}
+	j.ppm = template.YieldPPM(*stage.MaxYield)
+	return stage, nil
+}
 
-	// Mass balance, compared without dividing exactly as the contract does,
-	// so rounding can never favour the caller.
+// checkYield is the mass balance, compared without dividing exactly as the
+// contract does, so rounding can never favour the caller.
+func (j *transformJob) checkYield(totalIn int64) error {
 	var totalOut int64
-	for _, out := range in.Outputs {
+	for _, out := range j.in.Outputs {
 		totalOut += out.Quantity
 	}
-	allowed := new(big.Int).Mul(big.NewInt(totalIn), big.NewInt(ppm))
+	allowed := new(big.Int).Mul(big.NewInt(totalIn), big.NewInt(j.ppm))
 	if new(big.Int).Mul(big.NewInt(totalOut), big.NewInt(chain.YieldScale)).Cmp(allowed) > 0 {
-		return Transform{}, YieldError{Outputs: totalOut, Max: allowed.Div(allowed, big.NewInt(chain.YieldScale)).Int64(), Unit: unit}
+		return YieldError{Outputs: totalOut, Max: allowed.Div(allowed, big.NewInt(chain.YieldScale)).Int64(), Unit: j.unit}
 	}
+	return nil
+}
 
-	id, err := newID(ctx, tx)
-	if err != nil {
-		return Transform{}, err
+// plan gives the transform and each output an id and a data hash.
+func (j *transformJob) plan(ctx context.Context) error {
+	var err error
+	if j.id, err = newID(ctx, j.tx); err != nil {
+		return err
 	}
-	outputs := make([]made, len(in.Outputs))
-	queued := make([]chain.TransformOutput, len(in.Outputs))
-	for i, out := range in.Outputs {
-		outID, err := newID(ctx, tx)
+	outputs := make([]made, len(j.in.Outputs))
+	j.queued = make([]chain.TransformOutput, len(j.in.Outputs))
+	for i, out := range j.in.Outputs {
+		outID, err := newID(ctx, j.tx)
 		if err != nil {
-			return Transform{}, err
+			return err
 		}
-		hash, err := chain.DataHash(outputRecord{outID, orgID, id, templateID, commodity, unit, out.Quantity})
+		hash, err := chain.DataHash(outputRecord{outID, j.orgID, j.id, j.templateID, j.commodity, j.unit, out.Quantity})
 		if err != nil {
-			return Transform{}, err
+			return err
 		}
 		outputs[i] = made{PassportID: outID, Quantity: out.Quantity}
-		queued[i] = chain.TransformOutput{PassportID: outID, Quantity: out.Quantity, DataHash: chain.Hex(hash)}
+		j.queued[i] = chain.TransformOutput{PassportID: outID, Quantity: out.Quantity, DataHash: chain.Hex(hash)}
 	}
-	hash, err := chain.DataHash(transformRecord{id, orgID, commodity, in.Stage, ppm, used, outputs})
-	if err != nil {
-		return Transform{}, err
-	}
-	dataHash := chain.Hex(hash)
+	hash, err := chain.DataHash(transformRecord{j.id, j.orgID, j.commodity, j.in.Stage, j.ppm, j.used, outputs})
+	j.dataHash = chain.Hex(hash)
+	return err
+}
 
-	t := Transform{ID: id, OrganisationID: orgID, Commodity: commodity, Stage: in.Stage, MaxYieldPPM: ppm,
-		DataHash: dataHash, Inputs: used}
-	err = tx.QueryRow(ctx,
+func (j *transformJob) write(ctx context.Context) (Transform, error) {
+	t := Transform{ID: j.id, OrganisationID: j.orgID, Commodity: j.commodity, Stage: j.in.Stage, MaxYieldPPM: j.ppm,
+		DataHash: j.dataHash, Inputs: j.used}
+	err := j.tx.QueryRow(ctx,
 		`INSERT INTO transforms (id, organisation_id, commodity, stage, max_yield_ppm, data_hash, created_by)
 		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid) RETURNING created_at, template_version`,
-		id, orgID, commodity, in.Stage, ppm, dataHash, userID).Scan(&t.CreatedAt, &t.TemplateVersion)
+		j.id, j.orgID, j.commodity, j.in.Stage, j.ppm, j.dataHash, j.userID).Scan(&t.CreatedAt, &t.TemplateVersion)
 	if err != nil {
 		return Transform{}, err
 	}
+	if err := j.consumeInputs(ctx); err != nil {
+		return Transform{}, err
+	}
+	if t.Outputs, err = j.createOutputs(ctx); err != nil {
+		return Transform{}, err
+	}
+	payload := chain.Transform{TransformID: j.id, Stage: j.in.Stage, Outputs: j.queued, DataHash: j.dataHash}
+	for _, u := range j.used {
+		payload.Inputs = append(payload.Inputs, u.PassportID)
+		payload.InputsUsed = append(payload.InputsUsed, u.QuantityUsed)
+	}
+	return t, chain.Enqueue(ctx, j.tx, chain.KindTransform, j.id, payload)
+}
 
-	const event = `INSERT INTO trace_events (passport_id, ref_id, kind, from_org, to_org, quantity, data_hash)
-	               VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, $6, $7)`
-	for _, u := range used {
-		// An input used up entirely is consumed; the contract marks it the same way.
-		if _, err := tx.Exec(ctx,
+const transformEvent = `INSERT INTO trace_events (passport_id, ref_id, kind, from_org, to_org, quantity, data_hash)
+	VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, $6, $7)`
+
+// consumeInputs takes what was used from each input; one used up entirely is
+// consumed, as the contract marks it.
+func (j *transformJob) consumeInputs(ctx context.Context) error {
+	for _, u := range j.used {
+		if _, err := j.tx.Exec(ctx,
 			`UPDATE passports SET remaining = remaining - $2,
 			        status = CASE WHEN remaining = $2 THEN $3 ELSE status END
 			 WHERE id = $1::uuid`, u.PassportID, u.QuantityUsed, StatusConsumed); err != nil {
-			return Transform{}, err
+			return err
 		}
-		if _, err := tx.Exec(ctx,
+		if _, err := j.tx.Exec(ctx,
 			`INSERT INTO transform_inputs (transform_id, passport_id, quantity_used) VALUES ($1::uuid, $2::uuid, $3)`,
-			id, u.PassportID, u.QuantityUsed); err != nil {
-			return Transform{}, err
+			j.id, u.PassportID, u.QuantityUsed); err != nil {
+			return err
 		}
-		if _, err := tx.Exec(ctx, event, u.PassportID, id, EventTransform, orgID, nil, u.QuantityUsed, dataHash); err != nil {
-			return Transform{}, err
+		if _, err := j.tx.Exec(ctx, transformEvent, u.PassportID, j.id, EventTransform, j.orgID, nil, u.QuantityUsed, j.dataHash); err != nil {
+			return err
 		}
 	}
-	for _, q := range queued {
-		code, err := nextCode(ctx, tx, orgID, now)
+	return nil
+}
+
+func (j *transformJob) createOutputs(ctx context.Context) ([]Passport, error) {
+	var out []Passport
+	for _, q := range j.queued {
+		code, err := nextCode(ctx, j.tx, j.orgID, j.now)
 		if err != nil {
-			return Transform{}, err
+			return nil, err
 		}
-		p, err := onePassport(tx.Query(ctx,
+		p, err := onePassport(j.tx.Query(ctx,
 			`INSERT INTO passports AS p (id, organisation_id, transform_id, template_id, commodity, unit,
 			                             quantity, remaining, status, data_hash, issued_by, code)
 			 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10::uuid, $11)
 			 RETURNING `+columns,
-			q.PassportID, orgID, id, templateID, commodity, unit, q.Quantity, StatusActive, q.DataHash, userID, code))
+			q.PassportID, j.orgID, j.id, j.templateID, j.commodity, j.unit, q.Quantity, StatusActive, q.DataHash, j.userID, code))
 		if err != nil {
-			return Transform{}, err
+			return nil, err
 		}
-		if _, err := tx.Exec(ctx, event, q.PassportID, id, EventTransform, nil, orgID, q.Quantity, q.DataHash); err != nil {
-			return Transform{}, err
+		if _, err := j.tx.Exec(ctx, transformEvent, q.PassportID, j.id, EventTransform, nil, j.orgID, q.Quantity, q.DataHash); err != nil {
+			return nil, err
 		}
-		t.Outputs = append(t.Outputs, p)
+		out = append(out, p)
 	}
-
-	payload := chain.Transform{TransformID: id, Stage: in.Stage, Outputs: queued, DataHash: dataHash}
-	for _, u := range used {
-		payload.Inputs = append(payload.Inputs, u.PassportID)
-		payload.InputsUsed = append(payload.InputsUsed, u.QuantityUsed)
-	}
-	if err := chain.Enqueue(ctx, tx, chain.KindTransform, id, payload); err != nil {
-		return Transform{}, err
-	}
-	return t, nil
+	return out, nil
 }
 
 // Genealogy is a passport's family tree in one direction.
@@ -436,11 +491,21 @@ func (s Store) Genealogy(ctx context.Context, id, gate, direction string) (Genea
 	if g.Nodes, err = pgx.CollectRows(rows, scan); err != nil {
 		return Genealogy{}, err
 	}
-	ids := make([]string, len(g.Nodes))
-	for i, n := range g.Nodes {
+	edges, err := s.edgesBetween(ctx, g.Nodes)
+	if err != nil {
+		return Genealogy{}, err
+	}
+	g.Edges = append(g.Edges, edges...)
+	return g, nil
+}
+
+// edgesBetween lists the transforms that link these passports, parent to child.
+func (s Store) edgesBetween(ctx context.Context, nodes []Passport) ([]Edge, error) {
+	ids := make([]string, len(nodes))
+	for i, n := range nodes {
 		ids[i] = n.ID
 	}
-	rows, err = s.Pool.Query(ctx,
+	rows, err := s.Pool.Query(ctx,
 		`SELECT ti.passport_id::text, c.id::text, tr.id::text, tr.stage, ti.quantity_used
 		 FROM transform_inputs ti
 		 JOIN transforms tr ON tr.id = ti.transform_id
@@ -448,18 +513,13 @@ func (s Store) Genealogy(ctx context.Context, id, gate, direction string) (Genea
 		 WHERE ti.passport_id = ANY($1::uuid[]) AND c.id = ANY($1::uuid[]) AND NOT ti.is_deleted
 		 ORDER BY tr.created_at, ti.passport_id, c.id`, ids)
 	if err != nil {
-		return Genealogy{}, err
+		return nil, err
 	}
-	edges, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Edge, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Edge, error) {
 		var e Edge
 		err := row.Scan(&e.ParentID, &e.ChildID, &e.TransformID, &e.Stage, &e.QuantityUsed)
 		return e, err
 	})
-	if err != nil {
-		return Genealogy{}, err
-	}
-	g.Edges = append(g.Edges, edges...)
-	return g, nil
 }
 
 // RevokeTree revokes a passport and everything made from it, oldest first,
@@ -479,39 +539,47 @@ func RevokeTree(ctx context.Context, tx pgx.Tx, rootID, refID, reasonHash string
 	if err != nil {
 		return 0, err
 	}
-
 	revoked := 0
 	for _, id := range ids {
-		var holder string
-		var remaining int64
-		err := tx.QueryRow(ctx,
-			`UPDATE passports SET status = $2 WHERE id = $1::uuid AND status <> $2 AND NOT is_deleted
-			 RETURNING organisation_id::text, remaining`, id, StatusRevoked).Scan(&holder, &remaining)
-		if errors.Is(err, pgx.ErrNoRows) {
-			continue
-		}
+		done, err := revokeOne(ctx, tx, id, refID, reasonHash)
 		if err != nil {
 			return 0, err
 		}
-		var eventID string
-		err = tx.QueryRow(ctx,
-			`INSERT INTO trace_events (passport_id, ref_id, kind, from_org, quantity, data_hash)
-			 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6) RETURNING id::text`,
-			id, refID, EventRevoke, holder, remaining, reasonHash).Scan(&eventID)
-		if err != nil {
-			return 0, err
+		if done {
+			revoked++
 		}
-		// The queued item's subject is the journey event, which receives the transaction hash.
-		err = chain.Enqueue(ctx, tx, chain.KindPassportRevoke, eventID, chain.PassportReason{PassportID: id, ReasonHash: reasonHash})
-		if err != nil {
-			return 0, err
-		}
-		if err := notify.Add(ctx, tx, holder, notify.KindPassportRevoked, id, MsgNotifyPassportRevoked); err != nil {
-			return 0, err
-		}
-		revoked++
 	}
 	return revoked, nil
+}
+
+// revokeOne revokes a passport not yet revoked, records it on its journey,
+// queues it for the chain and tells its holder.
+func revokeOne(ctx context.Context, tx pgx.Tx, id, refID, reasonHash string) (bool, error) {
+	var holder string
+	var remaining int64
+	err := tx.QueryRow(ctx,
+		`UPDATE passports SET status = $2 WHERE id = $1::uuid AND status <> $2 AND NOT is_deleted
+		 RETURNING organisation_id::text, remaining`, id, StatusRevoked).Scan(&holder, &remaining)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var eventID string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO trace_events (passport_id, ref_id, kind, from_org, quantity, data_hash)
+		 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6) RETURNING id::text`,
+		id, refID, EventRevoke, holder, remaining, reasonHash).Scan(&eventID)
+	if err != nil {
+		return false, err
+	}
+	// The queued item's subject is the journey event, which receives the transaction hash.
+	err = chain.Enqueue(ctx, tx, chain.KindPassportRevoke, eventID, chain.PassportReason{PassportID: id, ReasonHash: reasonHash})
+	if err != nil {
+		return false, err
+	}
+	return true, notify.Add(ctx, tx, holder, notify.KindPassportRevoked, id, MsgNotifyPassportRevoked)
 }
 
 // RecordHash rebuilds, from the rows as they are now, the hash a passport's

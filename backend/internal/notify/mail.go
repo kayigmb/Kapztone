@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
@@ -23,7 +24,7 @@ import (
 // Mailer sends the e-mail copy of each notification to the organisation's
 // active users.
 //
-// ponytail: one loop in the API process, at-least-once: a crash between
+// One loop in the API process, at-least-once: a crash between
 // sending and marking sends that e-mail again. Move to its own worker with a
 // provider's idempotency key if duplicates ever matter.
 type Mailer struct {
@@ -69,7 +70,7 @@ func NewMailer(pool *pgxpool.Pool, s SMTP) *Mailer {
 
 // send is smtp.SendMail, except that with requireTLS a server that does not
 // offer STARTTLS is refused instead of being written to in plain text.
-// ponytail: STARTTLS only (port 587); add tls.Dial if a provider needs port 465.
+// STARTTLS only (port 587); add tls.Dial if a provider needs port 465.
 func send(addr string, a smtp.Auth, from string, to []string, msg []byte, requireTLS bool) error {
 	host, _, _ := net.SplitHostPort(addr)
 	c, err := smtp.Dial(addr)
@@ -132,35 +133,10 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 	}
 	defer tx.Rollback(ctx)
 
-	// SKIP LOCKED: two API processes never pick the same notification.
-	rows, err := tx.Query(ctx,
-		`SELECT n.id::text, n.message,
-		        ARRAY(SELECT u.email::text FROM userscope s JOIN users u ON u.id = s.user_id
-		              WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
-		                AND NOT u.is_deleted AND u.status = $3)
-		 FROM notifications n
-		 WHERE n.emailed_at IS NULL AND n.created_at > now() - make_interval(secs => $1) AND NOT n.is_deleted
-		 ORDER BY n.created_at LIMIT $2 FOR UPDATE OF n SKIP LOCKED`, mailMaxAge.Seconds(), mailBatch, auth.UserActive)
+	batch, err := pendingMail(ctx, tx)
 	if err != nil {
 		return err
 	}
-	type pending struct {
-		id, message string
-		to          []string
-	}
-	var batch []pending
-	for rows.Next() {
-		var p pending
-		if err := rows.Scan(&p.id, &p.message, &p.to); err != nil {
-			rows.Close()
-			return err
-		}
-		batch = append(batch, p)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
 	for _, p := range batch {
 		if len(p.to) > 0 {
 			if err := m.Send(m.Addr, m.Auth, m.From, p.to, m.message(p.to, p.message)); err != nil {
@@ -172,6 +148,32 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+type pendingNote struct {
+	id, message string
+	to          []string
+}
+
+// pendingMail locks the next batch with its recipients. SKIP LOCKED: two API
+// processes never pick the same notification.
+func pendingMail(ctx context.Context, tx pgx.Tx) ([]pendingNote, error) {
+	rows, err := tx.Query(ctx,
+		`SELECT n.id::text, n.message,
+		        ARRAY(SELECT u.email::text FROM userscope s JOIN users u ON u.id = s.user_id
+		              WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
+		                AND NOT u.is_deleted AND u.status = $3)
+		 FROM notifications n
+		 WHERE n.emailed_at IS NULL AND n.created_at > now() - make_interval(secs => $1) AND NOT n.is_deleted
+		 ORDER BY n.created_at LIMIT $2 FOR UPDATE OF n SKIP LOCKED`, mailMaxAge.Seconds(), mailBatch, auth.UserActive)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (pendingNote, error) {
+		var p pendingNote
+		err := row.Scan(&p.id, &p.message, &p.to)
+		return p, err
+	})
 }
 
 // message builds a notification e-mail: the plain-text body the app already

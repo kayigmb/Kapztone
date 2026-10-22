@@ -49,7 +49,21 @@ func (in *Input) Validate() string {
 	if in.Name == "" {
 		in.Name = in.Commodity
 	}
+	if problem := in.headerProblem(); problem != "" {
+		return problem
+	}
+	seen := map[string]bool{}
+	for i, st := range in.Stages {
+		at := fmt.Sprintf("stage %d (%s): ", i+1, st.Key)
+		if problem := stageProblem(i, st, seen); problem != "" {
+			return at + problem
+		}
+		seen[st.Key] = true
+	}
+	return ""
+}
 
+func (in *Input) headerProblem() string {
 	switch {
 	case !keyPattern.MatchString(in.Commodity):
 		return "commodity must be " + keyRule
@@ -72,48 +86,51 @@ func (in *Input) Validate() string {
 	case !slices.Contains(in.Stages[0].Events, EventIssue):
 		return "the first stage must allow " + EventIssue
 	}
+	return ""
+}
 
-	seen := map[string]bool{}
-	for i, st := range in.Stages {
-		at := fmt.Sprintf("stage %d (%s): ", i+1, st.Key)
-		switch {
-		case !keyPattern.MatchString(st.Key):
-			return at + "key must be " + keyRule
-		case seen[st.Key]:
-			return at + "key is used twice"
-		case st.Key == StageSplit:
-			return at + "key " + StageSplit + " is reserved for splitting a lot at a handover"
-		case st.HandoverTolerance != nil && !slices.Contains(st.Events, EventHandover):
-			return at + "handoverTolerance only applies to a stage that allows " + EventHandover
-		case st.HandoverTolerance != nil && (*st.HandoverTolerance < 0 || *st.HandoverTolerance > 100):
-			return at + "handoverTolerance must be a percentage from 0 to 100"
-		case len(st.Events) == 0:
-			return at + "needs at least one event"
-		case i > 0 && slices.Contains(st.Events, EventIssue):
-			return at + EventIssue + " is only allowed in the first stage"
+// stageProblem checks stage i; seen holds the keys of the stages before it.
+func stageProblem(i int, st Stage, seen map[string]bool) string {
+	switch {
+	case !keyPattern.MatchString(st.Key):
+		return "key must be " + keyRule
+	case seen[st.Key]:
+		return "key is used twice"
+	case st.Key == StageSplit:
+		return "key " + StageSplit + " is reserved for splitting a lot at a handover"
+	case st.HandoverTolerance != nil && !slices.Contains(st.Events, EventHandover):
+		return "handoverTolerance only applies to a stage that allows " + EventHandover
+	case st.HandoverTolerance != nil && (*st.HandoverTolerance < 0 || *st.HandoverTolerance > 100):
+		return "handoverTolerance must be a percentage from 0 to 100"
+	case len(st.Events) == 0:
+		return "needs at least one event"
+	case i > 0 && slices.Contains(st.Events, EventIssue):
+		return EventIssue + " is only allowed in the first stage"
+	}
+	if problem := eventsProblem(st.Events); problem != "" {
+		return problem
+	}
+	switch {
+	case st.MaxYield != nil && !slices.Contains(st.Events, EventTransform):
+		return "maxYield only applies to a stage that allows " + EventTransform
+	case st.MaxYield != nil && *st.MaxYield <= 0:
+		return "maxYield must be above 0"
+	}
+	for _, ev := range st.RequiredEvidence {
+		if !keyPattern.MatchString(ev) {
+			return "requiredEvidence entries must be " + keyRule
 		}
-		seen[st.Key] = true
+	}
+	return ""
+}
 
-		for j, ev := range st.Events {
-			if !slices.Contains(Events, ev) {
-				return at + "events must be from: " + strings.Join(Events, ", ")
-			}
-			if slices.Contains(st.Events[:j], ev) {
-				return at + "event " + ev + " is listed twice"
-			}
+func eventsProblem(events []string) string {
+	for j, ev := range events {
+		if !slices.Contains(Events, ev) {
+			return "events must be from: " + strings.Join(Events, ", ")
 		}
-		if st.MaxYield != nil {
-			switch {
-			case !slices.Contains(st.Events, EventTransform):
-				return at + "maxYield only applies to a stage that allows " + EventTransform
-			case *st.MaxYield <= 0:
-				return at + "maxYield must be above 0"
-			}
-		}
-		for _, ev := range st.RequiredEvidence {
-			if !keyPattern.MatchString(ev) {
-				return at + "requiredEvidence entries must be " + keyRule
-			}
+		if slices.Contains(events[:j], ev) {
+			return "event " + ev + " is listed twice"
 		}
 	}
 	return ""

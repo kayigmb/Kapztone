@@ -243,27 +243,8 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, hash := r.Context(), linkHash(in.Token)
-	// Checked before the link is spent, so a refused password leaves the link usable.
-	userID, err := a.Accounts.LinkUser(ctx, LinkReset, hash, a.now())
-	if errors.Is(err, ErrNotFound) {
-		httpx.Error(w, http.StatusNotFound, MsgLinkInvalid)
-		return
-	}
-	if err != nil {
-		httpx.ServerError(w, "read reset link", err)
-		return
-	}
-	u, err := a.Accounts.UserByID(ctx, userID)
-	if err != nil {
-		httpx.ServerError(w, "load user", err)
-		return
-	}
-	if msg, err := a.passwordProblem(ctx, u.ID, in.New); err != nil || msg != "" {
-		if err != nil {
-			httpx.ServerError(w, "check password history", err)
-		} else {
-			httpx.Error(w, http.StatusBadRequest, msg)
-		}
+	u, ok := a.resetUser(w, r, hash, in.New)
+	if !ok {
 		return
 	}
 	if _, err := a.Accounts.UseLink(ctx, LinkReset, hash, a.now()); errors.Is(err, ErrNotFound) {
@@ -278,6 +259,36 @@ func (a *Auth) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.passwordChanged(ctx, u)
 	httpx.OK(w, http.StatusOK, MsgPasswordReset, nil)
+}
+
+// resetUser finds the link's user and checks the new password against their
+// history before the link is spent, so a refused password leaves it usable.
+func (a *Auth) resetUser(w http.ResponseWriter, r *http.Request, hash, password string) (User, bool) {
+	ctx := r.Context()
+	userID, err := a.Accounts.LinkUser(ctx, LinkReset, hash, a.now())
+	if errors.Is(err, ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, MsgLinkInvalid)
+		return User{}, false
+	}
+	if err != nil {
+		httpx.ServerError(w, "read reset link", err)
+		return User{}, false
+	}
+	u, err := a.Accounts.UserByID(ctx, userID)
+	if err != nil {
+		httpx.ServerError(w, "load user", err)
+		return User{}, false
+	}
+	msg, err := a.passwordProblem(ctx, u.ID, password)
+	switch {
+	case err != nil:
+		httpx.ServerError(w, "check password history", err)
+	case msg != "":
+		httpx.Error(w, http.StatusBadRequest, msg)
+	default:
+		return u, true
+	}
+	return User{}, false
 }
 
 // SendVerify emails the user a link that confirms their email.

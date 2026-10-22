@@ -199,15 +199,8 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 	if !ok {
 		return
 	}
-	switch {
-	case enable && u.TOTPEnabled:
-		httpx.Error(w, http.StatusConflict, MsgTwoFactorAlreadyOn)
-		return
-	case enable && u.TOTPSecret == "":
-		httpx.Error(w, http.StatusConflict, MsgTwoFactorSetupFirst)
-		return
-	case !enable && !u.TOTPEnabled:
-		httpx.Error(w, http.StatusConflict, MsgTwoFactorNotOn)
+	if msg := switchProblem(u, enable); msg != "" {
+		httpx.Error(w, http.StatusConflict, msg)
 		return
 	}
 	if !a.signedInCode(w, r, u, in.Code) {
@@ -221,17 +214,9 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 		httpx.ServerError(w, "switch 2fa", err)
 		return
 	}
-	out := map[string]any{"two_factor_enabled": enable}
-	if enable {
-		// Shown once: only their hashes are kept.
-		codes, err := a.issueRecoveryCodes(r.Context(), u.ID)
-		if err != nil {
-			httpx.ServerError(w, "issue recovery codes", err)
-			return
-		}
-		out["recovery_codes"] = codes
-	} else if err := a.Store.SetRecoveryCodes(r.Context(), u.ID, nil); err != nil {
-		httpx.ServerError(w, "remove recovery codes", err)
+	out, err := a.switchRecoveryCodes(r.Context(), u.ID, enable)
+	if err != nil {
+		httpx.ServerError(w, "recovery codes", err)
 		return
 	}
 	msg := MsgTwoFactorOff
@@ -239,4 +224,28 @@ func (a *Auth) switchTwoFactor(w http.ResponseWriter, r *http.Request, enable bo
 		msg = MsgTwoFactorOn
 	}
 	httpx.OK(w, http.StatusOK, msg, out)
+}
+
+func switchProblem(u User, enable bool) string {
+	switch {
+	case enable && u.TOTPEnabled:
+		return MsgTwoFactorAlreadyOn
+	case enable && u.TOTPSecret == "":
+		return MsgTwoFactorSetupFirst
+	case !enable && !u.TOTPEnabled:
+		return MsgTwoFactorNotOn
+	}
+	return ""
+}
+
+// switchRecoveryCodes issues new codes when 2FA goes on (shown once: only
+// their hashes are kept) and removes them when it goes off.
+func (a *Auth) switchRecoveryCodes(ctx context.Context, userID string, enable bool) (map[string]any, error) {
+	out := map[string]any{"two_factor_enabled": enable}
+	if !enable {
+		return out, a.Store.SetRecoveryCodes(ctx, userID, nil)
+	}
+	codes, err := a.issueRecoveryCodes(ctx, userID)
+	out["recovery_codes"] = codes
+	return out, err
 }

@@ -94,6 +94,15 @@ func (s Store) Get(ctx context.Context) (Stats, error) {
 	defer tx.Rollback(ctx)
 
 	st := Stats{GeneratedAt: time.Now().UTC()}
+	for _, step := range []func(context.Context, pgx.Tx, *Stats) error{statusCounts, activity, volumes, outbox} {
+		if err := step(ctx, tx, &st); err != nil {
+			return Stats{}, err
+		}
+	}
+	return st, tx.Commit(ctx)
+}
+
+func statusCounts(ctx context.Context, tx pgx.Tx, st *Stats) (err error) {
 	counts := []struct {
 		dst  *[]Count
 		sql  string
@@ -110,14 +119,15 @@ func (s Store) Get(ctx context.Context) (Stats, error) {
 	}
 	for _, c := range counts {
 		if *c.dst, err = collect(ctx, tx, c.sql, c.args, pgx.RowToStructByPos[Count]); err != nil {
-			return Stats{}, err
+			return err
 		}
 	}
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE NOT is_deleted`).Scan(&st.Users); err != nil {
-		return Stats{}, err
-	}
+	return tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE NOT is_deleted`).Scan(&st.Users)
+}
 
-	// One row per day; each column counts what started (or, for handovers, finished) that day, in UTC.
+// activity is one row per day; each column counts what started (or, for
+// handovers, finished) that day, in UTC.
+func activity(ctx context.Context, tx pgx.Tx, st *Stats) (err error) {
 	st.Activity, err = collect(ctx, tx, `
 		WITH days AS (SELECT generate_series(current_date - ($1::int - 1), current_date, interval '1 day')::date AS d)
 		SELECT to_char(d, 'YYYY-MM-DD'),
@@ -127,37 +137,33 @@ func (s Store) Get(ctx context.Context) (Stats, error) {
 		  (SELECT count(*) FROM flags f WHERE NOT f.is_deleted AND f.created_at::date = d),
 		  (SELECT count(*) FROM organisations o WHERE NOT o.is_deleted AND o.created_at::date = d)
 		FROM days ORDER BY d`, []any{Days, passport.HandoverCompleted}, pgx.RowToStructByPos[Day])
-	if err != nil {
-		return Stats{}, err
-	}
+	return err
+}
 
-	// Origin passports only: what transforms make is counted at its origin already.
+// volumes counts origin passports only: what transforms make is counted at its origin already.
+func volumes(ctx context.Context, tx pgx.Tx, st *Stats) (err error) {
 	st.Volume, err = collect(ctx, tx, `
 		SELECT p.commodity, p.unit, COALESCE(sum(p.quantity), 0)::bigint, count(*)
 		FROM passports p
 		WHERE NOT p.is_deleted AND p.facility_id IS NOT NULL
 		GROUP BY 1, 2 ORDER BY 3 DESC`, nil, pgx.RowToStructByPos[Volume])
 	if err != nil {
-		return Stats{}, err
+		return err
 	}
 	st.TopOrgs, err = collect(ctx, tx, `
 		SELECT o.id::text, o.name, COALESCE(sum(p.quantity), 0)::bigint, count(*)
 		FROM passports p JOIN facilities f ON f.id = p.facility_id JOIN organisations o ON o.id = f.organisation_id
 		WHERE NOT p.is_deleted
 		GROUP BY o.id, o.name ORDER BY 3 DESC LIMIT $1`, []any{TopOrganisations}, pgx.RowToStructByPos[TopOrg])
-	if err != nil {
-		return Stats{}, err
-	}
+	return err
+}
 
-	err = tx.QueryRow(ctx, `
+func outbox(ctx context.Context, tx pgx.Tx, st *Stats) error {
+	return tx.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE status = $1), count(*) FILTER (WHERE status = $2),
 		       extract(epoch FROM now() - min(created_at) FILTER (WHERE status = $1))::float8
 		FROM chain_outbox WHERE NOT is_deleted`, chain.StatusPending, chain.StatusFailed,
 	).Scan(&st.Outbox.Pending, &st.Outbox.Failed, &st.Outbox.OldestPendingSec)
-	if err != nil {
-		return Stats{}, err
-	}
-	return st, tx.Commit(ctx)
 }
 
 func collect[T any](ctx context.Context, tx pgx.Tx, sql string, args []any, scan pgx.RowToFunc[T]) ([]T, error) {

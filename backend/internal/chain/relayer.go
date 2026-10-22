@@ -3,10 +3,8 @@ package chain
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -68,7 +66,7 @@ func Bind(a Addresses, backend bind.ContractBackend) (Contracts, error) {
 
 // Relayer carries queued changes to the chain, oldest first, one at a time.
 //
-// ponytail: one worker, strictly sequential. That keeps ordering trivially
+// One worker, strictly sequential. That keeps ordering trivially
 // correct (an organisation is registered before its facility). If throughput
 // ever matters, batch independent items, but keep per-subject order.
 type Relayer struct {
@@ -135,8 +133,10 @@ func (r *Relayer) ProcessNext(ctx context.Context) (worked bool, err error) {
 			it.ID, StatusFailed, refused.reason)
 		return true, dbErr
 	case err != nil:
-		r.Pool.Exec(ctx, `UPDATE chain_outbox SET last_error = $2, attempts = attempts + 1 WHERE id = $1::uuid`,
-			it.ID, err.Error())
+		if _, dbErr := r.Pool.Exec(ctx, `UPDATE chain_outbox SET last_error = $2, attempts = attempts + 1 WHERE id = $1::uuid`,
+			it.ID, err.Error()); dbErr != nil {
+			logx.From(ctx).Error("relayer: record failed attempt", "outbox_id", it.ID, logx.KeyError, dbErr)
+		}
 		return true, fmt.Errorf("%s %s: %w", it.Kind, it.SubjectID, err)
 	}
 	if err := r.confirm(ctx, it, hash); err != nil {
@@ -189,156 +189,11 @@ func receiptErr(receipt *types.Receipt) error {
 
 // send builds and sends the contract call for one item.
 func (r *Relayer) send(opts *bind.TransactOpts, it item) (*types.Transaction, error) {
-	decode := func(dst any) error { return json.Unmarshal(it.Payload, dst) }
-	c := r.Contracts
-
-	switch it.Kind {
-	case KindOrgRegister:
-		var p OrgRegister
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Orgs.Register(opts, MustID(p.OrgID), common.HexToAddress(p.Signer))
-
-	case KindOrgVerified:
-		var p OrgVerified
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Orgs.SetVerified(opts, MustID(p.OrgID), p.Verified)
-
-	case KindFacilityRegister:
-		var p FacilityRegister
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.DataHash)
-		if err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Facilities.Register(opts, MustID(p.FacilityID), MustID(p.OrgID), hash, big.NewInt(p.Capacity))
-
-	case KindFacilitySuspended:
-		var p FacilitySuspended
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Facilities.SetSuspended(opts, MustID(p.FacilityID), p.Suspended)
-
-	case KindPassportIssue:
-		var p PassportIssue
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.DataHash)
-		if err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Passports.Issue(opts, MustID(p.PassportID), Key(p.Commodity), MustID(p.FacilityID),
-			big.NewInt(p.Period), big.NewInt(p.Quantity), hash)
-
-	case KindHandover:
-		var p HandoverSigned
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.DataHash)
-		if err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		sigFrom, err1 := hex.DecodeString(strings.TrimPrefix(p.SigFrom, "0x"))
-		sigTo, err2 := hex.DecodeString(strings.TrimPrefix(p.SigTo, "0x"))
-		if err1 != nil || err2 != nil {
-			return nil, errRefused{"signature is not hex"}
-		}
-		return c.Custody.RecordHandover(opts, bindings.CustodyManagerHandover{
-			PassportId: MustID(p.PassportID),
-			FromOrg:    MustID(p.FromOrg),
-			ToOrg:      MustID(p.ToOrg),
-			Quantity:   big.NewInt(p.Quantity),
-			DataHash:   hash,
-			Nonce:      big.NewInt(p.Nonce),
-			Deadline:   big.NewInt(p.Deadline),
-		}, sigFrom, sigTo)
-
-	case KindMaxYieldSet:
-		var p MaxYieldSet
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Passports.SetMaxYield(opts, Key(p.Commodity), Key(p.Stage), big.NewInt(p.PartsPerMillion))
-
-	case KindOrgAccredited:
-		var p OrgAccredited
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Orgs.SetAccreditation(opts, MustID(p.OrgID), Key(p.Type), uint64(p.ValidFrom), uint64(p.ValidTo))
-
-	case KindTransform:
-		var p Transform
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.DataHash)
-		if err != nil || len(p.Inputs) != len(p.InputsUsed) {
-			return nil, errRefused{"transform payload is malformed"}
-		}
-		inputs, used := make([][32]byte, len(p.Inputs)), make([]*big.Int, len(p.Inputs))
-		for i := range p.Inputs {
-			inputs[i], used[i] = MustID(p.Inputs[i]), big.NewInt(p.InputsUsed[i])
-		}
-		outputs := make([]bindings.PassportRegistryOutput, len(p.Outputs))
-		for i, o := range p.Outputs {
-			outHash, err := FromHex(o.DataHash)
-			if err != nil {
-				return nil, errRefused{err.Error()}
-			}
-			outputs[i] = bindings.PassportRegistryOutput{Id: MustID(o.PassportID), Quantity: big.NewInt(o.Quantity), DataHash: outHash}
-		}
-		return c.Passports.Transform(opts, inputs, used, Key(p.Stage), outputs, hash)
-
-	case KindAttestationIssue:
-		var p AttestationIssue
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.DocHash)
-		if err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Attestations.Issue(opts, MustID(p.AttestationID), MustID(p.IssuerOrg), MustID(p.SubjectID),
-			Key(p.Type), hash, uint64(p.ValidFrom), uint64(p.ValidTo))
-
-	case KindAttestationRevoke:
-		var p AttestationRevoke
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Attestations.Revoke(opts, MustID(p.AttestationID))
-
-	case KindFlag, KindPassportRevoke:
-		var p PassportReason
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		hash, err := FromHex(p.ReasonHash)
-		if err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		if it.Kind == KindFlag {
-			return c.Passports.Flag(opts, MustID(p.PassportID), hash)
-		}
-		return c.Passports.Revoke(opts, MustID(p.PassportID), hash)
-
-	case KindPassportRetire:
-		var p PassportRetire
-		if err := decode(&p); err != nil {
-			return nil, errRefused{err.Error()}
-		}
-		return c.Passports.Retire(opts, MustID(p.PassportID))
+	send, ok := senders[it.Kind]
+	if !ok {
+		return nil, errRefused{"unknown kind " + it.Kind}
 	}
-	return nil, errRefused{"unknown kind " + it.Kind}
+	return send(r.Contracts, opts, it.Payload)
 }
 
 // The statements below take the item's subject id ($1) and the transaction hash ($2).

@@ -1,5 +1,5 @@
-# Development: source is bind-mounted and both services reload on save.
 name: chaintrack_dev
+
 services:
   api:
     image: golang:1.26-alpine

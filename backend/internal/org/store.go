@@ -149,28 +149,35 @@ func (s Store) Register(ctx context.Context, in Registration, passwordHash strin
 		return Organisation{}, uniqueErr(err)
 	}
 
-	var userID string
-	err = tx.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4)
-		 RETURNING id::text`, in.Email, passwordHash, in.UserName, auth.UserActive).Scan(&userID)
-	if err != nil {
-		return Organisation{}, uniqueErr(err)
-	}
-
-	tag, err := tx.Exec(ctx,
-		`INSERT INTO userscope (user_id, role_id, organisation_id)
-		 SELECT $1::uuid, id, $2::uuid FROM roles WHERE name = $3 AND NOT is_deleted`,
-		userID, o.ID, auth.RoleOrgAdmin)
-	if err != nil {
+	if err := addFirstAdmin(ctx, tx, o.ID, in, passwordHash); err != nil {
 		return Organisation{}, err
-	}
-	if tag.RowsAffected() != 1 {
-		return Organisation{}, errors.New("role " + auth.RoleOrgAdmin + " is missing: run SyncRoles")
 	}
 	if err := notify.Add(ctx, tx, notify.Platform, notify.KindOrgRegistered, o.ID, MsgNotifyRegistered); err != nil {
 		return Organisation{}, err
 	}
 	return o, tx.Commit(ctx)
+}
+
+// addFirstAdmin creates the registering user as the organisation's admin.
+func addFirstAdmin(ctx context.Context, tx pgx.Tx, orgID string, in Registration, passwordHash string) error {
+	var userID string
+	err := tx.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, name, status) VALUES ($1, $2, $3, $4)
+		 RETURNING id::text`, in.Email, passwordHash, in.UserName, auth.UserActive).Scan(&userID)
+	if err != nil {
+		return uniqueErr(err)
+	}
+	tag, err := tx.Exec(ctx,
+		`INSERT INTO userscope (user_id, role_id, organisation_id)
+		 SELECT $1::uuid, id, $2::uuid FROM roles WHERE name = $3 AND NOT is_deleted`,
+		userID, orgID, auth.RoleOrgAdmin)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return errors.New("role " + auth.RoleOrgAdmin + " is missing: run SyncRoles")
+	}
+	return nil
 }
 
 func uniqueErr(err error) error {
@@ -265,7 +272,7 @@ func (s Store) AddDocument(ctx context.Context, d Document) (doc Document, statu
 	if err != nil {
 		return Document{}, false, err
 	}
-	// ponytail: one notice per uploaded file; group them per organisation if a busy queue gets noisy.
+	// One notice per uploaded file; group them per organisation if a busy queue gets noisy.
 	if err := notify.Add(ctx, tx, notify.Platform, notify.KindDocumentsUploaded, d.OrganisationID, MsgNotifyDocuments); err != nil {
 		return Document{}, false, err
 	}
@@ -291,47 +298,17 @@ func (s Store) Review(ctx context.Context, id string, rv Review, reviewerID stri
 	}
 	defer tx.Rollback(ctx)
 
-	// Lock the organisation so a concurrent upload or review cannot interleave.
-	var (
-		was     string
-		address *string
-	)
-	err = tx.QueryRow(ctx,
-		`SELECT status, signing_address FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
-	).Scan(&was, &address)
+	was, hasKey, err := lockForReview(ctx, tx, id)
 	if err != nil {
-		return Organisation{}, notFound(err)
+		return Organisation{}, err
 	}
-	hasKey := address != nil
-
 	if rv.Decision == StatusVerified {
-		var docs int
-		err = tx.QueryRow(ctx,
-			`SELECT count(*) FROM documents WHERE organisation_id = $1::uuid AND NOT is_deleted`, id).Scan(&docs)
-		if err != nil {
+		if err := prepareVerification(ctx, tx, id, hasKey, key); err != nil {
 			return Organisation{}, err
-		}
-		if docs == 0 {
-			return Organisation{}, ErrNoDocuments
-		}
-		if !hasKey {
-			if _, err := tx.Exec(ctx,
-				`UPDATE organisations SET signing_address = $2, signing_key = $3 WHERE id = $1::uuid`,
-				id, key.Address, key.Sealed); err != nil {
-				return Organisation{}, err
-			}
-			if err := chain.Enqueue(ctx, tx, chain.KindOrgRegister, id, chain.OrgRegister{OrgID: id, Signer: key.Address}); err != nil {
-				return Organisation{}, err
-			}
 		}
 	}
-
-	// Tell the chain when the verified flag actually flips.
-	nowVerified, wasVerified := rv.Decision == StatusVerified, was == StatusVerified
-	if nowVerified != wasVerified && (nowVerified || hasKey) {
-		if err := chain.Enqueue(ctx, tx, chain.KindOrgVerified, id, chain.OrgVerified{OrgID: id, Verified: nowVerified}); err != nil {
-			return Organisation{}, err
-		}
+	if err := queueVerifiedFlip(ctx, tx, id, was, rv.Decision, hasKey); err != nil {
+		return Organisation{}, err
 	}
 
 	rows, err := tx.Query(ctx,
@@ -346,6 +323,50 @@ func (s Store) Review(ctx context.Context, id string, rv Review, reviewerID stri
 		return Organisation{}, err
 	}
 	return o, tx.Commit(ctx)
+}
+
+// lockForReview locks the organisation so a concurrent upload or review cannot interleave.
+func lockForReview(ctx context.Context, tx pgx.Tx, id string) (status string, hasKey bool, err error) {
+	var address *string
+	err = tx.QueryRow(ctx,
+		`SELECT status, signing_address FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
+	).Scan(&status, &address)
+	if err != nil {
+		return "", false, notFound(err)
+	}
+	return status, address != nil, nil
+}
+
+// prepareVerification needs at least one document, and gives a first-time
+// verified organisation its signing key, registered on chain.
+func prepareVerification(ctx context.Context, tx pgx.Tx, id string, hasKey bool, key NewKey) error {
+	var docs int
+	err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM documents WHERE organisation_id = $1::uuid AND NOT is_deleted`, id).Scan(&docs)
+	if err != nil {
+		return err
+	}
+	if docs == 0 {
+		return ErrNoDocuments
+	}
+	if hasKey {
+		return nil
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE organisations SET signing_address = $2, signing_key = $3 WHERE id = $1::uuid`,
+		id, key.Address, key.Sealed); err != nil {
+		return err
+	}
+	return chain.Enqueue(ctx, tx, chain.KindOrgRegister, id, chain.OrgRegister{OrgID: id, Signer: key.Address})
+}
+
+// queueVerifiedFlip tells the chain when the verified flag actually flips.
+func queueVerifiedFlip(ctx context.Context, tx pgx.Tx, id, was, decision string, hasKey bool) error {
+	nowVerified, wasVerified := decision == StatusVerified, was == StatusVerified
+	if nowVerified == wasVerified || (!nowVerified && !hasKey) {
+		return nil
+	}
+	return chain.Enqueue(ctx, tx, chain.KindOrgVerified, id, chain.OrgVerified{OrgID: id, Verified: nowVerified})
 }
 
 // Accreditation lets an organisation issue one type of certificate for a time.
@@ -405,80 +426,114 @@ func (s Store) SetAccreditations(ctx context.Context, orgID string, grants []Gra
 	}
 	defer tx.Rollback(ctx)
 
-	var kind, status string
-	err = tx.QueryRow(ctx,
-		`SELECT kind, status FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, orgID,
-	).Scan(&kind, &status)
-	if err != nil {
-		return nil, notFound(err)
-	}
-	if len(grants) > 0 && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
-		return nil, ErrNotIssuer
-	}
-
-	rows, err := tx.Query(ctx, evidenceKeys)
-	if err != nil {
+	if err := lockIssuer(ctx, tx, orgID, len(grants) > 0); err != nil {
 		return nil, err
 	}
-	known, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
+	if err := checkTypes(ctx, tx, grants); err != nil {
 		return nil, err
 	}
-	for _, g := range grants {
-		if !slices.Contains(known, g.Type) {
-			return nil, ErrUnknownType
-		}
-	}
-
 	current, err := accreditationsOf(ctx, tx, orgID)
 	if err != nil {
 		return nil, err
 	}
-	queue := func(subjectID, certType string, from, to int64) error {
-		return chain.Enqueue(ctx, tx, chain.KindOrgAccredited, subjectID,
-			chain.OrgAccredited{OrgID: orgID, Type: certType, ValidFrom: from, ValidTo: to})
+	if err := applyGrants(ctx, tx, orgID, current, grants); err != nil {
+		return nil, err
 	}
-
-	for _, g := range grants {
-		i := slices.IndexFunc(current, func(a Accreditation) bool { return a.Type == g.Type })
-		var id string
-		switch {
-		case i < 0:
-			err = tx.QueryRow(ctx,
-				`INSERT INTO accreditations (organisation_id, cert_type, valid_from, valid_to)
-				 VALUES ($1::uuid, $2, $3, $4) RETURNING id::text`, orgID, g.Type, g.ValidFrom, g.ValidTo).Scan(&id)
-		case !current[i].ValidFrom.Equal(g.ValidFrom) || !current[i].ValidTo.Equal(g.ValidTo):
-			id = current[i].ID
-			_, err = tx.Exec(ctx,
-				`UPDATE accreditations SET valid_from = $2, valid_to = $3, tx_hash = NULL, anchored_at = NULL
-				 WHERE id = $1::uuid`, id, g.ValidFrom, g.ValidTo)
-		default:
-			continue // unchanged
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err := queue(id, g.Type, g.ValidFrom.Unix(), g.ValidTo.Unix()); err != nil {
-			return nil, err
-		}
+	if err := withdrawMissing(ctx, tx, orgID, current, grants); err != nil {
+		return nil, err
 	}
-	for _, a := range current {
-		if slices.ContainsFunc(grants, func(g Grant) bool { return g.Type == a.Type }) {
-			continue
-		}
-		if _, err := tx.Exec(ctx, `UPDATE accreditations SET is_deleted = true WHERE id = $1::uuid`, a.ID); err != nil {
-			return nil, err
-		}
-		if err := queue(a.ID, a.Type, 0, 0); err != nil {
-			return nil, err
-		}
-	}
-
 	list, err := accreditationsOf(ctx, tx, orgID)
 	if err != nil {
 		return nil, err
 	}
 	return list, tx.Commit(ctx)
+}
+
+// lockIssuer locks the organisation row; granting needs a verified issuer kind.
+func lockIssuer(ctx context.Context, tx pgx.Tx, orgID string, granting bool) error {
+	var kind, status string
+	err := tx.QueryRow(ctx,
+		`SELECT kind, status FROM organisations WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, orgID,
+	).Scan(&kind, &status)
+	if err != nil {
+		return notFound(err)
+	}
+	if granting && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
+		return ErrNotIssuer
+	}
+	return nil
+}
+
+func checkTypes(ctx context.Context, tx pgx.Tx, grants []Grant) error {
+	rows, err := tx.Query(ctx, evidenceKeys)
+	if err != nil {
+		return err
+	}
+	known, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	for _, g := range grants {
+		if !slices.Contains(known, g.Type) {
+			return ErrUnknownType
+		}
+	}
+	return nil
+}
+
+func queueAccreditation(ctx context.Context, tx pgx.Tx, orgID, id, certType string, from, to int64) error {
+	return chain.Enqueue(ctx, tx, chain.KindOrgAccredited, id,
+		chain.OrgAccredited{OrgID: orgID, Type: certType, ValidFrom: from, ValidTo: to})
+}
+
+// applyGrants inserts new types and updates changed windows; unchanged ones are left alone.
+func applyGrants(ctx context.Context, tx pgx.Tx, orgID string, current []Accreditation, grants []Grant) error {
+	for _, g := range grants {
+		i := slices.IndexFunc(current, func(a Accreditation) bool { return a.Type == g.Type })
+		if i >= 0 && current[i].ValidFrom.Equal(g.ValidFrom) && current[i].ValidTo.Equal(g.ValidTo) {
+			continue
+		}
+		id, err := upsertGrant(ctx, tx, orgID, current, i, g)
+		if err != nil {
+			return err
+		}
+		if err := queueAccreditation(ctx, tx, orgID, id, g.Type, g.ValidFrom.Unix(), g.ValidTo.Unix()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// upsertGrant writes one grant; i is its index in current, or -1 when new.
+func upsertGrant(ctx context.Context, tx pgx.Tx, orgID string, current []Accreditation, i int, g Grant) (string, error) {
+	if i < 0 {
+		var id string
+		err := tx.QueryRow(ctx,
+			`INSERT INTO accreditations (organisation_id, cert_type, valid_from, valid_to)
+			 VALUES ($1::uuid, $2, $3, $4) RETURNING id::text`, orgID, g.Type, g.ValidFrom, g.ValidTo).Scan(&id)
+		return id, err
+	}
+	id := current[i].ID
+	_, err := tx.Exec(ctx,
+		`UPDATE accreditations SET valid_from = $2, valid_to = $3, tx_hash = NULL, anchored_at = NULL
+		 WHERE id = $1::uuid`, id, g.ValidFrom, g.ValidTo)
+	return id, err
+}
+
+// withdrawMissing deletes every current type absent from grants.
+func withdrawMissing(ctx context.Context, tx pgx.Tx, orgID string, current []Accreditation, grants []Grant) error {
+	for _, a := range current {
+		if slices.ContainsFunc(grants, func(g Grant) bool { return g.Type == a.Type }) {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE accreditations SET is_deleted = true WHERE id = $1::uuid`, a.ID); err != nil {
+			return err
+		}
+		if err := queueAccreditation(ctx, tx, orgID, a.ID, a.Type, 0, 0); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetStatus moves an organisation from one status to another, recording who

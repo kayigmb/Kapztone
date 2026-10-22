@@ -142,160 +142,188 @@ func Logging() (format, level string) {
 
 // Load reads and checks every setting. The error lists all problems at once.
 func Load() (Config, error) {
-	var problems []string
-	get := func(name string) string {
-		v := strings.TrimSpace(os.Getenv(name))
-		if v == "" {
-			problems = append(problems, name+" is required")
-		}
+	r := &reader{}
+	c := Config{
+		Port:               r.get(EnvPort),
+		DatabaseURL:        r.get(EnvDatabaseURL),
+		RedisURL:           r.get(EnvRedisURL),
+		SuperadminEmail:    r.get(EnvSuperadminEmail),
+		SuperadminPassword: r.get(EnvSuperadminPassword),
+	}
+	r.storage(&c)
+	r.site(&c)
+	r.sessions(&c)
+	r.chain(&c)
+	c.PinataJWT = r.service(EnvPinataJWT)
+	r.mail(&c)
+	if len(r.problems) > 0 {
+		return Config{}, errors.New("configuration is incomplete; set these in .env:\n  - " +
+			strings.Join(r.problems, "\n  - "))
+	}
+	return c, nil
+}
+
+// reader collects every problem, so one start-up lists them all.
+type reader struct{ problems []string }
+
+func (r *reader) get(name string) string {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		r.problems = append(r.problems, name+" is required")
+	}
+	return v
+}
+
+// invalid records a problem for a value that is present but wrong.
+func (r *reader) invalid(value, name, rule string) {
+	if value != "" {
+		r.problems = append(r.problems, name+" "+rule)
+	}
+}
+
+// service reads a setting that may be Off.
+func (r *reader) service(name string) string {
+	if v := r.get(name); v != Off {
 		return v
 	}
-	// invalid records a problem for a value that is present but wrong.
-	invalid := func(value, name, rule string) {
-		if value != "" {
-			problems = append(problems, name+" "+rule)
-		}
-	}
+	return ""
+}
 
-	c := Config{
-		Port:               get(EnvPort),
-		DatabaseURL:        get(EnvDatabaseURL),
-		RedisURL:           get(EnvRedisURL),
-		SuperadminEmail:    get(EnvSuperadminEmail),
-		SuperadminPassword: get(EnvSuperadminPassword),
-		Storage: upload.Config{
-			Endpoint:  get(EnvStorageEndpoint),
-			Region:    get(EnvStorageRegion),
-			Bucket:    get(EnvStorageBucket),
-			AccessKey: get(EnvStorageAccessKey),
-			SecretKey: get(EnvStorageSecretKey),
-		},
-	}
-	if u, err := url.Parse(c.Storage.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		invalid(c.Storage.Endpoint, EnvStorageEndpoint, "must be an http or https URL, e.g. http://localhost:9000")
-	}
+func isWebURL(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
 
-	appEnv := get(EnvAppEnv)
+func (r *reader) storage(c *Config) {
+	c.Storage = upload.Config{
+		Endpoint:  r.get(EnvStorageEndpoint),
+		Region:    r.get(EnvStorageRegion),
+		Bucket:    r.get(EnvStorageBucket),
+		AccessKey: r.get(EnvStorageAccessKey),
+		SecretKey: r.get(EnvStorageSecretKey),
+	}
+	if !isWebURL(c.Storage.Endpoint) {
+		r.invalid(c.Storage.Endpoint, EnvStorageEndpoint, "must be an http or https URL, e.g. http://localhost:9000")
+	}
+}
+
+// site reads the environment and APP_URL. E-mailed links start with APP_URL,
+// never with a request header: a header is the caller's claim and would let
+// anyone aim a reset link at their site.
+func (r *reader) site(c *Config) {
+	appEnv := r.get(EnvAppEnv)
 	if !slices.Contains(AppEnvs, appEnv) {
-		invalid(appEnv, EnvAppEnv, "must be one of: "+strings.Join(AppEnvs, ", "))
+		r.invalid(appEnv, EnvAppEnv, "must be one of: "+strings.Join(AppEnvs, ", "))
 	}
 	c.Dev = appEnv == AppDev
 
-	// E-mailed links start with this, never with a request header: a header
-	// is the caller's claim and would let anyone aim a reset link at their site.
-	c.AppURL = strings.TrimRight(get(EnvAppURL), "/")
-	if u, err := url.Parse(c.AppURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-		invalid(c.AppURL, EnvAppURL, "must be an http or https address with no path or query, e.g. https://chaintrack.app")
+	c.AppURL = strings.TrimRight(r.get(EnvAppURL), "/")
+	if u, err := url.Parse(c.AppURL); !isWebURL(c.AppURL) || err != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		r.invalid(c.AppURL, EnvAppURL, "must be an http or https address with no path or query, e.g. https://chaintrack.app")
 	}
+}
 
-	jwtSecret := get(EnvJWTSecret)
-	// Any length in dev; a short secret would let anyone forge sign-ins in prod.
+// sessions reads the sign-in secrets. Any length in dev; in prod a short JWT
+// secret would let anyone forge sign-ins. bcrypt reads at most MaxPasswordLen
+// bytes everywhere.
+func (r *reader) sessions(c *Config) {
+	jwtSecret := r.get(EnvJWTSecret)
 	if !c.Dev && len(jwtSecret) < MinJWTSecretLen {
-		invalid(jwtSecret, EnvJWTSecret, fmt.Sprintf("must be at least %d characters in prod", MinJWTSecretLen))
+		r.invalid(jwtSecret, EnvJWTSecret, fmt.Sprintf("must be at least %d characters in prod", MinJWTSecretLen))
 	}
 	c.JWTSecret = []byte(jwtSecret)
+	c.TokenTTL = r.minutes(EnvJWTTTL, "90")
+	c.RememberTTL = r.minutes(EnvJWTTTLRemember, "43200 (30 days)")
 
-	ttl := get(EnvJWTTTL)
-	minutes, err := strconv.Atoi(ttl)
-	if err != nil || minutes <= 0 {
-		invalid(ttl, EnvJWTTTL, "must be a whole number of minutes above 0, e.g. 90")
-	}
-	c.TokenTTL = time.Duration(minutes) * time.Minute
-
-	remember := get(EnvJWTTTLRemember)
-	rememberMinutes, err := strconv.Atoi(remember)
-	if err != nil || rememberMinutes <= 0 {
-		invalid(remember, EnvJWTTTLRemember, "must be a whole number of minutes above 0, e.g. 43200 (30 days)")
-	}
-	c.RememberTTL = time.Duration(rememberMinutes) * time.Minute
-
-	key := get(EnvEncryptionKey)
+	key := r.get(EnvEncryptionKey)
+	var err error
 	if c.Secrets, err = secret.New(key); err != nil {
-		invalid(key, EnvEncryptionKey, fmt.Sprintf("must be %d hex characters", secret.KeyBytes*2))
+		r.invalid(key, EnvEncryptionKey, fmt.Sprintf("must be %d hex characters", secret.KeyBytes*2))
 	}
-
-	// Any length in dev; bcrypt reads at most MaxPasswordLen bytes everywhere.
 	if n := len(c.SuperadminPassword); n > auth.MaxPasswordLen || (!c.Dev && n < auth.MinPasswordLen) {
-		invalid(c.SuperadminPassword, EnvSuperadminPassword,
+		r.invalid(c.SuperadminPassword, EnvSuperadminPassword,
 			fmt.Sprintf("must be %d to %d characters (in dev: up to %d)", auth.MinPasswordLen, auth.MaxPasswordLen, auth.MaxPasswordLen))
 	}
+}
 
-	c.ChainRPCURL = get(EnvChainRPCURL)
+func (r *reader) minutes(name, example string) time.Duration {
+	v := r.get(name)
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		r.invalid(v, name, "must be a whole number of minutes above 0, e.g. "+example)
+	}
+	return time.Duration(n) * time.Minute
+}
 
-	chainID := get(EnvChainID)
+// chain reads the network, the relayer key and the contract addresses.
+// Prod refuses Hardhat's public test keys.
+func (r *reader) chain(c *Config) {
+	c.ChainRPCURL = r.get(EnvChainRPCURL)
+	chainID := r.get(EnvChainID)
 	id, ok := new(big.Int).SetString(chainID, 10)
 	if !ok || id.Sign() <= 0 {
-		invalid(chainID, EnvChainID, "must be a whole number above 0, e.g. 31337 for a local chain")
+		r.invalid(chainID, EnvChainID, "must be a whole number above 0, e.g. 31337 for a local chain")
 		id = new(big.Int)
 	}
 	c.ChainID = id
 
-	relayerKey := get(EnvChainRelayerKey)
+	relayerKey := r.get(EnvChainRelayerKey)
+	var err error
 	if c.RelayerKey, err = chain.ParseKey(relayerKey); err != nil {
-		invalid(relayerKey, EnvChainRelayerKey, "must be a private key: 64 hex characters")
+		r.invalid(relayerKey, EnvChainRelayerKey, "must be a private key: 64 hex characters")
 	}
 	if !c.Dev && slices.Contains(HardhatKeys, strings.ToLower(strings.TrimPrefix(relayerKey, "0x"))) {
-		invalid(relayerKey, EnvChainRelayerKey, "is one of Hardhat's public test keys: anyone can sign with it")
-	}
-
-	address := func(name string) common.Address {
-		v := get(name)
-		if !common.IsHexAddress(v) {
-			invalid(v, name, "must be a contract address: 0x followed by 40 hex characters")
-		}
-		return common.HexToAddress(v)
+		r.invalid(relayerKey, EnvChainRelayerKey, "is one of Hardhat's public test keys: anyone can sign with it")
 	}
 	c.Contracts = chain.Addresses{
-		Orgs:         address(EnvOrgRegistry),
-		Facilities:   address(EnvFacilityRegistry),
-		Passports:    address(EnvPassportRegistry),
-		Custody:      address(EnvCustodyManager),
-		Attestations: address(EnvAttestationRegistry),
+		Orgs:         r.address(EnvOrgRegistry),
+		Facilities:   r.address(EnvFacilityRegistry),
+		Passports:    r.address(EnvPassportRegistry),
+		Custody:      r.address(EnvCustodyManager),
+		Attestations: r.address(EnvAttestationRegistry),
 	}
+}
 
-	// service reads a setting that may be Off.
-	service := func(name string) string {
-		if v := get(name); v != Off {
-			return v
-		}
-		return ""
+func (r *reader) address(name string) common.Address {
+	v := r.get(name)
+	if !common.IsHexAddress(v) {
+		r.invalid(v, name, "must be a contract address: 0x followed by 40 hex characters")
 	}
-	c.PinataJWT = service(EnvPinataJWT)
-	if host := get(EnvSMTPHost); host != "" && host != Off {
-		s := notify.SMTP{Host: host, Port: get(EnvSMTPPort), User: get(EnvSMTPUser), Password: os.Getenv(EnvSMTPPassword)}
-		if from, err := mail.ParseAddress(get(EnvMailFrom)); err != nil || from.Address == "" {
-			invalid(get(EnvMailFrom), EnvMailFrom, "must be a name and address, e.g. ChainTrack <noreply@chaintrack.digital>")
-		} else {
-			s.FromName, s.FromAddr = from.Name, from.Address
-		}
-		if p, err := strconv.Atoi(s.Port); err != nil || p < 1 || p > 65535 {
-			invalid(s.Port, EnvSMTPPort, "must be a port number, e.g. 587")
-		}
-		// Optional in dev (empty is false); prod mail is always encrypted.
-		useTLS := strings.TrimSpace(os.Getenv(EnvSMTPUseTLS))
-		switch {
-		case !c.Dev && useTLS != "true":
-			problems = append(problems, EnvSMTPUseTLS+" must be true in prod (mail is always encrypted)")
-		case useTLS == "" || useTLS == "true" || useTLS == "false":
-			s.TLS = useTLS == "true"
-		default:
-			invalid(useTLS, EnvSMTPUseTLS, "must be true or false")
-		}
-		c.SMTP = &s
-	}
+	return common.HexToAddress(v)
+}
 
+func (r *reader) mail(c *Config) {
+	if host := r.get(EnvSMTPHost); host != "" && host != Off {
+		c.SMTP = r.smtp(host, c.Dev)
+	}
 	if v := strings.TrimSpace(os.Getenv(EnvMailLogoURL)); v != "" {
-		u, err := url.Parse(v)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			invalid(v, EnvMailLogoURL, "must be an absolute http or https URL, or empty")
-		} else {
+		if isWebURL(v) {
 			c.MailLogoURL = v
+		} else {
+			r.invalid(v, EnvMailLogoURL, "must be an absolute http or https URL, or empty")
 		}
 	}
+}
 
-	if len(problems) > 0 {
-		return Config{}, errors.New("configuration is incomplete; set these in .env:\n  - " +
-			strings.Join(problems, "\n  - "))
+func (r *reader) smtp(host string, dev bool) *notify.SMTP {
+	s := notify.SMTP{Host: host, Port: r.get(EnvSMTPPort), User: r.get(EnvSMTPUser), Password: os.Getenv(EnvSMTPPassword)}
+	if from, err := mail.ParseAddress(r.get(EnvMailFrom)); err != nil || from.Address == "" {
+		r.invalid(r.get(EnvMailFrom), EnvMailFrom, "must be a name and address, e.g. ChainTrack <noreply@chaintrack.digital>")
+	} else {
+		s.FromName, s.FromAddr = from.Name, from.Address
 	}
-	return c, nil
+	if p, err := strconv.Atoi(s.Port); err != nil || p < 1 || p > 65535 {
+		r.invalid(s.Port, EnvSMTPPort, "must be a port number, e.g. 587")
+	}
+	// Optional in dev (empty is false); prod mail is always encrypted.
+	useTLS := strings.TrimSpace(os.Getenv(EnvSMTPUseTLS))
+	switch {
+	case !dev && useTLS != "true":
+		r.problems = append(r.problems, EnvSMTPUseTLS+" must be true in prod (mail is always encrypted)")
+	case useTLS == "" || useTLS == "true" || useTLS == "false":
+		s.TLS = useTLS == "true"
+	default:
+		r.invalid(useTLS, EnvSMTPUseTLS, "must be true or false")
+	}
+	return &s
 }

@@ -122,7 +122,7 @@ func (s Store) List(ctx context.Context, q listq.Query, gate, actor, route strin
 // Each streams every matching row, in the list's order, without paging.
 func (s Store) Each(ctx context.Context, q listq.Query, gate, actor, route string, fn func(Entry) error) error {
 	w, args := where(gate, actor, route)
-	q.Page, q.Size = 1, 1<<31-1 // ponytail: the list SQL with an unreachable limit; a download is every row
+	q.Page, q.Size = 1, 1<<31-1 // The list SQL with an unreachable limit; a download is every row
 	list, _, listArgs, _ := q.SQL(ListConfig, "SELECT "+entryColumns, entryFrom, w, args)
 	return s.each(ctx, list, listArgs, fn)
 }

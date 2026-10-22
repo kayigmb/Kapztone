@@ -497,7 +497,7 @@ export const limits = {
   note: 1000,
   // Inputs and outputs of one transform (backend MaxTransformItems).
   maxItems: 50,
-  // ponytail: lists ask for one full page (the API's maximum); paging UI when a queue outgrows it.
+  // Lists ask for one full page (the API's maximum); paging UI when a queue outgrows it.
   pageSize: 100,
 };
 
@@ -544,7 +544,7 @@ export const routes = {
   invite: (token: string) => `/invite/${token}`,
 };
 
-/** Keyless street map (OpenFreeMap). ponytail: no satellite layer; add one if a keyless source with an acceptable licence turns up. */
+/** Keyless street map (OpenFreeMap). No satellite layer; add one if a keyless source with an acceptable licence turns up. */
 export const mapStyleURL = "https://tiles.openfreemap.org/styles/liberty";
 
 /** The browser's way to the API: the pass-through in app/api/[...path]/route.ts. */

@@ -44,7 +44,7 @@ import { Person, StatusOf, roleLabel } from "../../../users/users";
 import { OrgDetail } from "../queue";
 
 const t = copy.admin;
-// ponytail: each section shows the newest 50; open the full list screen if an organisation outgrows it.
+// Each section shows the newest 50; open the full list screen if an organisation outgrows it.
 const sectionSize = 50;
 const sections = [
   "members",

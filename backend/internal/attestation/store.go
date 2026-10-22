@@ -116,32 +116,17 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 	}
 	defer tx.Rollback(ctx)
 
-	var accredited, exists bool
-	err = tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM organisations o JOIN accreditations ac ON ac.organisation_id = o.id
-		                WHERE o.id = $1::uuid AND o.status = $2 AND NOT o.is_deleted
-		                  AND ac.cert_type = $4 AND NOT ac.is_deleted AND now() BETWEEN ac.valid_from AND ac.valid_to),
-		        EXISTS (SELECT 1 FROM `+subjectTable[in.SubjectType]+` WHERE id = $3::uuid AND NOT is_deleted)`,
-		orgID, auth.OrgVerified, in.SubjectID, in.Type).Scan(&accredited, &exists)
-	switch {
-	case err != nil:
+	if err := checkIssuer(ctx, tx, orgID, in); err != nil {
 		return Attestation{}, err
-	case !accredited:
-		return Attestation{}, ErrNotAccredited
-	case !exists:
-		return Attestation{}, ErrSubjectNotFound
 	}
-
 	docHash := "0x" + f.SHA256
-	certNumber := nilIfEmpty(in.CertNumber)
-	notes := nilIfEmpty(in.Notes)
 	a, err := one(tx.Query(ctx,
 		`INSERT INTO attestations AS a (issuer_org_id, subject_type, subject_id, type, valid_from, valid_to, doc_hash,
 		                                storage_key, file_name, content_type, size_bytes, cert_number, notes, status, issued_by)
 		 VALUES ($3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($15,''), NULLIF($16,''), $1, $14::uuid)
 		 RETURNING `+columns(1, 2),
 		StatusValid, StatusExpired, orgID, in.SubjectType, in.SubjectID, in.Type, in.ValidFrom, in.ValidTo, docHash,
-		f.Key, f.Name, f.ContentType, f.Size, userID, certNumber, notes))
+		f.Key, f.Name, f.ContentType, f.Size, userID, nilIfEmpty(in.CertNumber), nilIfEmpty(in.Notes)))
 	if err != nil {
 		return Attestation{}, err
 	}
@@ -156,6 +141,27 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 		return Attestation{}, err
 	}
 	return a, tx.Commit(ctx)
+}
+
+// checkIssuer needs a verified issuer accredited for the type today, and a
+// subject that exists. subjectTable only holds the validated subject types.
+func checkIssuer(ctx context.Context, tx pgx.Tx, orgID string, in Input) error {
+	var accredited, exists bool
+	err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM organisations o JOIN accreditations ac ON ac.organisation_id = o.id
+		                WHERE o.id = $1::uuid AND o.status = $2 AND NOT o.is_deleted
+		                  AND ac.cert_type = $4 AND NOT ac.is_deleted AND now() BETWEEN ac.valid_from AND ac.valid_to),
+		        EXISTS (SELECT 1 FROM `+subjectTable[in.SubjectType]+` WHERE id = $3::uuid AND NOT is_deleted)`,
+		orgID, auth.OrgVerified, in.SubjectID, in.Type).Scan(&accredited, &exists)
+	switch {
+	case err != nil:
+		return err
+	case !accredited:
+		return ErrNotAccredited
+	case !exists:
+		return ErrSubjectNotFound
+	}
+	return nil
 }
 
 // SetCID records where the file was pinned on IPFS.

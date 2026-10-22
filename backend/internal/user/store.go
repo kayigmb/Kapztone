@@ -95,60 +95,78 @@ func (s Store) Accept(ctx context.Context, tokenHash, name, password string) (Ac
 	}
 	defer tx.Rollback(ctx)
 
-	var inviteID, orgID, email, role, slug string
-	err = tx.QueryRow(ctx,
-		`SELECT i.id::text, i.organisation_id::text, i.email::text, i.role, o.slug
-		 FROM invites i JOIN organisations o ON o.id = i.organisation_id AND NOT o.is_deleted
-		 WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > now() AND NOT i.is_deleted
-		 FOR UPDATE OF i`, tokenHash).Scan(&inviteID, &orgID, &email, &role, &slug)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Accepted{}, ErrInviteInvalid
-	}
+	inv, err := lockInvite(ctx, tx, tokenHash)
 	if err != nil {
 		return Accepted{}, err
 	}
-
-	out := Accepted{Organisation: slug}
-	var hash string
-	err = tx.QueryRow(ctx,
-		`SELECT id::text, password_hash FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`,
-		email, auth.UserActive).Scan(&out.UserID, &hash)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows) && name == "":
-		return Accepted{}, ErrNameNeeded
-	case errors.Is(err, pgx.ErrNoRows):
-		if auth.PasswordFormatProblem(password) != "" {
-			return Accepted{}, ErrPasswordPolicy
-		}
-		newHash, err := auth.HashPassword(password)
-		if err != nil {
-			return Accepted{}, err
-		}
-		if err := tx.QueryRow(ctx,
-			`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now()) RETURNING id::text`,
-			email, newHash, name, auth.UserActive).Scan(&out.UserID); err != nil {
-			return Accepted{}, err
-		}
-		out.NewAccount = true
-	case err != nil:
+	out := Accepted{Organisation: inv.slug}
+	if out.UserID, out.NewAccount, err = inviteeAccount(ctx, tx, inv.email, name, password); err != nil {
 		return Accepted{}, err
-	case !auth.CheckPassword(hash, password):
-		return Accepted{}, ErrBadPassword
 	}
-
 	_, err = tx.Exec(ctx,
 		`INSERT INTO userscope (user_id, role_id, organisation_id)
-		 SELECT $1::uuid, id, $2::uuid FROM roles WHERE name = $3 AND NOT is_deleted`, out.UserID, orgID, role)
+		 SELECT $1::uuid, id, $2::uuid FROM roles WHERE name = $3 AND NOT is_deleted`, out.UserID, inv.orgID, inv.role)
 	if _, unique := dbx.UniqueViolation(err); unique {
 		return Accepted{}, ErrAlreadyMember
 	}
 	if err != nil {
 		return Accepted{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE invites SET accepted_at = now() WHERE id = $1::uuid`, inviteID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE invites SET accepted_at = now() WHERE id = $1::uuid`, inv.id); err != nil {
 		return Accepted{}, err
 	}
 	return out, tx.Commit(ctx)
+}
+
+type openInvite struct{ id, orgID, email, role, slug string }
+
+func lockInvite(ctx context.Context, tx pgx.Tx, tokenHash string) (openInvite, error) {
+	var i openInvite
+	err := tx.QueryRow(ctx,
+		`SELECT i.id::text, i.organisation_id::text, i.email::text, i.role, o.slug
+		 FROM invites i JOIN organisations o ON o.id = i.organisation_id AND NOT o.is_deleted
+		 WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > now() AND NOT i.is_deleted
+		 FOR UPDATE OF i`, tokenHash).Scan(&i.id, &i.orgID, &i.email, &i.role, &i.slug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return i, ErrInviteInvalid
+	}
+	return i, err
+}
+
+// inviteeAccount signs in an existing account with its password, or creates
+// one (name needed) when the email has none.
+func inviteeAccount(ctx context.Context, tx pgx.Tx, email, name, password string) (userID string, created bool, err error) {
+	var hash string
+	err = tx.QueryRow(ctx,
+		`SELECT id::text, password_hash FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`,
+		email, auth.UserActive).Scan(&userID, &hash)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows) && name == "":
+		return "", false, ErrNameNeeded
+	case errors.Is(err, pgx.ErrNoRows):
+		userID, err = createInvitee(ctx, tx, email, name, password)
+		return userID, err == nil, err
+	case err != nil:
+		return "", false, err
+	case !auth.CheckPassword(hash, password):
+		return "", false, ErrBadPassword
+	}
+	return userID, false, nil
+}
+
+func createInvitee(ctx context.Context, tx pgx.Tx, email, name, password string) (string, error) {
+	if auth.PasswordFormatProblem(password) != "" {
+		return "", ErrPasswordPolicy
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	var id string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now()) RETURNING id::text`,
+		email, hash, name, auth.UserActive).Scan(&id)
+	return id, err
 }
 
 // lockOrg serialises membership changes in one organisation, so two admins

@@ -47,7 +47,7 @@ func (c *client) do(method, path string, body io.Reader, contentType string, sig
 	if sign {
 		req.Header.Set("X-Signing-PIN", c.pin)
 	}
-	// ponytail: the API trusts this as the visitor's address (no proxy in dev), so a fresh one
+	// The API trusts this as the visitor's address (no proxy in dev), so a fresh one
 	// per request keeps the sim under the per-address sign-up and verify limits.
 	req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.%d.%d.%d", rand.IntN(256), rand.IntN(256), rand.IntN(256)))
 	res, err := httpc.Do(req)

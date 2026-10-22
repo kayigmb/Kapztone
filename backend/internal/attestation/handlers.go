@@ -113,20 +113,25 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 		respond(w, 0, "", "issue certificate", nil, err)
 		return
 	}
-	// Pinned only once the certificate is recorded, so a refused file is
-	// never published. A failed pin does not undo the certificate: the hash
-	// on-chain is the proof; IPFS only makes the file available elsewhere.
-	if h.Pin != nil {
-		if pinned, err := h.pin(r.Context(), a); err != nil {
-			logx.From(r.Context()).Warn("ipfs pin failed; will retry", "attestation_id", a.ID, logx.KeyError, err)
-			if err := h.Store.RecordPinFailure(r.Context(), a.ID, time.Now(), err); err != nil {
-				logx.From(r.Context()).Error("ipfs retry not scheduled", "attestation_id", a.ID, logx.KeyError, err)
-			}
-		} else {
-			a = pinned
-		}
+	httpx.OK(w, http.StatusCreated, MsgIssued, h.pinIssued(r.Context(), a))
+}
+
+// pinIssued copies a recorded certificate to IPFS, so a refused file is never
+// published. A failed pin does not undo the certificate (the hash on-chain is
+// the proof; IPFS only makes the file available elsewhere): it is retried later.
+func (h *Handlers) pinIssued(ctx context.Context, a Attestation) Attestation {
+	if h.Pin == nil {
+		return a
 	}
-	httpx.OK(w, http.StatusCreated, MsgIssued, a)
+	pinned, err := h.pin(ctx, a)
+	if err == nil {
+		return pinned
+	}
+	logx.From(ctx).Warn("ipfs pin failed; will retry", "attestation_id", a.ID, logx.KeyError, err)
+	if err := h.Store.RecordPinFailure(ctx, a.ID, time.Now(), err); err != nil {
+		logx.From(ctx).Error("ipfs retry not scheduled", "attestation_id", a.ID, logx.KeyError, err)
+	}
+	return a
 }
 
 func (h *Handlers) pin(ctx context.Context, a Attestation) (Attestation, error) {

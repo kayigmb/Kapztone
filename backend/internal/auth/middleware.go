@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/logx"
@@ -198,13 +199,7 @@ var dummyHash, _ = HashPassword("chaintrack-dummy-password")
 // for the longer sign-in; TrustDevice, with a valid app code, lets this
 // device skip the code for TrustTTL.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Email       string `json:"email"`
-		Password    string `json:"password"`
-		Code        string `json:"code"`
-		Remember    bool   `json:"remember"`
-		TrustDevice bool   `json:"trust_device"`
-	}
+	var in loginInput
 	if !httpx.DecodeJSON(w, r, &in) {
 		return
 	}
@@ -215,78 +210,115 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
 		return
 	}
-	fail := func(msg string, details map[string]any) {
-		a.Limiter.record(ctx, LoginRate, in.Email, ip)
-		a.Limiter.record(ctx, LoginEmailRate, in.Email)
-		if a.Limiter != nil {
-			left := min(a.Limiter.left(ctx, LoginRate, in.Email, ip), a.Limiter.left(ctx, LoginEmailRate, in.Email))
-			details["attempts_left"] = left
-			msg += " " + MsgAttemptsLeft(left)
-		}
-		httpx.ErrorData(w, http.StatusUnauthorized, msg, details)
-	}
-
-	user, err := a.Store.UserByEmail(ctx, in.Email)
-	if err != nil && !errors.Is(err, ErrNotFound) {
+	user, ok, err := a.passwordUser(ctx, in.Email, in.Password)
+	if err != nil {
 		httpx.ServerError(w, "login", err)
 		return
+	}
+	if !ok {
+		a.loginFailed(w, r, in.Email, MsgBadCredentials, map[string]any{})
+		return
+	}
+	now := a.now()
+	setTrust, ok := a.secondFactor(w, r, user, in, now)
+	if !ok {
+		return
+	}
+	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
+	a.Limiter.reset(ctx, LoginEmailRate, in.Email)
+	if user.EmailUnverified {
+		a.refuseUnverified(w, r, user, in.Email)
+		return
+	}
+	if setTrust {
+		http.SetCookie(w, a.trustCookie(user, now))
+	}
+	// Browsers keep the token in the cookie. It is also returned for callers
+	// that are not browsers.
+	a.signIn(w, user.ID, user.TokenVersion, a.sessionTTL(in.Remember), MsgSignedIn)
+}
+
+func (a *Auth) sessionTTL(remember bool) time.Duration {
+	if remember && a.RememberTTL > 0 {
+		return a.RememberTTL
+	}
+	return a.TokenTTL
+}
+
+type loginInput struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	Code        string `json:"code"`
+	Remember    bool   `json:"remember"`
+	TrustDevice bool   `json:"trust_device"`
+}
+
+// passwordUser checks the password. An unknown email is checked against a
+// dummy hash so it takes as long as a known one.
+func (a *Auth) passwordUser(ctx context.Context, email, password string) (User, bool, error) {
+	user, err := a.Store.UserByEmail(ctx, email)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return User{}, false, err
 	}
 	hash := user.PasswordHash
 	if err != nil {
 		hash = dummyHash
 	}
-	if !CheckPassword(hash, in.Password) || err != nil {
-		fail(MsgBadCredentials, map[string]any{})
-		return
-	}
+	return user, CheckPassword(hash, password) && err == nil, nil
+}
 
-	now := a.now()
-	setTrust := false
-	if user.TOTPEnabled && !a.trusted(r, user, now) {
-		valid, err := a.checkCode(ctx, user, in.Code, now)
-		setTrust = valid && in.TrustDevice // an app code, not a recovery code
-		if err == nil && !valid && strings.TrimSpace(in.Code) != "" {
-			// A lost phone: a recovery code works once in place of the app code.
-			valid, err = a.Store.UseRecoveryCode(ctx, user.ID, recoveryHash(in.Code))
-		}
-		if err != nil {
-			httpx.ServerError(w, "check 2fa code", err)
-			return
-		}
-		if !valid {
-			msg := MsgBadCode
-			if strings.TrimSpace(in.Code) == "" {
-				msg = MsgTwoFactorCode
-			}
-			fail(msg, map[string]any{"two_factor_required": true})
-			return
-		}
+// loginFailed counts the failure against both limits and says how many tries are left.
+func (a *Auth) loginFailed(w http.ResponseWriter, r *http.Request, email, msg string, details map[string]any) {
+	ctx, ip := r.Context(), clientIP(r)
+	a.Limiter.record(ctx, LoginRate, email, ip)
+	a.Limiter.record(ctx, LoginEmailRate, email)
+	if a.Limiter != nil {
+		left := min(a.Limiter.left(ctx, LoginRate, email, ip), a.Limiter.left(ctx, LoginEmailRate, email))
+		details["attempts_left"] = left
+		msg += " " + MsgAttemptsLeft(left)
 	}
-	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
-	a.Limiter.reset(ctx, LoginEmailRate, in.Email)
+	httpx.ErrorData(w, http.StatusUnauthorized, msg, details)
+}
 
-	// The password is right, so saying the email is unconfirmed gives nothing away.
-	if user.EmailUnverified {
-		if !a.Limiter.blocked(ctx, ForgotRate, in.Email) {
-			a.Limiter.record(ctx, ForgotRate, in.Email)
-			if err := a.SendVerify(ctx, user); err != nil {
-				logx.From(ctx).Error("resend verify link failed", logx.KeyUser, user.ID, logx.KeyError, err)
-			}
+// secondFactor checks the 2FA code unless the device is trusted. A recovery
+// code works once in place of the app code (a lost phone) but never trusts
+// the device. ok is false once a response has been written.
+func (a *Auth) secondFactor(w http.ResponseWriter, r *http.Request, user User, in loginInput, now time.Time) (setTrust, ok bool) {
+	if !user.TOTPEnabled || a.trusted(r, user, now) {
+		return false, true
+	}
+	ctx := r.Context()
+	valid, err := a.checkCode(ctx, user, in.Code, now)
+	setTrust = valid && in.TrustDevice
+	if err == nil && !valid && strings.TrimSpace(in.Code) != "" {
+		valid, err = a.Store.UseRecoveryCode(ctx, user.ID, recoveryHash(in.Code))
+	}
+	if err != nil {
+		httpx.ServerError(w, "check 2fa code", err)
+		return false, false
+	}
+	if !valid {
+		msg := MsgBadCode
+		if strings.TrimSpace(in.Code) == "" {
+			msg = MsgTwoFactorCode
 		}
-		httpx.ErrorData(w, http.StatusForbidden, MsgEmailNotVerified, map[string]any{"email_unverified": true})
-		return
+		a.loginFailed(w, r, in.Email, msg, map[string]any{"two_factor_required": true})
+		return false, false
 	}
+	return setTrust, true
+}
 
-	if setTrust {
-		http.SetCookie(w, a.trustCookie(user, now))
+// refuseUnverified resends the confirmation link (rate limited) and refuses.
+// The password is right, so saying the email is unconfirmed gives nothing away.
+func (a *Auth) refuseUnverified(w http.ResponseWriter, r *http.Request, user User, email string) {
+	ctx := r.Context()
+	if !a.Limiter.blocked(ctx, ForgotRate, email) {
+		a.Limiter.record(ctx, ForgotRate, email)
+		if err := a.SendVerify(ctx, user); err != nil {
+			logx.From(ctx).Error("resend verify link failed", logx.KeyUser, user.ID, logx.KeyError, err)
+		}
 	}
-	ttl := a.TokenTTL
-	if in.Remember && a.RememberTTL > 0 {
-		ttl = a.RememberTTL
-	}
-	// Browsers keep the token in the cookie. It is also returned for callers
-	// that are not browsers.
-	a.signIn(w, user.ID, user.TokenVersion, ttl, MsgSignedIn)
+	httpx.ErrorData(w, http.StatusForbidden, MsgEmailNotVerified, map[string]any{"email_unverified": true})
 }
 
 // Logout clears the session cookie. The page cannot do it: scripts have no

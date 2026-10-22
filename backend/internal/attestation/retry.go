@@ -83,36 +83,45 @@ func (r *Retrier) RetryDue(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	type due struct {
-		id, name, key string
-		attempts      int
-	}
-	list, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (due, error) {
-		var d due
+	list, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (duePin, error) {
+		var d duePin
 		return d, row.Scan(&d.id, &d.name, &d.key, &d.attempts)
 	})
 	if err != nil {
 		return 0, err
 	}
 	for _, d := range list {
-		cid, pinErr := r.pinOne(ctx, d.name, d.key)
-		log := logx.From(ctx).With("attestation_id", d.id, "attempt", d.attempts+1)
-		if pinErr == nil {
-			if _, err := tx.Exec(ctx, `UPDATE attestations SET ipfs_cid = $2, ipfs_last_error = NULL WHERE id = $1::uuid`, d.id, cid); err != nil {
-				return 0, err
-			}
-			log.Info("ipfs pinned on retry", "cid", cid)
-			continue
-		}
-		next := r.now().Add(Backoff(d.attempts + 1))
-		if _, err := tx.Exec(ctx,
-			`UPDATE attestations SET ipfs_attempts = ipfs_attempts + 1, ipfs_next_at = $2, ipfs_last_error = $3 WHERE id = $1::uuid`,
-			d.id, next, pinErr.Error()); err != nil {
+		if err := r.retry(ctx, tx, d); err != nil {
 			return 0, err
 		}
-		log.Warn("ipfs pin failed again", "next_at", next, logx.KeyError, pinErr)
 	}
 	return len(list), tx.Commit(ctx)
+}
+
+type duePin struct {
+	id, name, key string
+	attempts      int
+}
+
+// retry pins one certificate again; a failure pushes its next try back.
+func (r *Retrier) retry(ctx context.Context, tx pgx.Tx, d duePin) error {
+	cid, pinErr := r.pinOne(ctx, d.name, d.key)
+	log := logx.From(ctx).With("attestation_id", d.id, "attempt", d.attempts+1)
+	if pinErr == nil {
+		_, err := tx.Exec(ctx, `UPDATE attestations SET ipfs_cid = $2, ipfs_last_error = NULL WHERE id = $1::uuid`, d.id, cid)
+		if err == nil {
+			log.Info("ipfs pinned on retry", "cid", cid)
+		}
+		return err
+	}
+	next := r.now().Add(Backoff(d.attempts + 1))
+	_, err := tx.Exec(ctx,
+		`UPDATE attestations SET ipfs_attempts = ipfs_attempts + 1, ipfs_next_at = $2, ipfs_last_error = $3 WHERE id = $1::uuid`,
+		d.id, next, pinErr.Error())
+	if err == nil {
+		log.Warn("ipfs pin failed again", "next_at", next, logx.KeyError, pinErr)
+	}
+	return err
 }
 
 func (r *Retrier) pinOne(ctx context.Context, name, key string) (string, error) {

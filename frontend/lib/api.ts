@@ -780,7 +780,7 @@ export const endpoints = {
       (p) => p.total,
     );
   },
-  /** Handovers waiting for a receiver, to or from the acting organisation. ponytail: one page; few are ever open at once. */
+  /** Handovers waiting for a receiver, to or from the acting organisation. One page; few are ever open at once. */
   awaitingHandovers: () =>
     api(
       `${apiPaths.handovers}${all}&status=${handoverStatus.awaiting}`,

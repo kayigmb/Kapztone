@@ -96,3 +96,23 @@ func TestListSQL(t *testing.T) {
 		t.Errorf("args wrong: list %v count %v", listArgs, countArgs)
 	}
 }
+
+// Request text never becomes SQL: the sort column comes from the whitelist and
+// the search travels as a bound argument.
+func TestListSQLInjection(t *testing.T) {
+	if _, err := listq.Parse(params(listq.ParamSort, "name;DROP TABLE users"), listCfg); !errors.Is(err, listq.ErrBadParam) {
+		t.Fatalf("sort outside the whitelist accepted: %v", err)
+	}
+	attack := "'; DROP TABLE users;--"
+	q, err := listq.Parse(params(listq.ParamSearch, attack), listCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, count, args, _ := q.SQL(listCfg, "SELECT t.id", "FROM things t", nil, nil)
+	if strings.Contains(list, attack) || strings.Contains(count, attack) {
+		t.Fatalf("search text inside the SQL: %s", list)
+	}
+	if args[0] != "%"+attack+"%" {
+		t.Fatalf("search not bound as an argument: %v", args)
+	}
+}

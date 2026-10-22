@@ -368,16 +368,9 @@ func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	doc, statusChanged, err := h.Store.AddDocument(r.Context(), Document{
-		OrganisationID: o.ID,
-		Type:           docType,
-		FileName:       f.Name,
-		ContentType:    f.ContentType,
-		SizeBytes:      f.Size,
-		SHA256:         f.SHA256,
-		StorageKey:     f.Key,
-		UploadedBy:     auth.CurrentUser(r.Context()).ID,
-	})
+	doc, statusChanged, err := h.Store.AddDocument(r.Context(), Document{OrganisationID: o.ID, Type: docType,
+		FileName: f.Name, ContentType: f.ContentType, SizeBytes: f.Size, SHA256: f.SHA256, StorageKey: f.Key,
+		UploadedBy: auth.CurrentUser(r.Context()).ID})
 	if err != nil {
 		h.Files.Remove(r.Context(), f.Key) // do not keep a file with no record
 		httpx.ServerError(w, "record document", err)

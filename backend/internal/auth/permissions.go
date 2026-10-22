@@ -79,11 +79,22 @@ func SyncRoles(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	defer tx.Rollback(ctx)
 
-	type step struct {
-		sql  string
-		args []any
+	for _, s := range syncSteps() {
+		if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
+			return fmt.Errorf("sync roles: %w", err)
+		}
 	}
-	steps := []step{
+	return tx.Commit(ctx)
+}
+
+type syncStep struct {
+	sql  string
+	args []any
+}
+
+// syncSteps adds what the code names and soft-deletes what it no longer does.
+func syncSteps() []syncStep {
+	steps := []syncStep{
 		{`INSERT INTO permissions (name) SELECT unnest($1::text[])
 		  ON CONFLICT (name) DO UPDATE SET is_deleted = false WHERE permissions.is_deleted`,
 			[]any{AllPermissions}},
@@ -95,21 +106,16 @@ func SyncRoles(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	for role, perms := range DefaultRoles {
 		steps = append(steps,
-			step{`INSERT INTO role_permissions (role_id, permission_id)
+			syncStep{`INSERT INTO role_permissions (role_id, permission_id)
 			      SELECT r.id, p.id FROM roles r, permissions p
 			      WHERE r.name = $1 AND p.name = ANY($2::text[])
 			      ON CONFLICT (role_id, permission_id) DO UPDATE SET is_deleted = false
 			      WHERE role_permissions.is_deleted`, []any{role, perms}},
-			step{`UPDATE role_permissions rp SET is_deleted = true
+			syncStep{`UPDATE role_permissions rp SET is_deleted = true
 			      FROM roles r, permissions p
 			      WHERE rp.role_id = r.id AND rp.permission_id = p.id
 			        AND r.name = $1 AND p.name <> ALL($2::text[]) AND NOT rp.is_deleted`, []any{role, perms}},
 		)
 	}
-	for _, s := range steps {
-		if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
-			return fmt.Errorf("sync roles: %w", err)
-		}
-	}
-	return tx.Commit(ctx)
+	return steps
 }

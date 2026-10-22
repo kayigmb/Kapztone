@@ -253,27 +253,34 @@ func (s PgStore) EnsureSuperadmin(ctx context.Context, email, password string) (
 		return false, err
 	}
 
-	// The length rule (by environment) lives in config, which runs first.
+	if err := createSuperadmin(ctx, tx, email, password); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
+}
+
+// createSuperadmin adds the account and its role. The password length rule
+// (by environment) lives in config, which runs first.
+func createSuperadmin(ctx context.Context, tx pgx.Tx, email, password string) error {
 	hash, err := HashPassword(password)
 	if err != nil {
-		return false, fmt.Errorf("hash superadmin password: %w", err)
+		return fmt.Errorf("hash superadmin password: %w", err)
 	}
-
 	var userID string
 	err = tx.QueryRow(ctx,
 		`INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES ($1, $2, $3, $4, now())
 		 RETURNING id::text`, email, hash, superadminName, UserActive).Scan(&userID)
 	if err != nil {
-		return false, fmt.Errorf("create superadmin user: %w", err)
+		return fmt.Errorf("create superadmin user: %w", err)
 	}
 	tag, err := tx.Exec(ctx,
 		`INSERT INTO userscope (user_id, role_id)
 		 SELECT $1::uuid, id FROM roles WHERE name = $2 AND NOT is_deleted`, userID, RoleSuperadmin)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if tag.RowsAffected() != 1 {
-		return false, fmt.Errorf("role %q is missing: run SyncRoles first", RoleSuperadmin)
+		return fmt.Errorf("role %q is missing: run SyncRoles first", RoleSuperadmin)
 	}
-	return true, tx.Commit(ctx)
+	return nil
 }

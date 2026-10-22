@@ -47,16 +47,29 @@ func Render(p Page) string {
 	}
 	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef2f1;padding:24px 12px;">`)
 	b.WriteString(`<tr><td align="center">`)
+	writeBanner(&b, p.LogoURL)
+	writeCard(&b, p)
+	b.WriteString(`<p style="font-family:Arial,sans-serif;font-size:12px;color:#5b6b7a;">Sent by ChainTrack. If you were not expecting this email, you can ignore it.</p>`)
+	b.WriteString(`</td></tr></table></body></html>`)
+	return b.String()
+}
+
+// writeBanner is the dark strip with the logo, or the name when there is none.
+func writeBanner(b *strings.Builder, logoURL string) {
 	b.WriteString(`<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#0f2a43;border-radius:12px 12px 0 0;">`)
 	b.WriteString(`<tr><td style="padding:20px 24px;">`)
-	if p.LogoURL != "" {
+	if logoURL != "" {
 		b.WriteString(`<img src="`)
-		b.WriteString(html.EscapeString(p.LogoURL))
+		b.WriteString(html.EscapeString(logoURL))
 		b.WriteString(`" alt="ChainTrack" width="32" height="32" style="display:block;border:0;" />`)
 	} else {
 		b.WriteString(`<span style="color:#ffffff;font-family:Arial,sans-serif;font-size:20px;font-weight:bold;">ChainTrack</span>`)
 	}
 	b.WriteString(`</td></tr></table>`)
+}
+
+// writeCard is the white card: heading, paragraphs, button and footnote.
+func writeCard(b *strings.Builder, p Page) {
 	b.WriteString(`<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#ffffff;border-radius:0 0 12px 12px;">`)
 	b.WriteString(`<tr><td style="padding:24px;font-family:Arial,sans-serif;color:#1c2b3a;">`)
 	b.WriteString(`<h1 style="margin:0 0 16px;font-size:20px;line-height:1.4;">`)
@@ -80,9 +93,6 @@ func Render(p Page) string {
 		b.WriteString(`</p>`)
 	}
 	b.WriteString(`</td></tr></table>`)
-	b.WriteString(`<p style="font-family:Arial,sans-serif;font-size:12px;color:#5b6b7a;">Sent by ChainTrack. If you were not expecting this email, you can ignore it.</p>`)
-	b.WriteString(`</td></tr></table></body></html>`)
-	return b.String()
 }
 
 // linkify escapes text and turns http(s) URLs into links.

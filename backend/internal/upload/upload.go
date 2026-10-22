@@ -25,6 +25,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
+	"github.com/kayigmb/chaintrack/backend/internal/logx"
 )
 
 // Every value in this file is declared here once and referenced everywhere
@@ -189,7 +190,9 @@ func (b *Bucket) SaveBytes(ctx context.Context, content []byte, contentType stri
 
 // Remove deletes a stored file whose record could not be saved.
 func (b *Bucket) Remove(ctx context.Context, key string) {
-	b.client.RemoveObject(ctx, b.name, key, minio.RemoveObjectOptions{})
+	if err := b.client.RemoveObject(ctx, b.name, key, minio.RemoveObjectOptions{}); err != nil {
+		logx.From(ctx).Warn("orphan file left in bucket", "key", key, logx.KeyError, err)
+	}
 }
 
 // Open returns a stored file's content. The caller closes it.

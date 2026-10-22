@@ -77,25 +77,10 @@ type Page[T any] struct {
 }
 
 func Parse(v url.Values, cfg Config) (Query, error) {
-	q := Query{Page: 1, Size: DefaultSize, SortCol: ColCreatedAt, Desc: true}
-
-	if s := v.Get(ParamPage); s != "" {
-		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 || n > MaxPage {
-			return q, bad("%s must be a number from 1 to %d", ParamPage, MaxPage)
-		}
-		q.Page = n
+	q := Query{Page: 1, Size: DefaultSize, SortCol: ColCreatedAt, Desc: true, Search: strings.TrimSpace(v.Get(ParamSearch))}
+	if err := q.paging(v); err != nil {
+		return q, err
 	}
-	if s := v.Get(ParamSize); s != "" {
-		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 {
-			return q, bad("%s must be a number from 1 to %d", ParamSize, MaxSize)
-		}
-		q.Size = min(n, MaxSize)
-	}
-
-	q.Search = strings.TrimSpace(v.Get(ParamSearch))
-
 	if s := v.Get(ParamSort); s != "" {
 		col, desc := strings.CutPrefix(s, descPrefix)
 		if !slices.Contains(cfg.Sort, col) {
@@ -104,25 +89,47 @@ func Parse(v url.Values, cfg Config) (Query, error) {
 		}
 		q.SortCol, q.Desc = col, desc
 	}
+	return q, q.dates(v)
+}
 
+func (q *Query) paging(v url.Values) error {
+	if s := v.Get(ParamPage); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 || n > MaxPage {
+			return bad("%s must be a number from 1 to %d", ParamPage, MaxPage)
+		}
+		q.Page = n
+	}
+	if s := v.Get(ParamSize); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 {
+			return bad("%s must be a number from 1 to %d", ParamSize, MaxSize)
+		}
+		q.Size = min(n, MaxSize)
+	}
+	return nil
+}
+
+// dates reads the created-at window; a bare end date includes that whole day.
+func (q *Query) dates(v url.Values) error {
 	start, _, err := parseDate(v.Get(ParamStartDate), ParamStartDate)
 	if err != nil {
-		return q, err
+		return err
 	}
 	q.Start = start
 	end, dateOnly, err := parseDate(v.Get(ParamEndDate), ParamEndDate)
 	if err != nil {
-		return q, err
+		return err
 	}
 	if end != nil && dateOnly {
-		next := end.AddDate(0, 0, 1) // a bare end date includes that whole day
+		next := end.AddDate(0, 0, 1)
 		end = &next
 	}
 	q.End = end
 	if q.Start != nil && q.End != nil && !q.Start.Before(*q.End) {
-		return q, bad("%s must be before %s", ParamStartDate, ParamEndDate)
+		return bad("%s must be before %s", ParamStartDate, ParamEndDate)
 	}
-	return q, nil
+	return nil
 }
 
 // FromRequest parses the list parameters of a request, or writes 400.

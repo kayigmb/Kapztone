@@ -54,7 +54,7 @@ import { Person, StatusOf, roleLabel, useSetActive } from "../users";
 
 const t = copy.users;
 type Membership = PlatformUserRow["memberships"][number];
-// ponytail: the latest page of activity only; link to the full audit report if more is needed.
+// The latest page of activity only; link to the full audit report if more is needed.
 const activitySize = 50;
 
 export function UserDetail({ params }: { params: Promise<{ id: string }> }) {

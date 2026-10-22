@@ -146,36 +146,57 @@ func (s Store) Create(ctx context.Context, orgID string, in Input) (Facility, er
 	}
 	defer tx.Rollback(ctx)
 
-	// ponytail: one lock for every registration; per-area locks if registrations ever queue up.
+	// One lock for every registration; per-area locks if registrations ever queue up.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, createLock); err != nil {
 		return Facility{}, err
 	}
-	// Curated kinds only: a kind deactivated after this check still leaves a
-	// valid facility behind, which is fine — nothing references the kind list.
-	var kindKey string
-	if err := tx.QueryRow(ctx,
-		`SELECT key FROM facility_kinds WHERE key = $1 AND active AND NOT is_deleted FOR SHARE`, in.Kind).Scan(&kindKey); errors.Is(err, pgx.ErrNoRows) {
-		return Facility{}, ErrUnknownKind
-	} else if err != nil {
+	if err := checkKind(ctx, tx, in.Kind); err != nil {
 		return Facility{}, err
 	}
+	if err := checkOverlap(ctx, tx, orgID, in.Location); err != nil {
+		return Facility{}, err
+	}
+	f, err := insertFacility(ctx, tx, orgID, in)
+	if err != nil {
+		return Facility{}, err
+	}
+	return f, tx.Commit(ctx)
+}
+
+// checkKind allows curated kinds only. A kind deactivated after this check
+// still leaves a valid facility behind, which is fine: nothing references the kind list.
+func checkKind(ctx context.Context, tx pgx.Tx, kind string) error {
+	var key string
+	err := tx.QueryRow(ctx,
+		`SELECT key FROM facility_kinds WHERE key = $1 AND active AND NOT is_deleted FOR SHARE`, kind).Scan(&key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrUnknownKind
+	}
+	return err
+}
+
+// checkOverlap refuses a location that meets an existing facility. Only the
+// organisation's own facility is named; another's stays anonymous.
+func checkOverlap(ctx context.Context, tx pgx.Tx, orgID string, location json.RawMessage) error {
 	var other, otherName, otherOrg string
-	err = tx.QueryRow(ctx,
+	err := tx.QueryRow(ctx,
 		fmt.Sprintf(`SELECT f.id::text, f.name, f.organisation_id::text FROM facilities f
 		 WHERE NOT f.is_deleted AND ST_Intersects(f.geom, ST_SetSRID(ST_GeomFromGeoJSON($1), %d))
-		 ORDER BY f.created_at LIMIT 1`, SRID), string(in.Location)).Scan(&other, &otherName, &otherOrg)
+		 ORDER BY f.created_at LIMIT 1`, SRID), string(location)).Scan(&other, &otherName, &otherOrg)
 	switch {
 	case err == nil && otherOrg == orgID:
-		return Facility{}, OverlapError{FacilityID: other, Name: otherName}
+		return OverlapError{FacilityID: other, Name: otherName}
 	case err == nil:
-		return Facility{}, OverlapError{}
-	case !errors.Is(err, pgx.ErrNoRows):
-		if isGeometryError(err) {
-			return Facility{}, ErrBadGeometry
-		}
-		return Facility{}, err
+		return OverlapError{}
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
+	case isGeometryError(err):
+		return ErrBadGeometry
 	}
+	return err
+}
 
+func insertFacility(ctx context.Context, tx pgx.Tx, orgID string, in Input) (Facility, error) {
 	var id string
 	if err := tx.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&id); err != nil {
 		return Facility{}, err
@@ -185,7 +206,6 @@ func (s Store) Create(ctx context.Context, orgID string, in Input) (Facility, er
 	if err != nil {
 		return Facility{}, err
 	}
-
 	f, err := one(tx.Query(ctx,
 		fmt.Sprintf(`WITH g AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($4), %d) AS geom)
 		 INSERT INTO facilities AS f (id, organisation_id, name, kind, geom, licence_number,
@@ -197,10 +217,7 @@ func (s Store) Create(ctx context.Context, orgID string, in Input) (Facility, er
 	if errors.Is(err, ErrNotFound) {
 		return Facility{}, ErrBadGeometry // the WHERE filtered the row out
 	}
-	if err != nil {
-		return Facility{}, err
-	}
-	return f, tx.Commit(ctx)
+	return f, err
 }
 
 // isGeometryError reports PostGIS refusing to read the GeoJSON at all.

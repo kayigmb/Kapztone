@@ -48,7 +48,7 @@ async function pass(req: NextRequest, ctx: RouteContext<"/api/[...path]">) {
   // The visitor's address, for the API's rate limits. Next fills this from the
   // socket when no proxy set it; behind Caddy the last entry is the one Caddy
   // set. Only that one is passed on.
-  // ponytail: without a proxy in front, a visitor can send their own header.
+  // Without a proxy in front, a visitor can send their own header.
   const visitor = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
   if (visitor) headers.set("x-forwarded-for", visitor);
 

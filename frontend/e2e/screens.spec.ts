@@ -100,7 +100,7 @@ test("screens", async ({ browser }) => {
         path: string,
       ) => {
         await page.goto(path);
-        // ponytail: fixed settle time; some screens poll, so networkidle never comes.
+        // Fixed settle time; some screens poll, so networkidle never comes.
         await page.waitForTimeout(1500);
         const name =
           path.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home";

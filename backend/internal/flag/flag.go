@@ -201,16 +201,18 @@ func RaiseTx(ctx context.Context, tx pgx.Tx, orgID, userID, holder string, in Ra
 	if err != nil {
 		return Flag{}, err
 	}
+	return f, tellRaised(ctx, tx, id, orgID, holder)
+}
+
+// tellRaised tells the holder (unless it raised the flag itself) and the
+// platform, which resolves flags and so hears of every new one.
+func tellRaised(ctx context.Context, tx pgx.Tx, id, orgID, holder string) error {
 	if holder != orgID {
 		if err := notify.Add(ctx, tx, holder, notify.KindFlagRaised, id, MsgNotifyRaised); err != nil {
-			return Flag{}, err
+			return err
 		}
 	}
-	// The platform resolves flags, so it hears of every new one.
-	if err := notify.Add(ctx, tx, notify.Platform, notify.KindFlagRaised, id, MsgNotifyRaisedPlatform); err != nil {
-		return Flag{}, err
-	}
-	return f, nil
+	return notify.Add(ctx, tx, notify.Platform, notify.KindFlagRaised, id, MsgNotifyRaisedPlatform)
 }
 
 // RaiseFlag is RaiseTx in the shape the passport package takes

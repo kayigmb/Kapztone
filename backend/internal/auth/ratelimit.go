@@ -55,7 +55,7 @@ func (rt Rate) key(parts ...string) string {
 // address. The header is trusted because the API is never public: only the
 // web app can reach it (see docs/operations.md). Called directly, it is the
 // peer address.
-// ponytail: last entry only; with Caddy in front of the web app, the web app
+// Last entry only; with Caddy in front of the web app, the web app
 // must pass on Caddy's visitor address instead of its own peer.
 // ClientIP is the visitor address the rate limits and the access log use.
 func ClientIP(r *http.Request) string { return clientIP(r) }

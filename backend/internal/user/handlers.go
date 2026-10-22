@@ -166,29 +166,17 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var in struct {
-		Email string `json:"email"`
-		Role  string `json:"role"`
-	}
-	if !httpx.DecodeJSON(w, r, &in) {
+	email, role, ok := inviteInput(w, r)
+	if !ok {
 		return
 	}
-	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
-	if a, err := mail.ParseAddress(in.Email); err != nil || a.Address != in.Email || len(in.Email) > MaxEmailLen {
-		httpx.Error(w, http.StatusBadRequest, MsgEmail)
-		return
-	}
-	if !validRole(w, in.Role) {
-		return
-	}
-
 	raw := make([]byte, tokenBytes)
 	if _, err := rand.Read(raw); err != nil {
 		httpx.ServerError(w, "invite token", err)
 		return
 	}
 	token := hex.EncodeToString(raw)
-	inv, err := h.Store.CreateInvite(r.Context(), o.ID, in.Email, in.Role, tokenHash(token),
+	inv, err := h.Store.CreateInvite(r.Context(), o.ID, email, role, tokenHash(token),
 		auth.CurrentUser(r.Context()).ID, h.now().Add(InviteTTL))
 	if err != nil {
 		httpx.ServerError(w, "create invite", err)
@@ -197,38 +185,55 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 
 	// The link opens the invitation on the organisation's own address.
 	link := auth.OrgURL(h.AppURL, o.Slug) + InvitePath + token
-	out := map[string]any{"invite": inv, "emailed": false}
+	out := map[string]any{"invite": inv, "emailed": h.Mail != nil}
+	msg := MsgInviteLink
 	if h.Mail != nil {
-		// Queued, not sent: the invitation must not wait on the mail server
-		// (a slow or unreachable server must not slow this response down).
-		// A failure is logged; the admin re-invites and a new link is made.
-		text := fmt.Sprintf(MsgInviteBodyFmt, o.Name, in.Role, link)
-		html := mailtmpl.Render(mailtmpl.Page{
-			Subject:     InviteSubject,
-			Preheader:   "You have been invited to join " + o.Name + " on ChainTrack.",
-			Paragraphs:  mailtmpl.Split(text),
-			ActionLabel: "Accept invitation",
-			ActionURL:   link,
-			Footnote:    "This link works once, for 24 hours.",
-			LogoURL:     h.LogoURL,
-		})
-		mail, to := h.Mail, in.Email
-		go func() {
-			if err := mail(to, InviteSubject, text, html); err != nil {
-				logx.From(context.Background()).Error("invite e-mail failed", "invite_id", inv.ID, logx.KeyError, err)
-			}
-		}()
-		out["emailed"] = true
+		h.mailInvite(inv, o.Name, link)
+		msg = MsgInviteSent(inv.Email)
 	}
 	if h.Dev {
 		logx.From(r.Context()).Info("dev: invite link not e-mailed", "invite_id", inv.ID, "link", link)
 		out["link"] = link
 	}
-	msg := MsgInviteLink
-	if out["emailed"] == true {
-		msg = MsgInviteSent(inv.Email)
-	}
 	httpx.OK(w, http.StatusCreated, msg, out)
+}
+
+func inviteInput(w http.ResponseWriter, r *http.Request) (email, role string, ok bool) {
+	var in struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if !httpx.DecodeJSON(w, r, &in) {
+		return "", "", false
+	}
+	email = strings.ToLower(strings.TrimSpace(in.Email))
+	if a, err := mail.ParseAddress(email); err != nil || a.Address != email || len(email) > MaxEmailLen {
+		httpx.Error(w, http.StatusBadRequest, MsgEmail)
+		return "", "", false
+	}
+	return email, in.Role, validRole(w, in.Role)
+}
+
+// mailInvite queues the invitation e-mail rather than sending it inline: a
+// slow or unreachable mail server must not slow the response. A failure is
+// logged; the admin re-invites and a new link is made.
+func (h *Handlers) mailInvite(inv Invite, orgName, link string) {
+	text := fmt.Sprintf(MsgInviteBodyFmt, orgName, inv.Role, link)
+	html := mailtmpl.Render(mailtmpl.Page{
+		Subject:     InviteSubject,
+		Preheader:   "You have been invited to join " + orgName + " on ChainTrack.",
+		Paragraphs:  mailtmpl.Split(text),
+		ActionLabel: "Accept invitation",
+		ActionURL:   link,
+		Footnote:    "This link works once, for 24 hours.",
+		LogoURL:     h.LogoURL,
+	})
+	send := h.Mail
+	go func() {
+		if err := send(inv.Email, InviteSubject, text, html); err != nil {
+			logx.From(context.Background()).Error("invite e-mail failed", "invite_id", inv.ID, logx.KeyError, err)
+		}
+	}()
 }
 
 // Accept is public: the token in the link is the proof of invitation. A new

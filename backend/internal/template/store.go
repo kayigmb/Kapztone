@@ -264,20 +264,8 @@ func (s Store) Publish(ctx context.Context, id string) (Template, error) {
 		return Template{}, err
 	}
 	defer tx.Rollback(ctx)
-	var draft *string
-	err = tx.QueryRow(ctx,
-		`SELECT draft::text FROM commodity_templates WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id).Scan(&draft)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Template{}, ErrNotFound
-	}
+	in, err := lockDraft(ctx, tx, id)
 	if err != nil {
-		return Template{}, err
-	}
-	if draft == nil {
-		return Template{}, ErrNoDraft
-	}
-	var in Input
-	if err := json.Unmarshal([]byte(*draft), &in); err != nil {
 		return Template{}, err
 	}
 	if err := checkKind(ctx, tx, in.OriginFacilityKind, id); err != nil {
@@ -300,6 +288,22 @@ func (s Store) Publish(ctx context.Context, id string) (Template, error) {
 		return Template{}, err
 	}
 	return t, tx.Commit(ctx)
+}
+
+func lockDraft(ctx context.Context, tx pgx.Tx, id string) (Input, error) {
+	var in Input
+	var draft *string
+	err := tx.QueryRow(ctx,
+		`SELECT draft::text FROM commodity_templates WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id).Scan(&draft)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return in, ErrNotFound
+	case err != nil:
+		return in, err
+	case draft == nil:
+		return in, ErrNoDraft
+	}
+	return in, json.Unmarshal([]byte(*draft), &in)
 }
 
 // Delete marks the template deleted; it stays in the database for history.

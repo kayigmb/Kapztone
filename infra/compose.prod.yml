@@ -1,5 +1,5 @@
-# Production: built images. Every value comes from .env; nothing has a default.
 name: chaintrack_prod
+
 services:
   db:
     restart: unless-stopped

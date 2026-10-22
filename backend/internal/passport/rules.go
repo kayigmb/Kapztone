@@ -128,20 +128,7 @@ func (s Store) Retire(ctx context.Context, id, orgID string) (Passport, error) {
 	}
 	defer tx.Rollback(ctx)
 
-	var holder, status string
-	err = tx.QueryRow(ctx,
-		`SELECT organisation_id::text, status FROM passports WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
-	).Scan(&holder, &status)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && holder != orgID) {
-		return Passport{}, ErrNotHolder
-	}
-	if err != nil {
-		return Passport{}, err
-	}
-	if status != StatusActive {
-		return Passport{}, ErrNotActive
-	}
-	if err := noOpenHandover(ctx, tx, id); err != nil {
+	if err := lockHeldActive(ctx, tx, id, orgID); err != nil {
 		return Passport{}, err
 	}
 
@@ -163,4 +150,21 @@ func (s Store) Retire(ctx context.Context, id, orgID string) (Passport, error) {
 		return Passport{}, err
 	}
 	return p, tx.Commit(ctx)
+}
+
+// lockHeldActive locks a passport the organisation holds, active and with no handover open.
+func lockHeldActive(ctx context.Context, tx pgx.Tx, id, orgID string) error {
+	var holder, status string
+	err := tx.QueryRow(ctx,
+		`SELECT organisation_id::text, status FROM passports WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id,
+	).Scan(&holder, &status)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows) || (err == nil && holder != orgID):
+		return ErrNotHolder
+	case err != nil:
+		return err
+	case status != StatusActive:
+		return ErrNotActive
+	}
+	return noOpenHandover(ctx, tx, id)
 }

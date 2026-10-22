@@ -196,48 +196,62 @@ func Middleware(clientIP func(*http.Request) string) func(http.Handler) http.Han
 
 			defer func() {
 				if p := recover(); p != nil {
-					if p == http.ErrAbortHandler { // the client went away; nothing to report
-						panic(p)
-					}
-					in.err, in.errAt = fmt.Errorf("%v", p), KeyPanic
-					l.Error("panic", KeyPanic, fmt.Sprint(p), KeyStack, string(debug.Stack()))
-					if rec.status == 0 {
-						http.Error(rec, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-					}
+					recovered(p, l, in, rec)
 				}
 				status := rec.status
 				if status == 0 {
 					status = http.StatusOK
 				}
-				route := r.URL.Path
-				if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
-					route = rc.RoutePattern()
-				}
-				in.mu.Lock()
-				attrs := []any{
-					KeyMethod, r.Method, KeyRoute, route, KeyPath, r.URL.Path, KeyStatus, status, KeyBytes, rec.bytes,
-					KeyDuration, time.Since(start).Milliseconds(), KeyIP, clientIP(r),
-				}
-				if in.user != "" {
-					attrs = append(attrs, KeyUser, in.user)
-				}
-				if in.org != "" {
-					attrs = append(attrs, KeyOrg, in.org)
-				}
-				if in.err != nil {
-					attrs = append(attrs, KeyErrorAt, in.errAt, KeyError, in.err.Error())
-				}
-				in.mu.Unlock()
-				level := slog.LevelInfo
-				switch {
-				case status >= 500:
-					level = slog.LevelError
-				case status >= 400:
-					level = slog.LevelWarn
-				}
-				l.Log(ctx, level, "request", attrs...)
+				attrs := in.attrs(r, status, rec.bytes, time.Since(start), clientIP(r))
+				l.Log(ctx, levelOf(status), "request", attrs...)
 			}()
 			next.ServeHTTP(rec, r.WithContext(ctx))
 		})
 	}
+}
+
+// recovered logs a handler panic and answers 500 if nothing was written yet.
+// http.ErrAbortHandler means the client went away: re-panic, nothing to report.
+func recovered(p any, l *slog.Logger, in *info, rec *recorder) {
+	if p == http.ErrAbortHandler {
+		panic(p)
+	}
+	in.err, in.errAt = fmt.Errorf("%v", p), KeyPanic
+	l.Error("panic", KeyPanic, fmt.Sprint(p), KeyStack, string(debug.Stack()))
+	if rec.status == 0 {
+		http.Error(rec, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	}
+}
+
+func (in *info) attrs(r *http.Request, status, bytes int, took time.Duration, ip string) []any {
+	route := r.URL.Path
+	if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+		route = rc.RoutePattern()
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	attrs := []any{
+		KeyMethod, r.Method, KeyRoute, route, KeyPath, r.URL.Path, KeyStatus, status, KeyBytes, bytes,
+		KeyDuration, took.Milliseconds(), KeyIP, ip,
+	}
+	if in.user != "" {
+		attrs = append(attrs, KeyUser, in.user)
+	}
+	if in.org != "" {
+		attrs = append(attrs, KeyOrg, in.org)
+	}
+	if in.err != nil {
+		attrs = append(attrs, KeyErrorAt, in.errAt, KeyError, in.err.Error())
+	}
+	return attrs
+}
+
+func levelOf(status int) slog.Level {
+	switch {
+	case status >= 500:
+		return slog.LevelError
+	case status >= 400:
+		return slog.LevelWarn
+	}
+	return slog.LevelInfo
 }

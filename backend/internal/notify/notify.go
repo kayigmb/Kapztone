@@ -56,7 +56,7 @@ func Add(ctx context.Context, tx pgx.Tx, orgID, kind, subjectID, message string)
 	return err
 }
 
-// ponytail: read state is per organisation, not per user: one colleague
+// Read state is per organisation, not per user: one colleague
 // reading a notification marks it read for all. Add a per-user table if that
 // starts to matter.
 type Handlers struct {

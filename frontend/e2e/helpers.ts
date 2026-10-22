@@ -69,7 +69,7 @@ export async function business(
     baseURL: origin(),
     extraHTTPHeaders: {
       Origin: origin(),
-      // ponytail: the pass-through forwards this as the visitor's address, which dodges the
+      // The pass-through forwards this as the visitor's address, which dodges the
       // 10 sign-ups/hour limit across runs. Stops working behind Caddy, which sets the real address.
       "X-Forwarded-For": `10.${run.length}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
     },
