@@ -29,7 +29,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] 2FA recovery codes
 - [x] Capacity used per facility per period, exposed
 - [x] Retry for failed IPFS pins
-- [ ] nginx in front of the web app, appending the real visitor address (`$proxy_add_x_forwarded_for`); until then a visitor can fake their address
+- [x] Caddy in front of the web app: real visitor address, certificates without certbot
 - [x] Real client address behind the web app (see Pending decisions)
 
 ### Sprint 4 frontend
@@ -49,7 +49,7 @@ What has been built and what is left. Every finished piece of work adds an entry
 - [x] Load: 1,000 events/hour (measured by the sim instead of k6: 1,300 events in 3m34s ≈ 21,800/hour on a laptop)
 - [x] OWASP top-10 dev hardening (headers, caps, validation; full review + test runs later)
 - [x] Medicine template added without code change (`tools/sim/templates/medicine.json`)
-- [ ] nginx and VPS deployment
+- [ ] VPS deployment (config and steps ready: `docs/operations.md` → Deploying to a VPS; needs a domain, a server and the Amoy keys)
 - [ ] Tag `v1.0-eval`
 - [x] Tick PLAN.md §7 checklist (true items ticked; key rotation, backups, monitoring, data law remain)
 
@@ -71,6 +71,29 @@ What has been built and what is left. Every finished piece of work adds an entry
 - The Decision column of the gap table in `docs/design.md`: build each row in the backend, or cut it from the screen.
 
 ## Done
+
+### 2026-10-22 — Caddy in front of the web app
+- **`infra/Caddyfile`**: replaces nginx + certbot, whose wildcard certificate needed the DNS challenge and a reload on renewal.
+  - On-demand TLS: Caddy gets and renews a certificate per host on its first visit (HTTP challenge, no DNS keys).
+  - http redirects to https.
+  - Uploads are capped at 64 MB (6 × 10 MB photos).
+  - Proxies to the web app with `Host` kept. `X-Forwarded-For` is set to the real visitor address, dropping what the visitor sent.
+- **`GET /tls/allowed?domain=`** (API, public): Caddy's check before each certificate.
+  - Allows the host of `APP_URL` and the subdomains of registered organisations; everything else gets 404.
+  - Added to openapi. `TestTLSAllowed` covers the platform host, an org, an unknown slug, a reserved slug, a foreign domain and a nested name.
+- **`compose.prod.yml`**:
+  - New `caddy` service, the only one with published ports (80, 443, 443/udp).
+  - The `caddy_data` volume keeps the certificates across restarts.
+  - `web` no longer publishes 3000.
+  - New required `DOMAIN`, in `.env.example`; dev ignores it.
+- **`docs/operations.md`**: new "Deploying to a VPS" (DNS, prod `.env`, `make prod`, firewall); "Visitor addresses" rewritten.
+- **Checked locally**: Caddy (internal issuer) in front of the dev web app.
+  - An org subdomain got its certificate on first visit and proxied.
+  - An unknown subdomain got no certificate (TLS error).
+  - http gives 308 to https.
+  - `X-Forwarded-For: 9.9.9.9` reached the API as the Docker gateway address.
+  - A foreign Origin gets 403; a same-origin sign-in reaches auth.
+  - `caddy validate` passes on the production Caddyfile; `compose config` validates and refuses a missing `DOMAIN`.
 
 ### 2026-10-22 — Dev-side Left items: e2e, deep verify, first sim run
 - **Bugs found on the way:**

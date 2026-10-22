@@ -15,6 +15,21 @@ import (
 )
 
 // A new sign-up confirms its email before signing in; signing in first sends a new link.
+func TestTLSAllowed(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.register(tAcme, org.KindProducer)
+	for domain, code := range map[string]int{
+		testBaseDomain:                              http.StatusOK,
+		e.slug(tAcme) + "." + testBaseDomain:        http.StatusOK,
+		"nobody-" + e.suffix + "." + testBaseDomain: http.StatusNotFound,
+		"admin." + testBaseDomain:                   http.StatusNotFound,
+		e.slug(tAcme) + ".example.com":              http.StatusNotFound,
+		"a.b." + testBaseDomain:                     http.StatusNotFound,
+	} {
+		want(t, domain, do(e.h, http.MethodGet, "/tls/allowed?domain="+domain, "", ""), code)
+	}
+}
+
 func TestEmailVerification(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.register(tAcme, org.KindProducer)

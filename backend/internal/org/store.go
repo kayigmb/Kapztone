@@ -122,6 +122,13 @@ func (s Store) EmailAvailable(ctx context.Context, email string) (bool, error) {
 	return !exists, err
 }
 
+// SlugTaken reports whether an organisation has this slug, whatever its status.
+func (s Store) SlugTaken(ctx context.Context, slug string) (bool, error) {
+	var exists bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM organisations WHERE slug = $1)`, slug).Scan(&exists)
+	return exists, err
+}
+
 // Register creates the organisation (pending), its first user, and that
 // user's org_admin scope, all or nothing.
 func (s Store) Register(ctx context.Context, in Registration, passwordHash string) (Organisation, error) {

@@ -219,6 +219,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		Auth: e.a,
 		Org: &org.Handlers{
 			Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: invalidate, Secrets: testBox(t),
+			AppURL: testAppURL,
 		},
 		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
 		Template:    &template.Handlers{Store: template.Store{Pool: pool}},

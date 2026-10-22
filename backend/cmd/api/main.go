@@ -105,6 +105,7 @@ func main() {
 		InvalidateOrg: store.InvalidateOrg,
 		Secrets:       cfg.Secrets,
 		SendVerify:    a.SendVerifyTo,
+		AppURL:        cfg.AppURL,
 	}
 
 	passports := passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}

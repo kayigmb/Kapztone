@@ -1,0 +1,25 @@
+# The public entrance in production (compose.prod.yml). Caddy fills {$NAME}
+# from its environment, redirects http to https and gets and renews every
+# certificate itself.
+{
+	# A certificate per host on its first visit (HTTP challenge, no DNS keys),
+	# only for hosts the API knows: the platform's own and each organisation's.
+	on_demand_tls {
+		ask http://{$API}/tls/allowed
+	}
+}
+
+# The bare address and every organisation's own (acme.DOMAIN).
+{$DOMAIN}, *.{$DOMAIN} {
+	tls {
+		on_demand
+	}
+	# Up to 6 handover photos of 10 MB each, plus the form around them.
+	request_body {
+		max_size 64MB
+	}
+	# Keeps Host (the subdomain names the organisation; the API's Origin check
+	# compares against it) and sets X-Forwarded-For to the real visitor address,
+	# dropping whatever the visitor sent. The web app passes on the last entry.
+	reverse_proxy {$UPSTREAM}
+}

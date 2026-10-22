@@ -26,6 +26,8 @@ type Handlers struct {
 	// SendVerify emails a new account the link that confirms its email; nil sends nothing.
 	// It returns the link in dev only (see auth.SendVerifyTo).
 	SendVerify func(ctx context.Context, email string) (devLink string)
+	// AppURL is the platform's address; organisations live on its subdomains.
+	AppURL string
 }
 
 // newSigningKey makes the key an organisation receives when first verified.
@@ -109,6 +111,33 @@ func (h *Handlers) EmailAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, http.StatusOK, "", map[string]bool{"available": available})
+}
+
+// TLSAllowed answers Caddy's on-demand TLS check (?domain=): a certificate is
+// for the platform's own host or a registered organisation's subdomain only,
+// so names pointed at the server by anyone else get none.
+func (h *Handlers) TLSAllowed(w http.ResponseWriter, r *http.Request) {
+	domain := strings.ToLower(r.URL.Query().Get("domain"))
+	_, base, _ := strings.Cut(h.AppURL, "://")
+	if domain == base {
+		httpx.OK(w, http.StatusOK, "", nil)
+		return
+	}
+	slug, rest, _ := strings.Cut(domain, ".")
+	if rest != base || !auth.ValidSlug(slug) {
+		httpx.Error(w, http.StatusNotFound, "unknown domain")
+		return
+	}
+	taken, err := h.Store.SlugTaken(r.Context(), slug)
+	if err != nil {
+		httpx.ServerError(w, "check domain", err)
+		return
+	}
+	if !taken {
+		httpx.Error(w, http.StatusNotFound, "unknown domain")
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", nil)
 }
 
 // listOf reads a comma-separated filter whose every value must be allowed; none means no filter.

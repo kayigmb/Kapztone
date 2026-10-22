@@ -24,6 +24,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | first platform admin | used only when no superadmin exists; password 12 to 72 characters in prod, up to 72 in dev |
 | `APP_ENV` | `dev` or `prod` | `dev` also accepts `?pslug=` to choose the acting organisation |
 | `APP_URL` | the web app's bare address, no path | e-mailed links (reset, verify, lock, invite) start with it, never with a request header; an invite puts the organisation's slug in front of the host (`https://acme.chaintrack.app`) |
+| `DOMAIN` | Caddy in production: the bare domain it answers (and `*.DOMAIN`) | `make prod` only; dev ignores it. Must be the host of `APP_URL`: the API's `/tls/allowed` compares against that |
 | `CHAIN_RPC_URL`, `CHAIN_ID` | the chain the relayer writes to | local: `http://127.0.0.1:8545` and `31337` |
 | `CHAIN_RELAYER_KEY` | sends every transaction; relayer + operator on-chain | must hold funds on a real network; the value in `.env.example` is a public test key, local only |
 | `CHAIN_ADMIN_KEY` | deploys, wires the contracts, grants roles | read only by `make deploy`; outside a local chain it differs from the relayer key and stays offline afterwards |
@@ -33,7 +34,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `PINATA_JWT` | copies certificate files to IPFS | `none` turns it off. A pinned file is public and cannot be withdrawn |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | sends notification e-mail | `SMTP_HOST=none` turns it off (the rest are then not needed). `SMTP_USER` is only the login; every recipient sees `MAIL_FROM`, e.g. `ChainTrack <noreply@chaintrack.digital>` (name and address, validated at start-up). With Gmail, add that address under "Send mail as" or Gmail shows the login address; a custom domain needs SPF (and ideally DKIM). `MAIL_LOGO_URL` is the absolute https URL of the mark shown atop HTML mail (see `frontend/public/brand/`); empty means a text wordmark. `SMTP_USE_TLS=true` refuses a server without STARTTLS (port 587); required and `true` in prod, optional in dev; port 465 is not supported. Quote a value with spaces |
 
-There is no domain setting. The API takes the frontend's address from each request (the browser's `Origin` header, or the request's own host) and treats its first label as the organisation to act for, if the signed-in user belongs to it.
+The API has no domain setting (`DOMAIN` only tells Caddy what to answer). The API takes the frontend's address from each request (the browser's `Origin` header, or the request's own host) and treats its first label as the organisation to act for, if the signed-in user belongs to it.
 
 ## File storage
 
@@ -52,6 +53,16 @@ Outside development the API refuses to start if the bucket does not exist. `make
 - `make infra` — Postgres, migrations, Redis, RustFS (the dev bucket).
 - `make api` — the API on your machine, using `.env`.
 - `make dev` / `make prod` — everything in containers.
+
+## Deploying to a VPS
+
+`make prod` runs everything in containers behind Caddy (`infra/Caddyfile`), the only service with published ports (80, 443). Organisations live on their own subdomains. Caddy gets a Let's Encrypt certificate for each host on its first visit (HTTP challenge) and renews it; no certbot, no DNS keys. Before each one it asks the API (`GET /tls/allowed?domain=`), which allows only `DOMAIN` and the subdomains of registered organisations, so names pointed at the server by anyone else get nothing. Certificates live in the `caddy_data` volume; keep it, or every restart re-issues them and runs into Let's Encrypt's limits.
+
+1. A Linux server with Docker and the Compose plugin; clone the repository there.
+2. DNS: two A records to the server, `DOMAIN` and `*.DOMAIN`.
+3. `.env` from `.env.example`, with production values: `APP_ENV=prod`, `APP_URL=https://DOMAIN`, `DOMAIN`, new `JWT_SECRET` and `ENCRYPTION_KEY`, a managed bucket (File storage), `SMTP_USE_TLS=true`, and the Amoy addresses (Chain: Polygon Amoy). Prod refuses Hardhat's test keys.
+4. `make prod`. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (shows `"mode":"prod"`). The first visit to a new organisation's subdomain takes a few seconds while its certificate is issued.
+5. Firewall: open 22, 80 and 443 only (80 carries the certificate challenge and the redirect to https). The database and Redis bind to 127.0.0.1; the API and web app publish nothing.
 
 ## Chain: local set-up
 
@@ -122,7 +133,7 @@ In dev, `http://acme.localhost:3000` acts for the organisation `acme`; `http://l
 
 ## Public verification
 
-`GET /verify/{passportId}` is open to anyone. The API reads the chain for it, so the API now needs `CHAIN_RPC_URL` reachable as well as the relayer does; while the chain is down every answer is a warning, never "verified". Answers are cached for 60 seconds, so a revocation can take that long to show: `redis-cli --scan --pattern 'verify:*'` then `DEL` clears them. Each address may ask 60 times a minute (the direct peer address; behind nginx that is the proxy until the forwarded address is used).
+`GET /verify/{passportId}` is open to anyone. The API reads the chain for it, so the API now needs `CHAIN_RPC_URL` reachable as well as the relayer does; while the chain is down every answer is a warning, never "verified". Answers are cached for 60 seconds, so a revocation can take that long to show: `redis-cli --scan --pattern 'verify:*'` then `DEL` clears them. Each address may ask 60 times a minute (the visitor's address as Caddy reports it; see "Visitor addresses").
 
 ## Audit log
 
@@ -161,7 +172,9 @@ Production only. Five failed sign-ins for one email from one address lock that p
 
 ## Visitor addresses and the API port
 
-Rate limits count per visitor address. The web app passes the visitor's address in `X-Forwarded-For` (the last entry it received), and the API trusts that header. That is safe only while the API is never reachable except through the web app: `compose.prod.yml` publishes no API port, and none must ever be opened. Put nginx (with `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`) in front of the web app in production; without a proxy, a visitor can send their own header.
+Rate limits count per visitor address. In production Caddy sets `X-Forwarded-For` to the real visitor address, dropping what the visitor sent; the web app passes on the last entry, and the API trusts that header. A visitor's own `X-Forwarded-For` therefore changes nothing. That holds only while the API and the web app are reachable through Caddy alone: `compose.prod.yml` publishes no port for either, and none must ever be opened.
+
+In dev nothing sits in front of the web app, so a request may name its own address. The e2e tests and the sim use that to stay under the per-address limits; behind Caddy it no longer works, which is the point.
 
 ## Signing PIN and recovery codes
 

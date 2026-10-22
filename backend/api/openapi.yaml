@@ -98,6 +98,19 @@ paths:
         "200": { $ref: "#/components/responses/Object" }
         "400": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /tls/allowed:
+    get:
+      tags: [auth]
+      summary: Caddy's on-demand TLS check; 200 for the platform's host or a registered organisation's subdomain
+      security: []
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
+        "404": { $ref: "#/components/responses/Error" }
   /auth/password/forgot:
     post:
       tags: [auth]

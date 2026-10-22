@@ -68,8 +68,28 @@ services:
     restart: unless-stopped
     environment:
       API_URL: http://api:${PORT}
-    ports:
-      - "3000:3000"
+    # No published port: visitors come in through Caddy, which fills in their real address.
     depends_on:
       - api
 
+  # The only published ports. Gets and renews a certificate for the domain
+  # and each organisation's subdomain on its own (infra/Caddyfile).
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      API: api:${PORT}
+      UPSTREAM: web:3000
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
