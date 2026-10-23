@@ -137,7 +137,7 @@ func handlers(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, files 
 		Ping: pool.Ping,
 		Auth: a,
 		Org: &org.Handlers{Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: store.InvalidateOrg,
-			Secrets: cfg.Secrets, SendVerify: a.SendVerifyTo, AppURL: cfg.AppURL},
+			Secrets: cfg.Secrets, SendVerify: a.SendVerifyTo, AppURL: cfg.AppURL, Slug: a.Slug, Cache: c},
 		Facility: &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
 		Template: &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport: &passport.Handlers{Store: passports, PIN: a.CheckPIN, Files: files,

@@ -131,7 +131,7 @@ CI (`.github/workflows/ci.yml`) runs the Go, frontend (including the dependency 
 ### 1. Server
 
 - A Linux server with Docker and the Compose plugin; clone the repository there.
-- DNS: two A records to the server, `DOMAIN` and `*.DOMAIN`.
+- DNS: two A records to the server, `DOMAIN` and `*.DOMAIN`, at any DNS provider.
 - Firewall: open 22, 80 and 443 only. The database and Redis bind to 127.0.0.1; the API and web app publish no port, and none must ever be opened.
 
 ### 2. Chain (Polygon Amoy)

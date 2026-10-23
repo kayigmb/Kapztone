@@ -96,6 +96,8 @@ type env struct {
 	certificates *attestation.Handlers
 	// verify is kept so tests can point it at their chain and give it a cache.
 	verify *verify.Handlers
+	// orgs is kept so tests can give it a cache.
+	orgs *org.Handlers
 	// audit is the audit log every change through h is written to.
 	audit *audit.Handlers
 	// users is kept so tests can give it a mailer.
@@ -215,13 +217,14 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 	e.a = &auth.Auth{Store: store, Accounts: auth.PgStore{Pool: pool}, Secret: []byte(testSecret),
 		TokenTTL: time.Hour, RememberTTL: 30 * 24 * time.Hour, AppURL: testAppURL, Dev: true, Secrets: testBox(t)}
 	e.audit = &audit.Handlers{Store: audit.Store{Pool: pool}}
+	e.orgs = &org.Handlers{
+		Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: invalidate, Secrets: testBox(t),
+		AppURL: testAppURL, Slug: e.a.Slug,
+	}
 	e.h = server.NewRouter(server.Deps{
-		Ping: pool.Ping,
-		Auth: e.a,
-		Org: &org.Handlers{
-			Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: invalidate, Secrets: testBox(t),
-			AppURL: testAppURL,
-		},
+		Ping:        pool.Ping,
+		Auth:        e.a,
+		Org:         e.orgs,
 		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
 		Template:    &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport:    e.passports,

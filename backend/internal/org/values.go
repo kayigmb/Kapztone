@@ -1,7 +1,11 @@
 // Package org handles organisation registration and KYB review.
 package org
 
-import "github.com/kayigmb/chaintrack/backend/internal/auth"
+import (
+	"time"
+
+	"github.com/kayigmb/chaintrack/backend/internal/auth"
+)
 
 // Every value in this file is declared here once and referenced everywhere
 // else, including SQL arguments and tests.
@@ -98,3 +102,11 @@ var reviewMessage = map[string]string{
 	StatusRejected:         "Organisation rejected. It sees your note.",
 	StatusChangesRequested: "Changes requested. The organisation sees your note.",
 }
+
+// tlsUnknownPerDay is how many unknown subdomains a day may get a certificate
+// (to show "no such organisation"): far under Let's Encrypt's 50 new
+// certificates per domain a week, which real organisations need.
+const tlsUnknownPerDay = 3
+
+// TLSUnknownKey is the cache counter of one UTC day's unknown-address certificates.
+func TLSUnknownKey(now time.Time) string { return "tls:unknown:" + now.UTC().Format(time.DateOnly) }

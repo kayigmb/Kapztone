@@ -93,6 +93,7 @@ func Routes(d Deps) []Route {
 		{get, "/verify" + idPath, Public, "", a.LimitIP(auth.VerifyRate, v.Verify)},
 		// Caddy asks before getting a certificate; not rate limited, all its calls share one address.
 		{get, "/tls/allowed", Public, "", o.TLSAllowed},
+		{get, "/address", Public, "", o.Address},
 
 		{get, "/me", SignedIn, "", a.Me},
 		{put, "/me", SignedIn, "", u.SetName},

@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/cache"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -28,6 +30,10 @@ type Handlers struct {
 	SendVerify func(ctx context.Context, email string) (devLink string)
 	// AppURL is the platform's address; organisations live on its subdomains.
 	AppURL string
+	// Slug names the organisation a request's address points at ("" for the bare one).
+	Slug func(*http.Request) string
+	// Cache counts today's certificates for unknown addresses; nil allows none.
+	Cache *cache.Cache
 }
 
 // newSigningKey makes the key an organisation receives when first verified.
@@ -114,8 +120,10 @@ func (h *Handlers) EmailAvailability(w http.ResponseWriter, r *http.Request) {
 }
 
 // TLSAllowed answers Caddy's on-demand TLS check (?domain=): a certificate is
-// for the platform's own host or a registered organisation's subdomain only,
-// so names pointed at the server by anyone else get none.
+// for the platform's own host, a registered organisation's subdomain, or a
+// well-formed unknown one while today's allowance lasts, so it can show "no
+// such organisation" over https without letting random names use up Let's
+// Encrypt's weekly limit. Anything else gets none.
 func (h *Handlers) TLSAllowed(w http.ResponseWriter, r *http.Request) {
 	domain := strings.ToLower(r.URL.Query().Get("domain"))
 	_, base, _ := strings.Cut(h.AppURL, "://")
@@ -133,11 +141,37 @@ func (h *Handlers) TLSAllowed(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, "check domain", err)
 		return
 	}
-	if !taken {
+	if !taken && !h.unknownAllowed(r.Context()) {
 		httpx.Error(w, http.StatusNotFound, "unknown domain")
 		return
 	}
 	httpx.OK(w, http.StatusOK, "", nil)
+}
+
+// unknownAllowed spends one of today's certificates for unknown names; no
+// cache (or a failing one) means none.
+func (h *Handlers) unknownAllowed(ctx context.Context) bool {
+	if h.Cache == nil {
+		return false
+	}
+	n := h.Cache.Incr(ctx, TLSUnknownKey(time.Now()), 24*time.Hour)
+	return n > 0 && n <= tlsUnknownPerDay
+}
+
+// Address answers GET /address, publicly: which organisation this address
+// names and whether it exists, so the web app can show "no such
+// organisation" instead of a sign-in form for one. The bare address names none.
+func (h *Handlers) Address(w http.ResponseWriter, r *http.Request) {
+	slug := h.Slug(r)
+	exists := true
+	if slug != "" {
+		var err error
+		if exists, err = h.Store.SlugTaken(r.Context(), slug); err != nil {
+			httpx.ServerError(w, "check address", err)
+			return
+		}
+	}
+	httpx.OK(w, http.StatusOK, "", map[string]any{"slug": slug, "exists": exists, "home": h.AppURL})
 }
 
 // listOf reads a comma-separated filter whose every value must be allowed; none means no filter.

@@ -1273,6 +1273,13 @@
     "done": "You were signed out of every device. We've emailed you a confirmation with a link to lock your account if this wasn't you.",
     "toSignIn": "Continue to sign in"
   },
+  "orgNotFound": {
+    "title": "This organisation doesn't exist",
+    "body": {
+      "$template": "No organisation uses the address {host}. Check the spelling, or go to ChainTrack to sign in or register yours."
+    },
+    "action": "Go to ChainTrack"
+  },
   "handoff": {
     "title": "Switching organisation…",
     "body": "Opening your workspace at this address. You stay signed in.",

@@ -101,7 +101,7 @@ paths:
   /tls/allowed:
     get:
       tags: [auth]
-      summary: Caddy's on-demand TLS check; 200 for the platform's host or a registered organisation's subdomain
+      summary: "Caddy's on-demand TLS check: 200 for the platform's host, a registered organisation's subdomain, or a few unknown well-formed subdomains a day"
       security: []
       parameters:
         - name: domain
@@ -111,6 +111,13 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/Object" }
         "404": { $ref: "#/components/responses/Error" }
+  /address:
+    get:
+      tags: [auth]
+      summary: "Which organisation this address names and whether it exists: {slug, exists, home}; the bare address names none"
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
   /auth/password/forgot:
     post:
       tags: [auth]

@@ -1,35 +1,97 @@
 package tests
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
+	"github.com/kayigmb/chaintrack/backend/internal/cache"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 )
 
-// A new sign-up confirms its email before signing in; signing in first sends a new link.
+// Caddy's certificate check: the platform's host and registered organisations
+// always, a few unknown well-formed names a day (for the "no such
+// organisation" page), nothing else, and no unknown names without Redis.
 func TestTLSAllowed(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.register(tAcme, org.KindProducer)
+	ask := func(domain string) int {
+		return do(e.h, http.MethodGet, "/tls/allowed?domain="+domain, "", "").Code
+	}
+	unknown := func(i int) string { return fmt.Sprintf("nobody%d-%s.%s", i, e.suffix, testBaseDomain) }
 	for domain, code := range map[string]int{
-		testBaseDomain:                              http.StatusOK,
-		e.slug(tAcme) + "." + testBaseDomain:        http.StatusOK,
-		"nobody-" + e.suffix + "." + testBaseDomain: http.StatusNotFound,
-		"admin." + testBaseDomain:                   http.StatusNotFound,
-		e.slug(tAcme) + ".example.com":              http.StatusNotFound,
-		"a.b." + testBaseDomain:                     http.StatusNotFound,
+		testBaseDomain:                       http.StatusOK,
+		e.slug(tAcme) + "." + testBaseDomain: http.StatusOK,
+		unknown(0):                           http.StatusNotFound, // no cache: no unknown names
+		"admin." + testBaseDomain:            http.StatusNotFound,
+		e.slug(tAcme) + ".example.com":       http.StatusNotFound,
+		"a.b." + testBaseDomain:              http.StatusNotFound,
 	} {
-		want(t, domain, do(e.h, http.MethodGet, "/tls/allowed?domain="+domain, "", ""), code)
+		if got := ask(domain); got != code {
+			t.Errorf("%s = %d, want %d", domain, got, code)
+		}
+	}
+
+	redisURL := os.Getenv(envTestRedis)
+	if redisURL == "" {
+		t.Skip(envTestRedis + " not set")
+	}
+	c, err := cache.New(redisURL, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	c.Del(t.Context(), org.TLSUnknownKey(time.Now()))
+	t.Cleanup(func() { c.Del(context.Background(), org.TLSUnknownKey(time.Now())) })
+	e.orgs.Cache = c
+	for i := 1; i <= 3; i++ {
+		if got := ask(unknown(i)); got != http.StatusOK {
+			t.Fatalf("unknown name %d within today's allowance = %d", i, got)
+		}
+	}
+	if got := ask(unknown(4)); got != http.StatusNotFound {
+		t.Fatalf("unknown name past today's allowance = %d", got)
+	}
+	if got := ask(e.slug(tAcme) + "." + testBaseDomain); got != http.StatusOK {
+		t.Fatalf("a registered organisation past the allowance = %d", got)
 	}
 }
 
+// GET /address tells the web app whether an organisation's address exists,
+// so an unknown one gets a "no such organisation" page.
+func TestAddress(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.register(tAcme, org.KindProducer)
+	for host, want := range map[string]struct {
+		slug   string
+		exists bool
+	}{
+		testBaseDomain:                              {"", true},
+		e.slug(tAcme) + "." + testBaseDomain:        {e.slug(tAcme), true},
+		"nobody-" + e.suffix + "." + testBaseDomain: {"nobody-" + e.suffix, false},
+	} {
+		rec := do(e.h, http.MethodGet, "http://"+host+"/address", "", "")
+		got := decodeTo[struct {
+			Slug   string
+			Exists bool
+			Home   string
+		}](t, rec)
+		if got.Slug != want.slug || got.Exists != want.exists || got.Home != testAppURL {
+			t.Errorf("%s: got %+v, want slug %q exists %v", host, got, want.slug, want.exists)
+		}
+	}
+}
+
+// A new sign-up confirms its email before signing in; signing in first sends a new link.
 func TestEmailVerification(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.register(tAcme, org.KindProducer)

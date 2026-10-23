@@ -735,6 +735,10 @@ export const copy = {
   profile: {
     ...copyJson.profile,
   },
+  orgNotFound: {
+    ...copyJson.orgNotFound,
+    body: (host: string) => fill(copyJson.orgNotFound.body.$template, { host }),
+  },
   signin: {
     ...copyJson.signin,
     confirmBody: (email: string) =>
