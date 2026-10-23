@@ -7,13 +7,14 @@ import {
 } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmProvider } from "@/components/chaintrack/confirm";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ApiError, isSent, problemOf } from "@/lib/api";
+import { copy } from "@/lib/consts";
 
 // Retrying can't fix a refusal (4xx); it can fix a dropped connection or a server hiccup.
 const retry = (count: number, err: unknown) =>
@@ -39,6 +40,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       }),
   );
+  useEffect(() => {
+    const offline = () =>
+      toast.error(copy.offline, { id: "offline", duration: Infinity });
+    const online = () => {
+      toast.dismiss("offline");
+      toast.success(copy.online);
+    };
+    if (!navigator.onLine) offline();
+    window.addEventListener("offline", offline);
+    window.addEventListener("online", online);
+    return () => {
+      window.removeEventListener("offline", offline);
+      window.removeEventListener("online", online);
+    };
+  }, []);
   return (
     // globals.css switches tokens on <html data-theme>; "system" leaves it to the device.
     <ThemeProvider

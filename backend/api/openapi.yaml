@@ -234,6 +234,13 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/Object" }
       responses:
         "200": { $ref: "#/components/responses/Object" }
+  /me/notifications:
+    put:
+      tags: [auth]
+      summary: E-mail me my notifications, or stop (`{"email": false}`); in-app notifications always show
+      requestBody: { $ref: "#/components/requestBodies/Object" }
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
   /me/organisations:
     get:
       tags: [auth]

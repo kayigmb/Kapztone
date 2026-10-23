@@ -1,6 +1,8 @@
+import Link from "next/link";
+
 import { Brand } from "@/components/chaintrack/brand";
 import { ThemeToggle } from "@/components/chaintrack/theme-toggle";
-import { copy } from "@/lib/consts";
+import { copy, routes } from "@/lib/consts";
 
 const t = copy.auth;
 
@@ -9,7 +11,9 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="min-h-dvh bg-surface lg:grid lg:grid-cols-[minmax(--spacing(87),0.8fr)_1.4fr]">
       <aside className="relative hidden overflow-hidden bg-navy-900 p-10 text-hero-ink lg:flex lg:flex-col lg:justify-between">
-        <Brand onNavy />
+        <Link href={routes.landing} className="self-start rounded-md">
+          <Brand onNavy />
+        </Link>
         <div className="relative z-10 grid gap-4">
           <span className="text-xs font-bold tracking-[0.1em] text-hero-accent uppercase">
             {t.eyebrow}
@@ -33,7 +37,12 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
         <div className="absolute top-5 right-5">
           <ThemeToggle />
         </div>
-        <Brand className="mb-12 lg:hidden" />
+        <Link
+          href={routes.landing}
+          className="mb-12 self-start rounded-md lg:hidden"
+        >
+          <Brand />
+        </Link>
         {children}
       </div>
     </div>

@@ -692,6 +692,13 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		t.Fatal("a mail server that is down was not reported")
 	}
 	failing = false
+	// A failure backs that notification off; let it be tried straight away here.
+	retryNow := func() {
+		if _, err := e.pool.Exec(ctx, `UPDATE notifications SET mail_next_at = NULL WHERE organisation_id = $1::uuid`, processor.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	retryNow()
 	waiting := func() (n int) {
 		e.pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE organisation_id = $1::uuid AND emailed_at IS NULL`, processor.ID).Scan(&n)
 		return n
@@ -715,6 +722,57 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	if err := mailer.SendPending(ctx); err != nil || sent[e.email(tRival)] != before {
 		t.Fatalf("notifications were e-mailed twice (err %v)", err)
 	}
+
+	addNote := func() (id string) {
+		if err := e.pool.QueryRow(ctx,
+			`INSERT INTO notifications (organisation_id, kind, subject_id, message) VALUES ($1::uuid, $2, $1::uuid, 'mail test') RETURNING id::text`,
+			processor.ID, notify.KindFlagRaised).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	emailed := func(id string) (done bool, attempts int) {
+		e.pool.QueryRow(ctx, `SELECT emailed_at IS NOT NULL, mail_attempts FROM notifications WHERE id = $1::uuid`, id).Scan(&done, &attempts)
+		return done, attempts
+	}
+
+	// A mail that keeps failing is tried 5 times, then left alone (it still shows in the app).
+	failing = true
+	failingNote := addNote()
+	for range 10 {
+		retryNow()
+		_ = mailer.SendPending(ctx)
+	}
+	failing = false
+	if done, attempts := emailed(failingNote); done || attempts != 5 {
+		t.Fatalf("failing mail: emailed %v after %d attempts, want 5 attempts and given up", done, attempts)
+	}
+	retryNow()
+	if _, err := e.pool.Exec(ctx, `UPDATE notifications SET emailed_at = now() WHERE id = $1::uuid`, failingNote); err != nil {
+		t.Fatal(err)
+	}
+
+	// Someone who turned e-mail off gets no copy.
+	rec = do(e.h, http.MethodPut, as(procSlug, "/me/notifications"), procTok, `{"email":false}`)
+	want(t, "turn e-mail off", rec, http.StatusOK)
+	before = sent[e.email(tRival)]
+	optedOut := addNote()
+	for deadline := time.Now().Add(30 * time.Second); ; {
+		if done, _ := emailed(optedOut); done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("notification was never processed by the mailer")
+		}
+		if err := mailer.SendPending(ctx); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sent[e.email(tRival)] != before {
+		t.Fatal("e-mailed someone who turned notification e-mails off")
+	}
+	want(t, "turn e-mail on", do(e.h, http.MethodPut, as(procSlug, "/me/notifications"), procTok, `{"email":true}`), http.StatusOK)
 }
 
 // A template's commodity and unit are copied onto its passports, so they are

@@ -2,6 +2,7 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import { setWorkerUrl } from "maplibre-gl";
 import { useEffect, useRef } from "react";
 import Map, {
   Layer,
@@ -12,8 +13,10 @@ import Map, {
 } from "react-map-gl/maplibre";
 
 import { useThemeTokens } from "@/components/chaintrack/use-theme-tokens";
-import { mapStyleURL } from "@/lib/consts";
+import { mapStyleURL, mapWorkerURL } from "@/lib/consts";
 import { centreOf, type Geometry, type LonLat } from "@/lib/geo";
+
+setWorkerUrl(mapWorkerURL);
 
 const tokenNames = ["primary", "pending", "warning", "danger"] as const;
 

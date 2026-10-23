@@ -1,5 +1,6 @@
 "use client";
 
+import { Combobox } from "@base-ui/react/combobox";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Undo2, X } from "lucide-react";
@@ -16,6 +17,7 @@ import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -23,9 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { endpoints } from "@/lib/api";
+import { endpoints, problemOf } from "@/lib/api";
 import { capacityPeriods, copy, queryKeys, routes, upload } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
+import type { PlaceSuggestion } from "@/lib/geocode";
 import { centreOf, toGeometry, type DrawMode, type LonLat } from "@/lib/geo";
 import {
   facilityFormSchema,
@@ -184,52 +187,71 @@ export function Register() {
             ))}
           </div>
           <p className="text-small text-ink-muted">{t.hint[mode]}</p>
-          <div className="grid gap-3">
-            <TextField
-              label={t.search}
-              help={t.searchHelp}
-              value={searchText}
-              autoComplete="off"
-              onChange={(event) => setSearchText(event.currentTarget.value)}
-            />
+          <Combobox.Root
+            items={placeSearch.data ?? []}
+            filter={null}
+            inputValue={searchText}
+            onInputValueChange={setSearchText}
+            itemToStringLabel={(p: PlaceSuggestion) => p.label}
+            onValueChange={(p: PlaceSuggestion | null) => {
+              if (!p) return;
+              setMode("pin");
+              place([p.coordinates], "pin");
+              setMapFocus(p.coordinates);
+              setSearchText("");
+            }}
+          >
+            <div className="grid gap-1.5">
+              <label htmlFor="place-search" className="text-sm font-semibold">
+                {t.search}
+              </label>
+              <Combobox.Input
+                id="place-search"
+                autoComplete="off"
+                aria-describedby="place-search-note"
+                render={<Input />}
+              />
+              <FieldNote id="place-search-note" help={t.searchHelp} />
+            </div>
             {searchTerm.length >= 3 && (
-              <DataWidget query={placeSearch} retryLabel={t.searchRetry}>
-                {(places) =>
-                  places.length ? (
-                    <ul
-                      aria-label={t.searchResults}
-                      className="grid overflow-hidden rounded-md border border-border divide-y divide-border"
-                    >
-                      {places.map((suggestion, index) => (
-                        <li key={`${suggestion.label}-${index}`}>
-                          <button
-                            type="button"
-                            className="min-h-tap w-full px-3 py-2 text-left text-sm hover:bg-primary-soft focus-visible:bg-primary-soft"
-                            onClick={() => {
-                              setMode("pin");
-                              place([suggestion.coordinates], "pin");
-                              setMapFocus(suggestion.coordinates);
-                              setSearchText("");
-                            }}
-                          >
-                            <span className="flex items-center gap-2">
-                              <MapPin
-                                className="size-4 shrink-0 text-primary"
-                                aria-hidden
-                              />
-                              {suggestion.label}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-small text-ink-muted">{t.searchNone}</p>
-                  )
-                }
-              </DataWidget>
+              <Combobox.Portal>
+                <Combobox.Positioner sideOffset={4} className="z-50">
+                  <Combobox.Popup
+                    aria-label={t.searchResults}
+                    className="max-h-72 w-(--anchor-width) overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-card"
+                  >
+                    <Combobox.Status className="px-3 py-2 text-small text-ink-muted empty:hidden">
+                      {placeSearch.isFetching
+                        ? copy.loading
+                        : placeSearch.isError
+                          ? problemOf(placeSearch.error)
+                          : null}
+                    </Combobox.Status>
+                    {!placeSearch.isFetching && !placeSearch.isError && (
+                      <Combobox.Empty className="px-3 py-2 text-small text-ink-muted empty:hidden">
+                        {t.searchNone}
+                      </Combobox.Empty>
+                    )}
+                    <Combobox.List>
+                      {(p: PlaceSuggestion) => (
+                        <Combobox.Item
+                          key={`${p.label}-${p.coordinates.join()}`}
+                          value={p}
+                          className="flex min-h-tap cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm data-highlighted:bg-primary-soft"
+                        >
+                          <MapPin
+                            className="size-4 shrink-0 text-primary"
+                            aria-hidden
+                          />
+                          {p.label}
+                        </Combobox.Item>
+                      )}
+                    </Combobox.List>
+                  </Combobox.Popup>
+                </Combobox.Positioner>
+              </Combobox.Portal>
             )}
-          </div>
+          </Combobox.Root>
           <MapView
             label={t.mapLabel}
             className="h-80 overflow-hidden rounded-md border border-border lg:h-96"

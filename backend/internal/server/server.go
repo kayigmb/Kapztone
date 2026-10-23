@@ -96,6 +96,7 @@ func Routes(d Deps) []Route {
 
 		{get, "/me", SignedIn, "", a.Me},
 		{put, "/me", SignedIn, "", u.SetName},
+		{put, "/me/notifications", SignedIn, "", u.SetEmailNotifications},
 		{get, "/me/organisations", SignedIn, "", u.MyOrganisations},
 		{post, "/auth/password", SignedIn, "", a.ChangePassword},
 		{post, "/auth/sessions/revoke", SignedIn, "", a.RevokeSessions},

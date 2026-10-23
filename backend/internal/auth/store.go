@@ -27,9 +27,10 @@ func (s PgStore) UserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx,
 		`SELECT id::text, email::text, name, password_hash, totp_secret, totp_enabled, token_version,
-		        NOT is_verified
+		        NOT is_verified, email_notifications
 		 FROM users WHERE email = $1 AND status = $2 AND NOT is_deleted`, email, UserActive,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled, &u.TokenVersion, &u.EmailUnverified)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.TOTPSecret, &u.TOTPEnabled, &u.TokenVersion, &u.EmailUnverified,
+		&u.EmailNotifications)
 	return u, notFound(err)
 }
 

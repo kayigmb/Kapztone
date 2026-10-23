@@ -149,6 +149,7 @@ export const meSchema = z.object({
   pin_set: z.boolean().optional(),
   // Not every API version says it; undefined means "unknown".
   two_factor: z.boolean().optional(),
+  email_notifications: z.boolean().optional(),
 });
 export type Me = z.infer<typeof meSchema>;
 
@@ -816,6 +817,8 @@ export const endpoints = {
   myOrganisations: () => api(apiPaths.myOrganisations, z.array(myOrganisation)),
 
   setName: (name: string) => write(apiPaths.me, nothing, send("PUT", { name })),
+  setEmailNotifications: (email: boolean) =>
+    write(apiPaths.meNotifications, nothing, send("PUT", { email })),
   changePassword: (body: { current: string; new: string }) =>
     write(apiPaths.password, nothing, send("POST", body)),
   setPin: (body: { pin: string; password: string }) =>

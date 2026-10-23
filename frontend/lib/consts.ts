@@ -530,12 +530,15 @@ export const routes = {
 
 /** Keyless street map (OpenFreeMap). */
 export const mapStyleURL = "https://tiles.openfreemap.org/styles/liberty";
+/** MapLibre's worker, copied into public/ by `pnpm map-worker` (bundlers miss its runtime-built URL). */
+export const mapWorkerURL = "/maplibre/maplibre-gl-worker.mjs";
 
 /** The browser's way to the API: the pass-through in app/api/[...path]/route.ts. */
 export const apiBase = "/api";
 
 export const apiPaths = {
   me: "/me",
+  meNotifications: "/me/notifications",
   login: "/auth/login",
   logout: "/auth/logout",
   emailAvailability: "/auth/email/availability",

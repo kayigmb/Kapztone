@@ -140,7 +140,17 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 	for _, p := range batch {
 		if len(p.to) > 0 {
 			if err := m.Send(m.Addr, m.Auth, m.From, p.to, m.message(p.to, p.message)); err != nil {
-				return err // nothing marked; the whole batch is tried again
+				// Keep what was sent, back this one off (10 s, 20 s, 40 s, ...); the rest wait for the next round.
+				if _, uerr := tx.Exec(ctx,
+					`UPDATE notifications SET mail_attempts = mail_attempts + 1,
+					        mail_next_at = now() + make_interval(secs => $2 * 2 ^ mail_attempts) WHERE id = $1::uuid`,
+					p.id, mailInterval.Seconds()); uerr != nil {
+					return uerr
+				}
+				if cerr := tx.Commit(ctx); cerr != nil {
+					return cerr
+				}
+				return err
 			}
 		}
 		if _, err := tx.Exec(ctx, `UPDATE notifications SET emailed_at = now() WHERE id = $1::uuid`, p.id); err != nil {
@@ -162,10 +172,11 @@ func pendingMail(ctx context.Context, tx pgx.Tx) ([]pendingNote, error) {
 		`SELECT n.id::text, n.message,
 		        ARRAY(SELECT u.email::text FROM userscope s JOIN users u ON u.id = s.user_id
 		              WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
-		                AND NOT u.is_deleted AND u.status = $3)
+		                AND NOT u.is_deleted AND u.status = $3 AND u.email_notifications)
 		 FROM notifications n
 		 WHERE n.emailed_at IS NULL AND n.created_at > now() - make_interval(secs => $1) AND NOT n.is_deleted
-		 ORDER BY n.created_at LIMIT $2 FOR UPDATE OF n SKIP LOCKED`, mailMaxAge.Seconds(), mailBatch, auth.UserActive)
+		   AND n.mail_attempts < $4 AND (n.mail_next_at IS NULL OR n.mail_next_at <= now())
+		 ORDER BY n.created_at LIMIT $2 FOR UPDATE OF n SKIP LOCKED`, mailMaxAge.Seconds(), mailBatch, auth.UserActive, mailMaxAttempts)
 	if err != nil {
 		return nil, err
 	}

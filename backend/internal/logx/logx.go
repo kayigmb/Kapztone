@@ -4,6 +4,7 @@
 package logx
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +60,9 @@ func Setup(w io.Writer, format, level string) (*slog.Logger, error) {
 		return nil, fmt.Errorf("LOG_LEVEL must be one of debug, info, warn, error, not %q", level)
 	}
 	opts := &slog.HandlerOptions{Level: lv}
+	if isTerminal(w) && os.Getenv("NO_COLOR") == "" {
+		w = colorLevel{w}
+	}
 	var h slog.Handler
 	switch strings.ToLower(format) {
 	case FormatJSON:
@@ -70,6 +75,40 @@ func Setup(w io.Writer, format, level string) (*slog.Logger, error) {
 	l := slog.New(h)
 	slog.SetDefault(l)
 	return l, nil
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// levelColors: the level as the text and JSON handlers write it, and its colour.
+var levelColors = map[string]string{
+	"level=INFO ": "32", "level=WARN ": "33", "level=ERROR ": "31",
+	`"level":"INFO"`: "32", `"level":"WARN"`: "33", `"level":"ERROR"`: "31",
+}
+
+// colorLevel paints the level of each line on a terminal. slog writes one line
+// per Write and escapes ESC inside values, so it's done here.
+type colorLevel struct{ w io.Writer }
+
+func (c colorLevel) Write(p []byte) (int, error) {
+	out := p
+	for word, code := range levelColors {
+		if i := bytes.Index(p, []byte(word)); i >= 0 {
+			word = strings.TrimSpace(word)
+			out = slices.Concat(p[:i], []byte("\x1b["+code+"m"+word+"\x1b[0m"), p[i+len(word):])
+			break
+		}
+	}
+	if _, err := c.w.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 // Fatal logs an error and stops the process; for start-up failures only.

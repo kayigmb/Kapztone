@@ -34,6 +34,8 @@ type User struct {
 	TOTPEnabled bool   `json:"-"`
 	// EmailUnverified: signed up but never opened the confirmation link. Filled by UserByEmail only.
 	EmailUnverified bool `json:"-"`
+	// EmailNotifications: notifications are also e-mailed. Filled by UserByEmail only.
+	EmailNotifications bool `json:"-"`
 }
 
 type Organisation struct {

@@ -1,6 +1,8 @@
 {
   "brand": "ChainTrack",
   "loading": "Loading…",
+  "offline": "You're offline. Changes won't be saved until your connection is back.",
+  "online": "You're back online.",
   "errors": {
     "unreachable": "We couldn't reach ChainTrack just now. Nothing was changed. Try again in a moment.",
     "unexpected": "Something went wrong on our side. Nothing was changed. Try again in a moment.",
@@ -131,6 +133,9 @@
     "organisation": "Organisation",
     "role": "Role",
     "saveName": "Save name",
+    "notifications": "Notifications",
+    "emailNotifications": "Email me my notifications",
+    "emailNotificationsHelp": "Turn this off if you get too many emails. Notifications still show in the app, and security emails (sign-in, password) are always sent.",
     "password": "Password",
     "currentPassword": "Current password",
     "newPassword": "New password",

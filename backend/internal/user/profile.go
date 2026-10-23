@@ -74,6 +74,12 @@ func (s Store) SetName(ctx context.Context, userID, name string) (auth.User, err
 	return u, err
 }
 
+// SetEmailNotifications turns the e-mail copy of notifications on or off.
+func (s Store) SetEmailNotifications(ctx context.Context, userID string, on bool) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET email_notifications = $2 WHERE id = $1::uuid AND NOT is_deleted`, userID, on)
+	return err
+}
+
 // AccountList is what GET /users lets the platform search and sort by.
 var AccountList = listq.Config{
 	Alias:  "m",
@@ -174,4 +180,28 @@ func (h *Handlers) SetName(w http.ResponseWriter, r *http.Request) {
 	}
 	h.InvalidateUser(r.Context(), id) // the cached user carries the name
 	httpx.OK(w, http.StatusOK, MsgNameSaved, u)
+}
+
+// SetEmailNotifications answers PUT /me/notifications: the signed-in person
+// turns the e-mail copy of their notifications on or off.
+func (h *Handlers) SetEmailNotifications(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Email *bool `json:"email"`
+	}
+	if !httpx.DecodeJSON(w, r, &in) {
+		return
+	}
+	if in.Email == nil {
+		httpx.Error(w, http.StatusBadRequest, MsgEmailNotificationsRequired)
+		return
+	}
+	if err := h.Store.SetEmailNotifications(r.Context(), auth.CurrentUser(r.Context()).ID, *in.Email); err != nil {
+		httpx.ServerError(w, "set email notifications", err)
+		return
+	}
+	msg := MsgEmailNotificationsOff
+	if *in.Email {
+		msg = MsgEmailNotificationsOn
+	}
+	httpx.OK(w, http.StatusOK, msg, map[string]bool{"email_notifications": *in.Email})
 }

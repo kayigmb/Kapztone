@@ -188,7 +188,7 @@ Enabling 2FA returns 10 recovery codes, shown once. Each signs in once in place 
 
 ## Logs
 
-The API and the relayer write one line per event to stderr, as JSON (`LOG_FORMAT=json`, the default) or readable text (`LOG_FORMAT=text`, used in `.env.example` for development); `LOG_LEVEL` is `debug`, `info` (default), `warn` or `error`.
+The API and the relayer write one line per event to stderr, as JSON (`LOG_FORMAT=json`, the default, also in `.env.example`) or readable text (`LOG_FORMAT=text`); `LOG_LEVEL` is `debug`, `info` (default), `warn` or `error`. On a terminal the level is coloured in either format: INFO green, WARN yellow, ERROR red (`NO_COLOR=1` turns it off); piped or collected output stays plain.
 
 - Every request gets an id (`X-Request-ID`): the web app makes it, the API logs it on every line of that request and sends it back. A person who sees "quote reference …" on a server error gives you the id to search for.
 - One access line per request, field names fixed: `request_id`, `method`, `route` (the pattern, e.g. `/passports/{id}/handovers`), `path`, `status`, `bytes`, `duration_ms`, `ip`, `user_id`, `org`, and `error` + `error_at` when the handler failed. 5xx lines are `ERROR`, 4xx `WARN`, the rest `INFO`. A panic logs its stack with the request id.

@@ -1,4 +1,4 @@
-export const pageSizes = [10, 20, 50] as const;
+export const pageSizes = [10, 20, 50, 100] as const;
 export type PageSize = (typeof pageSizes)[number];
 export const pageSize: PageSize = pageSizes[0];
 

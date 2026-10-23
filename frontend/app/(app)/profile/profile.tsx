@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Bell,
   CircleCheck,
   Clock,
   KeyRound,
@@ -19,6 +20,7 @@ import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { endpoints, useMe, type Me } from "@/lib/api";
 import { copy, queryKeys } from "@/lib/consts";
@@ -48,7 +50,10 @@ export function Profile() {
           <TabsTrigger value="security">{t.securityTab}</TabsTrigger>
         </TabsList>
         <TabsContent value="account">
-          <Details me={me} />
+          <div className="grid gap-4">
+            <Details me={me} />
+            <EmailNotifications on={me.email_notifications ?? true} />
+          </div>
         </TabsContent>
         <TabsContent value="security" className="grid gap-4">
           <Password />
@@ -127,6 +132,32 @@ function Details({ me }: { me: Me }) {
           {t.saveName}
         </Button>
       </form>
+    </Card>
+  );
+}
+
+function EmailNotifications({ on }: { on: boolean }) {
+  const client = useQueryClient();
+  const save = useMutation({
+    mutationFn: endpoints.setEmailNotifications,
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.me }),
+  });
+  return (
+    <Card title={t.notifications} icon={Bell}>
+      <label className="flex min-h-tap cursor-pointer items-start gap-3">
+        <Checkbox
+          className="mt-1"
+          checked={save.isPending ? save.variables : on}
+          disabled={save.isPending}
+          onCheckedChange={(next) => save.mutate(next)}
+        />
+        <span className="grid gap-1">
+          <span className="text-sm font-semibold">{t.emailNotifications}</span>
+          <span className="text-small text-ink-muted">
+            {t.emailNotificationsHelp}
+          </span>
+        </span>
+      </label>
     </Card>
   );
 }

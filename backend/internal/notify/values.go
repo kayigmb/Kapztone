@@ -37,6 +37,8 @@ const (
 	// not send out a backlog.
 	mailMaxAge = 24 * time.Hour
 	mailBatch  = 20
+	// A notification whose e-mail failed this many times is never e-mailed.
+	mailMaxAttempts = 5
 
 	mailSubject = "ChainTrack notification"
 )

@@ -341,11 +341,12 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, http.StatusOK, "", map[string]any{
-		"user":         map[string]string{"id": full.ID, "email": full.Email, "name": full.Name},
-		"organisation": scope.Organisation,
-		"role":         scope.Role,
-		"permissions":  scope.Permissions,
-		"pin_set":      pin != "",
-		"two_factor":   full.TOTPEnabled,
+		"user":                map[string]string{"id": full.ID, "email": full.Email, "name": full.Name},
+		"organisation":        scope.Organisation,
+		"role":                scope.Role,
+		"permissions":         scope.Permissions,
+		"pin_set":             pin != "",
+		"two_factor":          full.TOTPEnabled,
+		"email_notifications": full.EmailNotifications,
 	})
 }
