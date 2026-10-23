@@ -94,6 +94,7 @@ export function SignInForm({ email }: { email: string }) {
         type="email"
         autoComplete="username"
         inputMode="email"
+        autoFocus
         error={errors.email?.message}
         {...register("email")}
       />

@@ -54,6 +54,9 @@ prod: ## built images
 down:
 	$(DEV) down
 
+stop:
+	$(DEV) stop
+
 prod-down:
 	$(PROD) down
 

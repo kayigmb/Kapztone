@@ -165,6 +165,7 @@ export function SignUpForm() {
         <TextField
           label={t.fullName}
           autoComplete="name"
+          autoFocus
           error={errors.user_name?.message}
           {...register("user_name")}
         />
