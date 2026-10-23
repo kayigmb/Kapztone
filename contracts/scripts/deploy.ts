@@ -20,12 +20,13 @@ const { chainId } = await ethers.provider.getNetwork();
 console.error(`deploying to chain ${chainId} as admin ${admin.address}; relayer and operator ${relayer}`);
 if (relayer === admin.address) console.error("warning: admin and relayer are the same key; use two keys outside a local chain");
 
-const orgs = await ethers.deployContract("OrgRegistry", [admin.address, relayer]);
-const facilities = await ethers.deployContract("FacilityRegistry", [orgs.target]);
-const passports = await ethers.deployContract("PassportRegistry", [orgs.target, facilities.target]);
-const custody = await ethers.deployContract("CustodyManager", [orgs.target, passports.target]);
-const attestations = await ethers.deployContract("AttestationRegistry", [orgs.target]);
-for (const c of [orgs, facilities, passports, custody, attestations]) await c.waitForDeployment();
+// One at a time: a public RPC behind a load balancer may hand out the same
+// nonce again while the previous deploy is still pending.
+const orgs = await (await ethers.deployContract("OrgRegistry", [admin.address, relayer])).waitForDeployment();
+const facilities = await (await ethers.deployContract("FacilityRegistry", [orgs.target])).waitForDeployment();
+const passports = await (await ethers.deployContract("PassportRegistry", [orgs.target, facilities.target])).waitForDeployment();
+const custody = await (await ethers.deployContract("CustodyManager", [orgs.target, passports.target])).waitForDeployment();
+const attestations = await (await ethers.deployContract("AttestationRegistry", [orgs.target])).waitForDeployment();
 
 // One-time wiring: who may use up capacity, and who may change a holder.
 await (await facilities.setOriginator(passports.target)).wait();
