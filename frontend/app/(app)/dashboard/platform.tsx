@@ -35,15 +35,7 @@ import {
 import { Notice } from "@/components/chaintrack/notice";
 import { StatTile } from "@/components/chaintrack/stat-tile";
 import { endpoints, problemOf, type PlatformStats } from "@/lib/api";
-import {
-  adminTabs,
-  flagStatus,
-  orgStatus,
-  passportStatus,
-  platformCopy as t,
-  queryKeys,
-  routes,
-} from "@/lib/consts";
+import { flagStatus, platformCopy as t, queryKeys, routes } from "@/lib/consts";
 import { formatDateTime, humanize } from "@/lib/verification";
 
 const countOf = (rows: { key: string; count: number }[], key: string) =>
@@ -71,7 +63,7 @@ const topOrgColumns: ListColumn<TopOrg>[] = [
     <RowAction
       label={t.topOrgs.open}
       icon={Eye}
-      href={routes.adminOrg(adminTabs[2].value, o.id)}
+      href={routes.organisationsTab("approved", o.id)}
     />
   )),
 ];
@@ -104,16 +96,9 @@ export function PlatformOverview() {
         <StatTile
           icon={Building2}
           label={t.tiles.organisations.label}
-          href={routes.adminOrgs}
+          href={routes.organisations}
           value={s && total(s.organisations)}
-          note={t.tiles.organisations.note(
-            s ? countOf(s.organisations, orgStatus.pending) : 0,
-          )}
-          tone={
-            s && countOf(s.organisations, orgStatus.pending) > 0
-              ? "attention"
-              : "neutral"
-          }
+          note={t.tiles.organisations.note}
         />
         <StatTile
           icon={Users}
@@ -126,9 +111,8 @@ export function PlatformOverview() {
           icon={Package}
           label={t.tiles.passports.label}
           value={s && total(s.passports)}
-          note={t.tiles.passports.note(
-            s ? countOf(s.passports, passportStatus.active) : 0,
-          )}
+          href={routes.issue}
+          note={t.tiles.passports.note}
         />
         <StatTile
           icon={Flag}

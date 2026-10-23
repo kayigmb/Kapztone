@@ -124,7 +124,6 @@ func newAuth(cfg config.Config, pg auth.PgStore, store auth.CachedStore, c *cach
 		Dev:         cfg.Dev,
 		Secrets:     cfg.Secrets,
 		Limiter:     limiter(cfg.Dev, c),
-		LogoURL:     cfg.MailLogoURL,
 	}
 }
 
@@ -132,7 +131,7 @@ func handlers(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, files 
 	a *auth.Auth, store auth.CachedStore, contracts chain.Contracts) server.Deps {
 	passports := passport.Store{Pool: pool, Secrets: cfg.Secrets, Domain: cfg.Domain()}
 	certificates := certificateHandlers(ctx, cfg, pool, files, a)
-	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, AppURL: cfg.AppURL, Dev: cfg.Dev, LogoURL: cfg.MailLogoURL}
+	users := &user.Handlers{Store: user.Store{Pool: pool}, InvalidateUser: store.InvalidateUser, AppURL: cfg.AppURL, Dev: cfg.Dev}
 	startMail(ctx, cfg, pool, a, users)
 	return server.Deps{
 		Ping: pool.Ping,
@@ -171,7 +170,6 @@ func startMail(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, a *au
 		return
 	}
 	mailer := notify.NewMailer(pool, *cfg.SMTP)
-	mailer.LogoURL = cfg.MailLogoURL
 	users.Mail = mailer.SendOne
 	a.Mail = mailer.SendOne
 	go mailer.Run(ctx)

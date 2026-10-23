@@ -69,7 +69,36 @@ func (s PgStore) Scope(ctx context.Context, userID, slug string) (Scope, error) 
 	if oID != nil {
 		sc.Organisation = &Organisation{ID: *oID, Name: *oName, Slug: *oSlug, Kind: *oKind, Status: *oStatus}
 	}
+	if sc.Platform && sc.Role == RoleSuperadmin && slug != "" {
+		return s.superadminIn(ctx, sc, slug)
+	}
 	return sc, nil
+}
+
+// superadminIn is a superadmin at an organisation's own address: they act
+// inside it, seeing only its records, with what its admin may do. An address
+// that names no organisation keeps the platform scope.
+func (s PgStore) superadminIn(ctx context.Context, platform Scope, slug string) (Scope, error) {
+	var (
+		o     Organisation
+		perms []string
+	)
+	err := s.Pool.QueryRow(ctx,
+		`SELECT o.id::text, o.name, o.slug, o.kind, o.status,
+		        COALESCE((SELECT array_agg(p.name ORDER BY p.name)
+		                  FROM roles r
+		                  JOIN role_permissions rp ON rp.role_id = r.id AND NOT rp.is_deleted
+		                  JOIN permissions p ON p.id = rp.permission_id AND NOT p.is_deleted
+		                  WHERE r.name = $2 AND NOT r.is_deleted), '{}')
+		 FROM organisations o WHERE o.slug = $1 AND NOT o.is_deleted`, slug, RoleOrgAdmin,
+	).Scan(&o.ID, &o.Name, &o.Slug, &o.Kind, &o.Status, &perms)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return platform, nil
+	}
+	if err != nil {
+		return Scope{}, err
+	}
+	return Scope{Organisation: &o, Role: RoleSuperadmin, Permissions: perms}, nil
 }
 
 func (s PgStore) SetTOTP(ctx context.Context, userID, sealedSecret string, enabled bool) error {
@@ -185,6 +214,42 @@ func (s PgStore) UseLink(ctx context.Context, kind, tokenHash string, now time.T
 		 WHERE kind = $1 AND token_hash = $2 AND used_at IS NULL AND expires_at > $3 AND NOT is_deleted
 		 RETURNING user_id::text`, kind, tokenHash, now).Scan(&userID)
 	return userID, notFound(err)
+}
+
+func (s PgStore) AddHandoff(ctx context.Context, userID, sessionID, tokenHash string, expires time.Time) error {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO password_resets (user_id, kind, token_hash, expires_at, session_id)
+		 VALUES ($1::uuid, $2, $3, $4, NULLIF($5, '')::uuid)`,
+		userID, LinkHandoff, tokenHash, expires, sessionID)
+	return err
+}
+
+func (s PgStore) UseHandoff(ctx context.Context, tokenHash string, now time.Time) (userID, sessionID string, err error) {
+	err = s.Pool.QueryRow(ctx,
+		`UPDATE password_resets SET used_at = $3
+		 WHERE kind = $1 AND token_hash = $2 AND used_at IS NULL AND expires_at > $3 AND NOT is_deleted
+		 RETURNING user_id::text, COALESCE(session_id::text, '')`, LinkHandoff, tokenHash, now).Scan(&userID, &sessionID)
+	return userID, sessionID, notFound(err)
+}
+
+func (s PgStore) StartSession(ctx context.Context, userID string) (string, error) {
+	var sid string
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO sessions (user_id) VALUES ($1::uuid) RETURNING id::text`, userID).Scan(&sid)
+	return sid, err
+}
+
+func (s PgStore) SessionLive(ctx context.Context, sid string) (bool, error) {
+	var live bool
+	err := s.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM sessions WHERE id = $1::uuid AND ended_at IS NULL AND NOT is_deleted)`, sid).Scan(&live)
+	return live, err
+}
+
+func (s PgStore) EndSession(ctx context.Context, sid string) error {
+	_, err := s.Pool.Exec(ctx,
+		`UPDATE sessions SET ended_at = now(), updated_at = now() WHERE id = $1::uuid AND ended_at IS NULL`, sid)
+	return err
 }
 
 func (s PgStore) Lock(ctx context.Context, userID string) error {

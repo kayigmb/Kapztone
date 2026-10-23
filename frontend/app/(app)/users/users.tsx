@@ -6,14 +6,16 @@ import {
   Ban,
   CircleCheck,
   Eye,
-  Lock,
   OctagonX,
   Power,
   PowerOff,
   RotateCcw,
   ShieldCheck,
   ShieldOff,
+  UserCheck,
   UserPlus,
+  UserX,
+  Users as UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -30,7 +32,7 @@ import {
 import { ListBar } from "@/components/chaintrack/list-controls";
 import { Notice } from "@/components/chaintrack/notice";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { PageState } from "@/components/chaintrack/page-state";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { StatusChip } from "@/components/chaintrack/status";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
@@ -53,7 +55,6 @@ import {
   copy,
   memberRoles,
   memberStatus,
-  permissions,
   queryKeys,
   confirmCopy,
   routes,
@@ -64,6 +65,7 @@ import { inviteSchema, type InviteForm } from "@/lib/schemas/profile";
 import { formatDate, humanize } from "@/lib/verification";
 
 const t = copy.users;
+const s = copy.stats.users;
 const roleItems = memberRoles.map((r) => ({ value: r.value, label: r.label }));
 export const roleLabel = (role: string) =>
   memberRoles.find((r) => r.value === role)?.label ?? humanize(role);
@@ -71,17 +73,41 @@ export const roleLabel = (role: string) =>
 export function Users() {
   const me = useMe().data!;
   const list = useListParams("name");
-  if (!me.permissions.includes(permissions.userManage)) {
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
-  }
   const platform = !me.organisation;
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader title={t.title} sub={platform ? t.subPlatform : t.subOrg} />
+      <PageStats
+        queryKey={queryKeys.users}
+        fetch={platform ? endpoints.allUsers : endpoints.members}
+        cards={[
+          {
+            key: "total",
+            ...(platform ? s.platformTotal : s.total),
+            icon: UsersIcon,
+          },
+          {
+            key: "active",
+            ...s.active,
+            icon: UserCheck,
+            filters: { status: "active" },
+          },
+          platform
+            ? {
+                key: "disabled",
+                ...s.disabled,
+                icon: UserX,
+                filters: { status: "disabled" },
+              }
+            : {
+                key: "suspended",
+                ...s.suspended,
+                icon: UserX,
+                whenAny: "attention",
+                filters: { status: "suspended" },
+              },
+        ]}
+      />
       {!platform && <Invite />}
       {platform ? (
         <AllUsers list={list} myId={me.user.id} />

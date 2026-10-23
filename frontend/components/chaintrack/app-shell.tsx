@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ChevronRight,
   ArrowLeftRight,
   ChartColumn,
   ClipboardCheck,
@@ -29,6 +30,8 @@ import { useState } from "react";
 
 import { SignOutButton } from "@/components/chaintrack/sign-out-button";
 import { Brand } from "@/components/chaintrack/brand";
+import { Notice } from "@/components/chaintrack/notice";
+import { RecordTitleContext } from "@/components/chaintrack/record-title";
 import { NotificationsBell } from "@/components/chaintrack/notifications-bell";
 import { OrgSwitcher } from "@/components/chaintrack/org-switcher";
 import { ScanButton } from "@/components/chaintrack/scan-button";
@@ -52,6 +55,7 @@ import {
   queryKeys,
   routes,
   sidebarStorageKey,
+  superadminRole,
   type TileKey,
 } from "@/lib/consts";
 import { navFor } from "@/lib/dashboard";
@@ -124,9 +128,16 @@ export function AppShell({
     saveFolded(v);
   };
   const orgName = me.organisation?.name ?? t.platform;
+  // A record under a list (/organisations/123): the top bar reads "List › Name" and back goes to the list.
+  const detail = current && path !== current.href ? current : undefined;
+  const [record, setRecord] = useState<string>();
 
   const back = () =>
-    window.history.length > 1 ? router.back() : router.push(routes.home);
+    detail
+      ? router.push(detail.href)
+      : window.history.length > 1
+        ? router.back()
+        : router.push(routes.home);
 
   const groups = (rail: boolean, onPick?: () => void) =>
     navGroups.map((g) => {
@@ -188,134 +199,169 @@ export function AppShell({
   );
 
   return (
-    <div
-      className={cn(
-        "min-h-dvh lg:grid",
-        folded
-          ? "lg:grid-cols-[--spacing(19)_1fr]"
-          : "lg:grid-cols-[--spacing(64)_1fr]",
-      )}
-    >
-      <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar-bg text-sidebar-fg lg:flex">
-        <div
-          className={cn(
-            "flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-line",
-            folded ? "justify-center px-2" : "justify-between pr-2 pl-5",
-          )}
-        >
-          {!folded && (
-            <Link href={routes.home} className="rounded-md">
-              <Brand onNavy />
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={() => fold(!folded)}
-            aria-label={folded ? t.expand : t.collapse}
-            aria-expanded={!folded}
-            className="grid size-9 place-items-center rounded-md text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg"
+    <RecordTitleContext.Provider value={setRecord}>
+      <div
+        className={cn(
+          "min-h-dvh lg:grid",
+          folded
+            ? "lg:grid-cols-[--spacing(19)_1fr]"
+            : "lg:grid-cols-[--spacing(64)_1fr]",
+        )}
+      >
+        <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar-bg text-sidebar-fg lg:flex">
+          <div
+            className={cn(
+              "flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-line",
+              folded ? "justify-center px-2" : "justify-between pr-2 pl-5",
+            )}
           >
-            {folded ? (
-              <PanelLeftOpen className="size-5" aria-hidden />
-            ) : (
-              <PanelLeftClose className="size-5" aria-hidden />
+            {!folded && (
+              <Link href={routes.home} className="rounded-md">
+                <Brand onNavy />
+              </Link>
             )}
-          </button>
-        </div>
-        <nav
-          aria-label={t.menu}
-          className={cn(
-            "grid flex-1 content-start gap-4 overflow-y-auto pt-4 pb-2",
-            folded ? "px-2" : "px-3",
-          )}
-        >
-          {groups(folded)}
-        </nav>
-        <div
-          className={cn(
-            "grid gap-1 border-t border-sidebar-line",
-            folded ? "p-2" : "p-3",
-          )}
-        >
-          {orgCard(folded)}
-          {!folded && <OrgSwitcher me={me} onNavy />}
-          {!folded && <SignOutButton onNavy />}
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-col pb-24 lg:pb-0">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur lg:h-16 lg:px-8">
-          <div className="flex min-w-0 items-center gap-2">
-            <Link
-              href={routes.home}
-              className="rounded-md lg:hidden"
-              aria-label={copy.brand}
+            <button
+              type="button"
+              onClick={() => fold(!folded)}
+              aria-label={folded ? t.expand : t.collapse}
+              aria-expanded={!folded}
+              className="grid size-9 place-items-center rounded-md text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg"
             >
-              <Brand small nameHidden />
-            </Link>
-            {path !== routes.home && (
-              <button
-                type="button"
-                onClick={back}
-                aria-label={t.back}
-                className="grid size-9 shrink-0 place-items-center rounded-md text-ink-muted hover:bg-surface-sunken hover:text-ink"
-              >
-                <ArrowLeft className="size-5" aria-hidden />
-              </button>
-            )}
-            <div className="grid min-w-0">
-              <span className="hidden text-xs font-semibold tracking-[0.08em] text-ink-muted uppercase lg:block">
-                {t.eyebrow}
-              </span>
-              <span className="truncate text-base font-semibold">
-                {current ? t.nav[current.key] : copy.brand}
-              </span>
-            </div>
+              {folded ? (
+                <PanelLeftOpen className="size-5" aria-hidden />
+              ) : (
+                <PanelLeftClose className="size-5" aria-hidden />
+              )}
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <NotificationsBell />
-            <ThemeToggle />
-            <ScanButton
-              trigger={(open) => (
+          <nav
+            aria-label={t.menu}
+            className={cn(
+              "grid flex-1 content-start gap-4 overflow-y-auto pt-4 pb-2",
+              folded ? "px-2" : "px-3",
+            )}
+          >
+            {groups(folded)}
+          </nav>
+          <div
+            className={cn(
+              "grid gap-1 border-t border-sidebar-line",
+              folded ? "p-2" : "p-3",
+            )}
+          >
+            {orgCard(folded)}
+            {!folded && <OrgSwitcher me={me} onNavy />}
+            {!folded && <SignOutButton onNavy />}
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-col pb-24 lg:pb-0">
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur lg:h-16 lg:px-8">
+            <div className="flex min-w-0 items-center gap-2">
+              <Link
+                href={routes.home}
+                className="rounded-md lg:hidden"
+                aria-label={copy.brand}
+              >
+                <Brand small nameHidden />
+              </Link>
+              {path !== routes.home && (
                 <button
                   type="button"
-                  onClick={open}
-                  className="hidden h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm font-semibold hover:border-primary hover:text-primary lg:inline-flex"
+                  onClick={back}
+                  aria-label={t.back}
+                  className="grid size-9 shrink-0 place-items-center rounded-md text-ink-muted hover:bg-surface-sunken hover:text-ink"
                 >
-                  <QrCode className="size-4.5" aria-hidden />
-                  {t.scanQr}
+                  <ArrowLeft className="size-5" aria-hidden />
                 </button>
               )}
-            />
-            <Link
-              href={routes.profile}
-              aria-label={t.yourProfile(me.user.name)}
-              title={me.user.name}
-              className="grid size-9 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary hover:ring-2 hover:ring-primary/40"
-            >
-              {initials(me.user.name)}
-            </Link>
+              {detail ? (
+                <nav aria-label={t.breadcrumb} className="min-w-0">
+                  <ol className="flex min-w-0 items-center gap-2 text-base">
+                    <li className="shrink-0">
+                      <Link
+                        href={detail.href}
+                        className="text-ink-muted hover:text-ink"
+                      >
+                        {t.nav[detail.key]}
+                      </Link>
+                    </li>
+                    <li aria-hidden>
+                      <ChevronRight className="size-4 text-ink-subtle" />
+                    </li>
+                    <li
+                      aria-current="page"
+                      className="min-w-0 truncate font-semibold"
+                    >
+                      {record ?? copy.loading}
+                    </li>
+                  </ol>
+                </nav>
+              ) : (
+                <div className="grid min-w-0">
+                  <span className="hidden text-xs font-semibold tracking-[0.08em] text-ink-muted uppercase lg:block">
+                    {t.eyebrow}
+                  </span>
+                  <span className="truncate text-base font-semibold">
+                    {current ? t.nav[current.key] : copy.brand}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <NotificationsBell />
+              <ThemeToggle />
+              <ScanButton
+                trigger={(open) => (
+                  <button
+                    type="button"
+                    onClick={open}
+                    className="hidden h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm font-semibold hover:border-primary hover:text-primary lg:inline-flex"
+                  >
+                    <QrCode className="size-4.5" aria-hidden />
+                    {t.scanQr}
+                  </button>
+                )}
+              />
+              <Link
+                href={routes.profile}
+                aria-label={t.yourProfile(me.user.name)}
+                title={me.user.name}
+                className="grid size-9 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary hover:ring-2 hover:ring-primary/40"
+              >
+                {initials(me.user.name)}
+              </Link>
+            </div>
+          </header>
+          <div className="min-w-0 flex-1">
+            {me.role === superadminRole && me.organisation && (
+              <div className="px-4 pt-4 lg:px-8">
+                <Notice kind="info">
+                  {copy.shell.actingAs(me.organisation.name)}
+                </Notice>
+              </div>
+            )}
+            {children}
           </div>
-        </header>
-        <div className="min-w-0 flex-1">{children}</div>
+        </div>
+
+        <PhoneTabs me={me} path={path} onMore={() => setMore(true)} />
+
+        <Drawer open={more} onOpenChange={setMore}>
+          <DrawerContent className="bg-sidebar-bg text-sidebar-fg">
+            <DrawerHeader>
+              <DrawerTitle className="text-sidebar-fg">{t.more}</DrawerTitle>
+            </DrawerHeader>
+            <div className="grid max-h-[75dvh] gap-4 overflow-y-auto px-4 pb-6">
+              {orgCard(false)}
+              <OrgSwitcher me={me} onNavy />
+              {groups(false, () => setMore(false))}
+              <SignOutButton onNavy />
+            </div>
+          </DrawerContent>
+        </Drawer>
       </div>
-
-      <PhoneTabs me={me} path={path} onMore={() => setMore(true)} />
-
-      <Drawer open={more} onOpenChange={setMore}>
-        <DrawerContent className="bg-sidebar-bg text-sidebar-fg">
-          <DrawerHeader>
-            <DrawerTitle className="text-sidebar-fg">{t.more}</DrawerTitle>
-          </DrawerHeader>
-          <div className="grid max-h-[75dvh] gap-4 overflow-y-auto px-4 pb-6">
-            {orgCard(false)}
-            <OrgSwitcher me={me} onNavy />
-            {groups(false, () => setMore(false))}
-            <SignOutButton onNavy />
-          </div>
-        </DrawerContent>
-      </Drawer>
-    </div>
+    </RecordTitleContext.Provider>
   );
 }
 

@@ -221,17 +221,4 @@ func TestConfigSMTP(t *testing.T) {
 	if c, err := config.Load(); err != nil || c.SMTP != nil {
 		t.Fatalf("e-mail off still needs settings: %v", err)
 	}
-
-	// MAIL_LOGO_URL is optional but must be absolute http(s) when set.
-	env = on()
-	env[config.EnvMailLogoURL] = "notaurl"
-	setEnv(t, env)
-	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), config.EnvMailLogoURL) {
-		t.Errorf("bad logo URL accepted: %v", err)
-	}
-	env[config.EnvMailLogoURL] = "https://example.com/brand/chaintrack-mark.svg"
-	setEnv(t, env)
-	if c, err := config.Load(); err != nil || c.MailLogoURL != "https://example.com/brand/chaintrack-mark.svg" {
-		t.Fatalf("logo URL read wrongly: %q, %v", c.MailLogoURL, err)
-	}
 }

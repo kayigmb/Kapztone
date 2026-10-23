@@ -89,11 +89,11 @@ var AccountList = listq.Config{
 
 // All lists one page of every user on the platform with their memberships;
 // a non-empty id keeps only that user.
-func (s Store) All(ctx context.Context, q listq.Query, id string) (listq.Page[Account], error) {
-	var where []string
-	args := []any{StatusSuspended, StatusActive}
+func (s Store) All(ctx context.Context, q listq.Query, id, status string) (listq.Page[Account], error) {
+	where := []string{`($3 = '' OR m.status = $3)`}
+	args := []any{StatusSuspended, StatusActive, status}
 	if id != "" {
-		where, args = []string{"m.id = $3::uuid"}, append(args, id)
+		where, args = append(where, "m.id = $4::uuid"), append(args, id)
 	}
 	return listq.Fetch(ctx, s.Pool, q, AccountList,
 		`SELECT m.id::text, m.name, m.email, m.status, m.totp_enabled, m.is_verified, m.created_at, m.memberships`,
@@ -122,7 +122,7 @@ func (s Store) All(ctx context.Context, q listq.Query, id string) (listq.Page[Ac
 
 // Account is one user as the platform admin sees them.
 func (s Store) Account(ctx context.Context, id string) (Account, error) {
-	page, err := s.All(ctx, listq.Query{Page: 1, Size: 1, SortCol: "name"}, id)
+	page, err := s.All(ctx, listq.Query{Page: 1, Size: 1, SortCol: "name"}, id, "")
 	if err == nil && len(page.Data) == 0 {
 		err = ErrNotMember
 	}

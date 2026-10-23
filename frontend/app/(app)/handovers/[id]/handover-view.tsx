@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   CircleCheck,
   Clock,
   ImageIcon,
@@ -19,6 +18,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { HandoverStatusChip } from "@/components/chaintrack/handover-status";
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { Notice } from "@/components/chaintrack/notice";
+import { useRecordTitle } from "@/components/chaintrack/record-title";
 import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import {
@@ -82,6 +82,7 @@ export function HandoverView({ id }: { id: string }) {
     queryFn: endpoints.directory,
   });
   const [mode, setMode] = useState<"accept" | "reject">("accept");
+  useRecordTitle(lot.data?.passport.code);
 
   if (handover.isError) {
     return (
@@ -111,13 +112,6 @@ export function HandoverView({ id }: { id: string }) {
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <Link
-        href={routes.handovers}
-        className="inline-flex min-h-tap w-fit items-center gap-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        {t.backToList}
-      </Link>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h1 className="text-2xl font-semibold lg:text-page">

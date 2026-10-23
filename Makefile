@@ -1,5 +1,5 @@
 # All configuration comes from one file. Copy .env.example to .env first.
-ENV_FILE ?= .env
+ENV_FILE ?= ./.env
 # Go builds without cgo: pure-Go linker, no Apple clang (whose linker fails on
 # the macOS 27 SDK). Nothing here needs cgo; Docker builds run on Linux and are unaffected.
 export CGO_ENABLED := 0
@@ -45,7 +45,7 @@ chain: ## a local chain on http://127.0.0.1:8545 (chain id 31337)
 deploy: ## deploy the contracts to the chain in the env file; prints the address lines
 	$(LOAD_ENV) && cd contracts && pnpm hardhat run scripts/deploy.ts --network target
 
-dev: ## everything in containers, reloading on save
+dev: ## chain (contracts deployed), API, relayer and infra in containers (run `make web` beside it)
 	$(DEV) up -d
 
 prod: ## built images
@@ -68,11 +68,15 @@ test:
 # Backend tests against the real Postgres and Redis from `make infra`, with
 # coverage of the hand-written internal packages (generated contract bindings
 # are left out). Redis database 1 keeps test keys apart from the API's database.
+# The tests seal their own outbox rows on the chain; `make dev`'s relayer would
+# race them for the same rows, so it pauses for the run (when it is running).
 test-db: infra
-	$(LOAD_ENV) && cd backend && \
+	-$(DEV) stop relayer
+	($(LOAD_ENV) && cd backend && \
 	TEST_DATABASE_URL="$$DATABASE_URL" TEST_REDIS_URL="$${REDIS_URL%/*}/1" \
 	go test ./tests/ -count=1 -coverpkg="$$(go list ./internal/... | grep -v /bindings | paste -sd, -)" -coverprofile=coverage.out && \
-	go tool cover -func=coverage.out | tail -1
+	go tool cover -func=coverage.out | tail -1); \
+	status=$$?; $(DEV) start relayer; exit $$status
 
 e2e: ## browser happy path against the running stack (needs `make api` and `make web`)
 	$(LOAD_ENV) && cd frontend && pnpm e2e

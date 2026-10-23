@@ -18,7 +18,15 @@ type ctxKey int
 const (
 	userKey ctxKey = iota
 	scopeKey
+	sessionKey
 )
+
+// CurrentSession is the browser session of this request's token ("" for a
+// script token). Only valid behind Authenticate.
+func CurrentSession(ctx context.Context) string {
+	s, _ := ctx.Value(sessionKey).(string)
+	return s
+}
 
 // CurrentUser returns the signed-in user. Only valid behind Authenticate.
 func CurrentUser(ctx context.Context) User {
@@ -90,7 +98,8 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			httpx.Error(w, http.StatusForbidden, MsgForeignOrigin)
 			return
 		}
-		userID, ver, err := a.parse(token)
+		claims, err := a.parse(token)
+		userID, ver := claims.Subject, claims.Ver
 		if err != nil {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
@@ -110,7 +119,20 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
+		// Signed out at another address this browser shares the session with.
+		if claims.Sid != "" {
+			live, err := a.Store.SessionLive(r.Context(), claims.Sid)
+			if err != nil {
+				httpx.ServerError(w, "check session", err)
+				return
+			}
+			if !live {
+				httpx.Error(w, http.StatusUnauthorized, MsgSignInRequired)
+				return
+			}
+		}
+		ctx := context.WithValue(context.WithValue(r.Context(), userKey, user), sessionKey, claims.Sid)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -235,7 +257,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Browsers keep the token in the cookie. It is also returned for callers
 	// that are not browsers.
-	a.signIn(w, user.ID, user.TokenVersion, a.sessionTTL(in.Remember), MsgSignedIn)
+	a.signIn(w, r, user.ID, user.TokenVersion, "", a.sessionTTL(in.Remember), MsgSignedIn)
 }
 
 func (a *Auth) sessionTTL(remember bool) time.Duration {
@@ -321,9 +343,18 @@ func (a *Auth) refuseUnverified(w http.ResponseWriter, r *http.Request, user Use
 	httpx.ErrorData(w, http.StatusForbidden, MsgEmailNotVerified, map[string]any{"email_unverified": true})
 }
 
-// Logout clears the session cookie. The page cannot do it: scripts have no
-// access to the cookie. It needs no sign-in, since it only removes one.
+// Logout ends the browser session, at every address that shares it, and
+// clears this address's cookie. The page cannot do it: scripts have no access
+// to the cookie. It needs no sign-in, since it only removes one.
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
+	if token, _ := sessionToken(r); token != "" {
+		if claims, err := a.parse(token); err == nil && claims.Sid != "" {
+			if err := a.Store.EndSession(r.Context(), claims.Sid); err != nil {
+				httpx.ServerError(w, "end session", err)
+				return
+			}
+		}
+	}
 	http.SetCookie(w, a.sessionCookie("", -1))
 	httpx.OK(w, http.StatusOK, MsgSignedOut, nil)
 }
@@ -348,5 +379,7 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		"pin_set":             pin != "",
 		"two_factor":          full.TOTPEnabled,
 		"email_notifications": full.EmailNotifications,
+		// The organisation this address names, even when the user can't act for it.
+		"address_slug": a.Slug(r),
 	})
 }

@@ -62,7 +62,7 @@ var MemberList = listq.Config{
 // List returns one page of everyone who belongs or belonged to the
 // organisation, each with their current place: a live scope means active,
 // only a deleted one means suspended. created_at is when they joined.
-func (s Store) List(ctx context.Context, q listq.Query, orgID string) (listq.Page[Member], error) {
+func (s Store) List(ctx context.Context, q listq.Query, orgID, status string) (listq.Page[Member], error) {
 	return listq.Fetch(ctx, s.Pool, q, MemberList,
 		`SELECT m.id::text, m.name, m.email, m.role, m.status, m.created_at`,
 		`FROM (SELECT DISTINCT ON (u.id) u.id, u.name, u.email::text AS email, r.name AS role,
@@ -72,7 +72,7 @@ func (s Store) List(ctx context.Context, q listq.Query, orgID string) (listq.Pag
 		       JOIN roles r ON r.id = us.role_id
 		       WHERE us.organisation_id = $1::uuid
 		       ORDER BY u.id, us.is_deleted, us.updated_at DESC) m`,
-		nil, []any{orgID, StatusSuspended, StatusActive}, pgx.RowToStructByPos[Member])
+		[]string{`($4 = '' OR m.status = $4)`}, []any{orgID, StatusSuspended, StatusActive, status}, pgx.RowToStructByPos[Member])
 }
 
 func (s Store) CreateInvite(ctx context.Context, orgID, email, role, tokenHash, invitedBy string, expires time.Time) (Invite, error) {

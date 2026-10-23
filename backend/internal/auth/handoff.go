@@ -39,7 +39,7 @@ func (a *Auth) StartHandoff(w http.ResponseWriter, r *http.Request) {
 	}
 	code, _, err := newLinkToken()
 	if err == nil {
-		err = a.Accounts.AddLink(ctx, userID, LinkHandoff, handoffHash(code, in.Slug), a.now().Add(HandoffTTL))
+		err = a.Accounts.AddHandoff(ctx, userID, CurrentSession(ctx), handoffHash(code, in.Slug), a.now().Add(HandoffTTL))
 	}
 	if err != nil {
 		httpx.ServerError(w, "start handoff", err)
@@ -58,12 +58,12 @@ func (a *Auth) AcceptHandoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, slug := r.Context(), a.Slug(r)
-	userID, err := a.Accounts.UseLink(ctx, LinkHandoff, handoffHash(in.Code, slug), a.now())
+	userID, sid, err := a.Accounts.UseHandoff(ctx, handoffHash(in.Code, slug), a.now())
 	if errors.Is(err, ErrNotFound) && slug != "" {
 		// The bare address may still have a first label (chaintrack in
 		// chaintrack.app): a code for the bare address works there, but never
 		// at the address of an organisation the person belongs to.
-		userID, err = a.Accounts.UseLink(ctx, LinkHandoff, handoffHash(in.Code, ""), a.now())
+		userID, sid, err = a.Accounts.UseHandoff(ctx, handoffHash(in.Code, ""), a.now())
 		if err == nil {
 			var scope Scope
 			if scope, err = a.Store.Scope(ctx, userID, slug); err == nil && scope.Organisation != nil && scope.Organisation.Slug == slug {
@@ -83,6 +83,6 @@ func (a *Auth) AcceptHandoff(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ServerError(w, "accept handoff", err)
 	default:
-		a.signIn(w, u.ID, u.TokenVersion, a.TokenTTL, "")
+		a.signIn(w, r, u.ID, u.TokenVersion, sid, a.TokenTTL, "")
 	}
 }

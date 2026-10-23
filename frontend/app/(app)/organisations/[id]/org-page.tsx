@@ -1,46 +1,39 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Lock } from "lucide-react";
+import { Ban, ExternalLink, RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { use, useState } from "react";
+import { use } from "react";
 
 import { CertificateTile } from "@/components/chaintrack/certificate-tile";
 import { useConfirm } from "@/components/chaintrack/confirm";
 import { DataWidget } from "@/components/chaintrack/data-widget";
+import { DetailHeader } from "@/components/chaintrack/detail-header";
 import {
   ClientTable,
   column,
   type ListColumn,
 } from "@/components/chaintrack/list-table";
 import { Notice } from "@/components/chaintrack/notice";
-import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
-import { StatusChip } from "@/components/chaintrack/status";
-import { TextField } from "@/components/chaintrack/text-field";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { OrgStatusChip, StatusChip } from "@/components/chaintrack/status";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   endpoints,
-  useMeGuard,
+  switchOrganisation,
+  useMe,
   type Facility,
   type MemberRow,
   type Organisation,
   type PassportRow,
 } from "@/lib/api";
 import type { ListParams } from "@/lib/list";
-import {
-  confirmCopy,
-  copy,
-  orgStatus,
-  permissions,
-  queryKeys,
-  routes,
-} from "@/lib/consts";
+import { confirmCopy, copy, orgStatus, queryKeys, routes } from "@/lib/consts";
 import { formatDate, humanize } from "@/lib/verification";
-import { certificateState } from "../../../certificates/certificates";
-import { FacilityChip } from "../../../facilities/facilities";
-import { statusLook } from "../../../passports/[id]/passport-detail";
-import { Person, StatusOf, roleLabel } from "../../../users/users";
+import { certificateState } from "../../certificates/certificates";
+import { FacilityChip } from "../../facilities/facilities";
+import { statusLook } from "../../passports/[id]/passport-detail";
+import { Person, StatusOf, roleLabel } from "../../users/users";
 import { OrgDetail } from "../queue";
 
 const t = copy.admin;
@@ -55,36 +48,26 @@ const sections = [
 
 export function OrgPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed =
-    me.ready && me.data!.permissions.includes(permissions.orgVerify);
   const org = useQuery({
     queryKey: queryKeys.org(id),
     queryFn: () => endpoints.org(id),
-    enabled: allowed,
   });
 
-  if (!me.ready) return <LoadingWithLogo />;
-  if (!allowed)
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <Link
-        href={routes.adminOrgs}
-        className={buttonVariants({ variant: "ghost", className: "w-fit" })}
-      >
-        <ArrowLeft aria-hidden />
-        {t.back}
-      </Link>
       <DataWidget query={org}>
         {(o) => (
           <>
+            <DetailHeader
+              crumb={o.name}
+              title={o.name}
+              badge={<OrgStatusChip status={o.status} />}
+              actions={<OrgActions org={o} />}
+            />
+            {o.status === orgStatus.suspended && (
+              <Notice kind="warning">{t.status.suspendedBody}</Notice>
+            )}
             <OrgDetail org={o} full />
-            <StatusPanel org={o} />
             <Records orgId={o.id} />
           </>
         )}
@@ -93,78 +76,69 @@ export function OrgPage({ params }: { params: Promise<{ id: string }> }) {
   );
 }
 
-function StatusPanel({ org }: { org: Organisation }) {
+/** What the platform can do to an organisation, at the top of its page: visit its site, suspend or reactivate it. */
+function OrgActions({ org }: { org: Organisation }) {
+  const me = useMe().data!;
   const client = useQueryClient();
   const confirm = useConfirm();
-  const [reason, setReason] = useState("");
-  const change = useMutation({
-    mutationFn: (suspend: boolean) =>
-      suspend
-        ? endpoints.orgSuspend(org.id, reason.trim())
-        : endpoints.orgReactivate(org.id),
-    onSuccess: () => {
-      setReason("");
-      client.invalidateQueries({ queryKey: queryKeys.orgs });
-    },
+  const visit = useMutation({
+    mutationFn: () => switchOrganisation(org.slug, me.organisation?.slug),
   });
-  const ask = async (suspend: boolean) => {
-    const c = suspend
-      ? confirmCopy.orgSuspend(org.name)
-      : confirmCopy.orgReactivate(org.name);
-    if (
-      await confirm({
-        title: c.title,
-        body: c.body,
-        confirmLabel: c.label,
-        danger: suspend,
-      })
-    )
-      change.mutate(suspend);
-  };
+  const change = useMutation({
+    mutationFn: (reason: string | null) =>
+      reason === null
+        ? endpoints.orgReactivate(org.id)
+        : endpoints.orgSuspend(org.id, reason),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.orgs }),
+  });
   const s = t.status;
+  const suspend = async () => {
+    const c = confirmCopy.orgSuspend(org.name);
+    const reason = await confirm({
+      title: c.title,
+      body: c.body,
+      confirmLabel: c.label,
+      danger: true,
+      reason: { label: s.suspendNote, help: s.suspendHelp },
+    });
+    if (typeof reason === "string") change.mutate(reason);
+  };
+  const reactivate = async () => {
+    const c = confirmCopy.orgReactivate(org.name);
+    if (await confirm({ title: c.title, body: c.body, confirmLabel: c.label }))
+      change.mutate(null);
+  };
   return (
-    <section className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-      <h2 className="text-title">{s.title}</h2>
-      {org.status === orgStatus.verified ? (
-        <form
-          noValidate
-          className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end"
-          onSubmit={(e) => {
-            e.preventDefault();
-            ask(true);
-          }}
+    <>
+      <Button
+        variant="secondary"
+        loading={visit.isPending}
+        onClick={() => visit.mutate()}
+      >
+        <ExternalLink aria-hidden />
+        {t.openSite}
+      </Button>
+      {org.status === orgStatus.verified && (
+        <Button
+          variant="danger-outline"
+          loading={change.isPending}
+          onClick={suspend}
         >
-          <TextField
-            label={s.suspendNote}
-            help={s.suspendHelp}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-          <Button
-            type="submit"
-            variant="danger-outline"
-            disabled={!reason.trim()}
-            loading={change.isPending}
-          >
-            {s.suspend}
-          </Button>
-        </form>
-      ) : org.status === orgStatus.suspended ? (
-        <div className="grid gap-3">
-          <Notice kind="warning">{s.suspendedBody}</Notice>
-          <Button
-            className="w-fit"
-            variant="secondary"
-            onClick={() => ask(false)}
-            loading={change.isPending}
-          >
-            {s.reactivate}
-          </Button>
-        </div>
-      ) : (
-        <p className="text-small text-ink-muted">{s.pendingBody}</p>
+          <Ban aria-hidden />
+          {s.suspend}
+        </Button>
       )}
-    </section>
+      {org.status === orgStatus.suspended && (
+        <Button
+          variant="secondary"
+          loading={change.isPending}
+          onClick={reactivate}
+        >
+          <RotateCcw aria-hidden />
+          {s.reactivate}
+        </Button>
+      )}
+    </>
   );
 }
 

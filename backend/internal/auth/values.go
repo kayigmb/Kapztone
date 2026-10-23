@@ -167,6 +167,7 @@ const (
 const (
 	cacheUserPrefix  = "auth:user:"
 	cacheScopePrefix = "auth:scope:"
+	cacheSessionKey  = "auth:session:"
 	cacheRatePrefix  = "auth:rate:"
 )
 

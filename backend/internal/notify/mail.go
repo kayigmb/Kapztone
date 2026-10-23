@@ -35,9 +35,6 @@ type Mailer struct {
 	// recipient sees, e.g. ChainTrack <noreply@chaintrack.digital>.
 	From       string
 	FromHeader string
-	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
-	// mail; empty means the header shows the name as text.
-	LogoURL string
 	// Send delivers one message; NewMailer sets it, tests replace it.
 	Send func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
@@ -197,27 +194,37 @@ func (m *Mailer) message(to []string, body string) []byte {
 		Subject:    mailSubject,
 		Preheader:  text,
 		Paragraphs: mailtmpl.Split(body),
-		LogoURL:    m.LogoURL,
 	})
 	return m.compose(to, mailSubject, text, html)
 }
 
-// compose builds a multipart e-mail: the plain-text body every client reads
-// plus an HTML twin. The subject cannot carry a line break.
+// compose builds a multipart e-mail: the plain-text body every client reads,
+// and an HTML twin with the logo attached inline (cid:logo). The subject
+// cannot carry a line break.
 func (m *Mailer) compose(to []string, subject, text, html string) []byte {
 	subject = strings.NewReplacer("\r", " ", "\n", " ").Replace(subject)
+	outer, inner := boundary(), boundary()
+	return []byte("From: " + m.FromHeader + "\r\n" +
+		"To: " + strings.Join(to, ", ") + "\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=" + outer + "\r\n\r\n" +
+		"--" + outer + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
+		"--" + outer + "\r\nContent-Type: multipart/related; boundary=" + inner + "\r\n\r\n" +
+		"--" + inner + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
+		"--" + inner + "\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n" +
+		"Content-ID: <" + mailtmpl.LogoCID + ">\r\nContent-Disposition: inline; filename=\"logo.png\"\r\n\r\n" +
+		mailtmpl.LogoPart + "\r\n" +
+		"--" + inner + "--\r\n" +
+		"--" + outer + "--\r\n")
+}
+
+// boundary is a random MIME part separator.
+func boundary() string {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		copy(raw, []byte("chaintrack-fallback-boundary"))
 	}
-	boundary := hex.EncodeToString(raw)
-	return []byte("From: " + m.FromHeader + "\r\n" +
-		"To: " + strings.Join(to, ", ") + "\r\n" +
-		"Subject: " + subject + "\r\n" +
-		"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=" + boundary + "\r\n\r\n" +
-		"--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
-		"--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
-		"--" + boundary + "--\r\n")
+	return hex.EncodeToString(raw)
 }
 
 // SendOne e-mails one person now, outside the notification queue (an invitation).

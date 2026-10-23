@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Lock, OctagonX, Stamp } from "lucide-react";
+import { CircleCheck, Clock, FileText, OctagonX, Stamp } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -12,8 +12,8 @@ import { CertificateTile } from "@/components/chaintrack/certificate-tile";
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { ListBar, Pager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { PageState } from "@/components/chaintrack/page-state";
 import { Segmented } from "@/components/chaintrack/segmented";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -100,14 +100,6 @@ export function Certificates() {
       (canIssue ? certificateScopes[0] : certificateScopes[1]));
   const [revoking, setRevoking] = useState<Certificate | null>(null);
 
-  if (!me.permissions.includes(permissions.passportRead)) {
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
-  }
-
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader
@@ -122,6 +114,37 @@ export function Certificates() {
             </Link>
           )
         }
+      />
+      <PageStats
+        queryKey={queryKeys.certificates}
+        fetch={endpoints.attestationsPage}
+        cards={[
+          {
+            key: "total",
+            ...copy.stats.certificates.total,
+            icon: FileText,
+            filters: { scope },
+          },
+          {
+            key: "valid",
+            ...copy.stats.certificates.valid,
+            icon: CircleCheck,
+            filters: { scope, status: certificateStatus.valid },
+          },
+          {
+            key: "expired",
+            ...copy.stats.certificates.expired,
+            icon: Clock,
+            whenAny: "attention",
+            filters: { scope, status: certificateStatus.expired },
+          },
+          {
+            key: "revoked",
+            ...copy.stats.certificates.revoked,
+            icon: OctagonX,
+            filters: { scope, status: certificateStatus.revoked },
+          },
+        ]}
       />
 
       <ListBar list={list} sorts={listSorts.certificate}>

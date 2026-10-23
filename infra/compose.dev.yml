@@ -11,40 +11,14 @@ services:
       - github.com/air-verse/air@v1.67.4
       - --build.cmd=go build -o /tmp/api ./cmd/api
       - --build.bin=/tmp/api
-    environment: &api-env
-      PORT: ${PORT:?set PORT in .env}
-      APP_ENV: ${APP_ENV:?set APP_ENV in .env}
-      APP_URL: ${APP_URL:?set APP_URL in .env}
-      # Addresses of the other containers; the values in .env are for running the API on your machine.
+    # Every setting comes from the repo's .env (the file `make` reads); only the
+    # addresses differ from running on your machine: the other containers by name.
+    env_file: ../.env
+    environment: &containers
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       STORAGE_ENDPOINT: http://rustfs:9000
-      STORAGE_REGION: ${STORAGE_REGION:?set STORAGE_REGION in .env}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET in .env}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?set STORAGE_ACCESS_KEY in .env}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-      JWT_TTL: ${JWT_TTL:?set JWT_TTL in .env}
-      JWT_TTL_REMEMBER: ${JWT_TTL_REMEMBER:?set JWT_TTL_REMEMBER in .env}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:?set SUPERADMIN_EMAIL in .env}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:?set SUPERADMIN_PASSWORD in .env}
-      # From a container, a chain on your machine is at host.docker.internal, not 127.0.0.1.
-      CHAIN_RPC_URL: ${CHAIN_RPC_URL:?set CHAIN_RPC_URL in .env}
-      CHAIN_ID: ${CHAIN_ID:?set CHAIN_ID in .env}
-      CHAIN_RELAYER_KEY: ${CHAIN_RELAYER_KEY:?set CHAIN_RELAYER_KEY in .env}
-      ORG_REGISTRY_ADDRESS: ${ORG_REGISTRY_ADDRESS:?set ORG_REGISTRY_ADDRESS in .env}
-      FACILITY_REGISTRY_ADDRESS: ${FACILITY_REGISTRY_ADDRESS:?set FACILITY_REGISTRY_ADDRESS in .env}
-      PASSPORT_REGISTRY_ADDRESS: ${PASSPORT_REGISTRY_ADDRESS:?set PASSPORT_REGISTRY_ADDRESS in .env}
-      CUSTODY_MANAGER_ADDRESS: ${CUSTODY_MANAGER_ADDRESS:?set CUSTODY_MANAGER_ADDRESS in .env}
-      ATTESTATION_REGISTRY_ADDRESS: ${ATTESTATION_REGISTRY_ADDRESS:?set ATTESTATION_REGISTRY_ADDRESS in .env}
-      PINATA_JWT: ${PINATA_JWT:?set PINATA_JWT in .env}
-      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
-      # Not needed when SMTP_HOST is none.
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_USE_TLS: ${SMTP_USE_TLS}
+      CHAIN_RPC_URL: http://chain:8545
     ports:
       - "${PORT}:${PORT}"
     volumes:
@@ -64,7 +38,8 @@ services:
     image: golang:1.26-alpine
     working_dir: /src
     command: go run ./cmd/relayer
-    environment: *api-env
+    env_file: ../.env
+    environment: *containers
     volumes:
       - ../backend:/src
       - go-cache:/go/pkg/mod
@@ -72,29 +47,45 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      chain:
+        condition: service_healthy
 
-  web:
+  # A local chain with the contracts deployed, left running. A fresh chain and
+  # the same admin key give the same contract addresses every time, so the
+  # addresses in .env stay right across restarts (each restart is an empty chain).
+  chain:
     image: node:22-alpine
-    working_dir: /app
-    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm dev --hostname 0.0.0.0"
+    working_dir: /contracts
+    env_file: ../.env
     environment:
       CI: "true"
       npm_config_store_dir: /pnpm-store
-      API_URL: http://api:${PORT}
+      CHAIN_RPC_URL: http://127.0.0.1:8545
+    command:
+      - sh
+      - -c
+      - |
+        rm -f /tmp/deployed
+        corepack enable && pnpm install --frozen-lockfile || exit 1
+        pnpm hardhat node --hostname 0.0.0.0 &
+        until wget -qO- --header='content-type: application/json' \
+          --post-data='{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+          http://127.0.0.1:8545 >/dev/null 2>&1; do sleep 1; done
+        pnpm hardhat run scripts/deploy.ts --network target && touch /tmp/deployed
+        wait
     ports:
-      - "3000:3000"
+      - "8545:8545"
     volumes:
-      - ../frontend:/app
-      # The container keeps its own Linux node_modules and build output.
-      - web-node-modules:/app/node_modules
-      - web-next:/app/.next
+      - ../contracts:/contracts
+      - chain-node-modules:/contracts/node_modules
       - pnpm-store:/pnpm-store
-    depends_on:
-      - api
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/deployed"]
+      interval: 5s
+      retries: 60
 
 volumes:
   go-cache:
   go-build-cache:
-  web-node-modules:
-  web-next:
+  chain-node-modules:
   pnpm-store:

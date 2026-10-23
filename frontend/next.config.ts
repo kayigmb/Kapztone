@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "images.unsplash.com" }],
   },
+  // The admin screens used to live under /admin; old links still land.
+  async redirects() {
+    return [
+      { source: "/admin/:path*", destination: "/:path*", permanent: true },
+    ];
+  },
   // OWASP A02: deny framing and MIME sniffing, limit referrer data.
   async headers() {
     return [

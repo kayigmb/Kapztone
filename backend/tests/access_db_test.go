@@ -61,6 +61,7 @@ func TestOrgDirectory(t *testing.T) {
 	}
 	want(t, "unknown kind", do(e.h, http.MethodGet, as(e.slug(tAcme), "/orgs/directory?kind=castle"), acme, ""), http.StatusBadRequest)
 	want(t, "unverified caller", do(e.h, http.MethodGet, as(e.slug(tStaff), "/orgs/directory"), e.login(tStaff), ""), http.StatusForbidden)
+	want(t, "the platform names holders", do(e.h, http.MethodGet, "/orgs/directory?search="+e.suffix, root, ""), http.StatusOK)
 }
 
 func TestForwardedAddressDrivesRateLimit(t *testing.T) {
@@ -417,6 +418,10 @@ func TestUserManagement(t *testing.T) {
 	if m := decodeTo[listq.Page[user.Member]](t, do(e.h, http.MethodGet, as(slug, "/users"), admin, "")).Data; len(m) != 3 {
 		t.Fatalf("a suspended member left the list: %+v", m)
 	}
+	if m := decodeTo[listq.Page[user.Member]](t, do(e.h, http.MethodGet, as(slug, "/users?status="+user.StatusSuspended), admin, "")).Data; len(m) != 1 || m[0].ID != niaID {
+		t.Fatalf("?status=suspended should list only the suspended member: %+v", m)
+	}
+	want(t, "unknown member status", do(e.h, http.MethodGet, as(slug, "/users?status=asleep"), admin, ""), http.StatusBadRequest)
 	rivalTok := e.login(tRival)
 	want(t, "the other organisation is untouched", do(e.h, http.MethodGet, as(e.slug(tRival), "/passports"), rivalTok, ""), http.StatusOK)
 	want(t, "reinstate", post(e, admin, as(slug, "/users/"+niaID+"/reinstate"), nil), http.StatusOK)

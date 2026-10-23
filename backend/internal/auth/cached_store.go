@@ -44,6 +44,26 @@ func (c CachedStore) Scope(ctx context.Context, userID, slug string) (Scope, err
 	return s, err
 }
 
+// SessionLive is asked on every request; only live answers are kept, and
+// EndSession drops that, so signing out takes effect on the next request.
+func (c CachedStore) SessionLive(ctx context.Context, sid string) (bool, error) {
+	var live bool
+	if c.Cache.Get(ctx, cacheSessionKey+sid, &live) {
+		return live, nil
+	}
+	live, err := c.Store.SessionLive(ctx, sid)
+	if err == nil && live {
+		c.Cache.Set(ctx, cacheSessionKey+sid, true)
+	}
+	return live, err
+}
+
+func (c CachedStore) EndSession(ctx context.Context, sid string) error {
+	err := c.Store.EndSession(ctx, sid)
+	c.Cache.Del(ctx, cacheSessionKey+sid)
+	return err
+}
+
 // InvalidateUser must be called after any change to a user's account or to
 // their scopes (status, deletion, role, membership).
 func (c CachedStore) InvalidateUser(ctx context.Context, userID string) {

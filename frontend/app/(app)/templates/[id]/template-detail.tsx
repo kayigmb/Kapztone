@@ -2,14 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Lock, Plus, WifiOff } from "lucide-react";
+import { Plus, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
+import { DetailHeader } from "@/components/chaintrack/detail-header";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,11 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { endpoints, problemOf, useMeGuard, type Template } from "@/lib/api";
+import { endpoints, type Template } from "@/lib/api";
 import {
   capacityRuleTypes,
   copy,
-  permissions,
   queryKeys,
   routes,
   templateEvents,
@@ -53,41 +52,15 @@ export function TemplateDetail({
 }) {
   const { id } = use(params);
 
-  const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed =
-    me.ready && me.data!.permissions.includes(permissions.templateManage);
-
   const tpl = useQuery({
     queryKey: [...queryKeys.template(id)],
     queryFn: () => endpoints.template(id),
-    enabled: allowed,
   });
   const kinds = useQuery({
     queryKey: queryKeys.facilityKinds,
     queryFn: endpoints.facilityKinds,
-    enabled: allowed,
   });
 
-  if (me.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => me.refetch()}
-      >
-        {problemOf(me.error)}
-      </PageState>
-    );
-  }
-  if (!me.ready) return <LoadingWithLogo />;
-  if (!allowed) {
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
-  }
   return (
     <DataWidget
       query={tpl}
@@ -155,17 +128,7 @@ function EditForm({
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <header className="grid gap-1">
-        <Link
-          href={routes.adminTemplates}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-primary"
-        >
-          <ArrowLeft className="size-4" aria-hidden />
-          {t.back}
-        </Link>
-        <h1 className="text-2xl font-semibold lg:text-page">{t.title}</h1>
-        <p className="text-sm text-ink-muted">{tpl.name}</p>
-      </header>
+      <DetailHeader crumb={tpl.name} title={tpl.name} />
 
       <form
         onSubmit={handleSubmit((v) => {
@@ -380,7 +343,7 @@ function EditForm({
 
         <div className="flex flex-wrap justify-end gap-3">
           <Link
-            href={routes.adminTemplates}
+            href={routes.templates}
             className={buttonVariants({ variant: "secondary" })}
           >
             {t.back}

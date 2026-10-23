@@ -28,9 +28,6 @@ type Handlers struct {
 	InvalidateUser func(ctx context.Context, userID string)
 	// Mail sends one e-mail; nil when e-mail is off.
 	Mail func(to, subject, text, html string) error
-	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
-	// mail; empty means the header shows the name as text.
-	LogoURL string
 	// AppURL is the web app's bare address; invitation links start with it.
 	AppURL string
 	// Dev also returns the invitation link (and logs it), since a developer
@@ -124,7 +121,11 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		accounts, err := h.Store.All(r.Context(), q, "")
+		status, ok := statusParam(w, r, AccountStatuses)
+		if !ok {
+			return
+		}
+		accounts, err := h.Store.All(r.Context(), q, "", status)
 		if err != nil {
 			httpx.ServerError(w, "list users", err)
 			return
@@ -140,7 +141,11 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	members, err := h.Store.List(r.Context(), q, o.ID)
+	status, ok := statusParam(w, r, MemberStatuses)
+	if !ok {
+		return
+	}
+	members, err := h.Store.List(r.Context(), q, o.ID, status)
 	if err != nil {
 		httpx.ServerError(w, "list members", err)
 		return
@@ -226,7 +231,6 @@ func (h *Handlers) mailInvite(inv Invite, orgName, link string) {
 		ActionLabel: "Accept invitation",
 		ActionURL:   link,
 		Footnote:    "This link works once, for 24 hours.",
-		LogoURL:     h.LogoURL,
 	})
 	send := h.Mail
 	go func() {
@@ -391,10 +395,24 @@ func (h *Handlers) OrgMembers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	members, err := h.Store.List(r.Context(), q, id)
+	status, ok := statusParam(w, r, MemberStatuses)
+	if !ok {
+		return
+	}
+	members, err := h.Store.List(r.Context(), q, id, status)
 	if err != nil {
 		httpx.ServerError(w, "list organisation members", err)
 		return
 	}
 	httpx.OK(w, http.StatusOK, "", members)
+}
+
+// statusParam reads ?status=, one of allowed or empty for all.
+func statusParam(w http.ResponseWriter, r *http.Request, allowed []string) (string, bool) {
+	status := r.URL.Query().Get(ParamStatus)
+	if status != "" && !slices.Contains(allowed, status) {
+		listq.BadParam(w, ParamStatus, allowed)
+		return "", false
+	}
+	return status, true
 }

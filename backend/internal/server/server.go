@@ -109,7 +109,7 @@ func Routes(d Deps) []Route {
 		{get, "/notifications", SignedIn, "", n.List},
 		{post, "/notifications" + idPath + "/read", SignedIn, "", n.Read},
 
-		{get, "/orgs/directory", VerifiedPermission, auth.OrgSearch, o.Directory},
+		{get, "/orgs/directory", Permission, auth.OrgSearch, o.Directory},
 		{get, "/orgs", Permission, auth.OrgRead, o.List},
 		{get, "/orgs" + idPath, Permission, auth.OrgRead, o.Get},
 		{post, "/orgs" + idPath + "/verify", Permission, auth.OrgVerify, o.Review},

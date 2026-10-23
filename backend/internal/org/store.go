@@ -210,7 +210,7 @@ type Listing struct {
 // Directory lists verified organisations other than the caller's own,
 // optionally of one kind.
 func (s Store) Directory(ctx context.Context, q listq.Query, ownID, kind string) (listq.Page[Listing], error) {
-	where := []string{`o.status = $1`, `o.id <> $2::uuid`, `($3 = '' OR o.kind = $3)`}
+	where := []string{`o.status = $1`, `($2 = '' OR o.id <> NULLIF($2, '')::uuid)`, `($3 = '' OR o.kind = $3)`}
 	return listq.Fetch(ctx, s.Pool, q, DirectoryList, "SELECT o.id::text, o.name, o.kind, o.slug", "FROM organisations o",
 		where, []any{StatusVerified, ownID, kind}, pgx.RowToStructByPos[Listing])
 }

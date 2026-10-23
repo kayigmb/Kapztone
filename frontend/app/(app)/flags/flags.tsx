@@ -19,6 +19,7 @@ import { DataWidget } from "@/components/chaintrack/data-widget";
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { Notice } from "@/components/chaintrack/notice";
 
 import { KeyValue } from "@/components/chaintrack/passport-card";
@@ -112,6 +113,26 @@ export function FlagQueue() {
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
       <PageHeader title={t.title} sub={t.sub(open)} />
+      <PageStats
+        queryKey={queryKeys.flags}
+        fetch={endpoints.flagsPage}
+        cards={[
+          { key: "total", ...copy.stats.flags.total, icon: FlagIcon },
+          {
+            key: "open",
+            ...copy.stats.flags.open,
+            icon: Clock,
+            whenAny: "alert",
+            filters: { status: "open" },
+          },
+          {
+            key: "resolved",
+            ...copy.stats.flags.resolved,
+            icon: CircleCheck,
+            filters: { status: "resolved" },
+          },
+        ]}
+      />
       <div className="grid gap-4 lg:grid-cols-[minmax(--spacing(70),0.8fr)_1.5fr] lg:items-start">
         <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface shadow-card">
           <div className="border-b border-border p-3">

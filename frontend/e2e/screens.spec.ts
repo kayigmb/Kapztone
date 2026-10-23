@@ -77,7 +77,7 @@ test("screens", async ({ browser }) => {
     routes.scan,
     routes.certificates,
     routes.flags,
-    routes.adminReports,
+    routes.reports,
     routes.users,
     routes.notifications,
     routes.profile,

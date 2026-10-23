@@ -1,13 +1,13 @@
 import { PageSuspense } from "@/components/chaintrack/page-state";
 import { copy } from "@/lib/consts";
-import { Queue } from "./queue";
+import { Passports } from "./passports";
 
-export const metadata = { title: copy.meta.adminOrgs };
+export const metadata = { title: copy.meta.passports };
 
 export default function Page() {
   return (
     <PageSuspense>
-      <Queue />
+      <Passports />
     </PageSuspense>
   );
 }

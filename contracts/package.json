@@ -2,6 +2,7 @@
   "name": "contracts",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.23.0",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test --coverage"

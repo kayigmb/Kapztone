@@ -20,7 +20,7 @@ export function linkOf(kind: string, subjectId: string): string | undefined {
       return routes.passportDetail(subjectId);
     case "org_registered":
     case "documents_uploaded":
-      return routes.adminOrg("organisations", subjectId);
+      return routes.organisationsTab("organisations", subjectId);
   }
   return undefined;
 }

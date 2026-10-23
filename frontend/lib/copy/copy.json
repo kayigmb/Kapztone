@@ -11,7 +11,10 @@
     },
     "badAnswer": "ChainTrack answered in a way this page doesn't understand. Reload the page.",
     "tryAgain": "Try again",
-    "loadTitle": "We couldn't load this page"
+    "loadTitle": "We couldn't load this page",
+    "noAccessTitle": "You don't have access to this page",
+    "noAccessBody": "Your role doesn't include it. Ask an admin of your organisation if you need it.",
+    "backToDashboard": "Back to the dashboard"
   },
   "signOut": "Sign out",
   "password": {
@@ -30,12 +33,12 @@
       "home": "Dashboard",
       "workspaces": "Workspaces",
       "facilities": "Facilities",
-      "issue": "Issue passport",
+      "passports": "Passports",
       "handovers": "Handovers",
       "transform": "Transform",
       "certificates": "Certificates",
       "flags": "Flags",
-      "adminOrgs": "Verify organisations",
+      "organisations": "Organisations",
       "templates": "Templates",
       "reports": "Reports",
       "users": "Users",
@@ -54,6 +57,7 @@
     "scanQr": "Scan QR",
     "platform": "ChainTrack platform",
     "back": "Back",
+    "breadcrumb": "Breadcrumb",
     "collapse": "Fold the sidebar",
     "expand": "Unfold the sidebar",
     "theme": {
@@ -65,9 +69,141 @@
     "yourProfile": {
       "$template": "{name}: your profile"
     },
+    "actingAs": {
+      "$template": "You're working inside {org} as platform superadmin: you see only its records."
+    },
     "switchOrg": "Switch organisation",
     "switchNote": "Opens that organisation's address; you stay signed in.",
     "current": "Current"
+  },
+  "passportsList": {
+    "title": "Passports",
+    "sub": "Every lot your organisation holds, with where it stands.",
+    "subPlatform": "Every lot issued on the platform.",
+    "issue": "Issue passport",
+    "empty": "No passports yet. Issue one to start a lot's record.",
+    "columns": {
+      "code": "Lot code",
+      "commodity": "Commodity",
+      "remaining": "Remaining",
+      "status": "Status",
+      "holder": "Holder",
+      "issued": "Issued"
+    }
+  },
+  "stats": {
+    "label": "Summary",
+    "failed": "Couldn't count",
+    "users": {
+      "total": {
+        "label": "People",
+        "note": "Members of this organisation"
+      },
+      "platformTotal": {
+        "label": "People",
+        "note": "Accounts on the platform"
+      },
+      "active": {
+        "label": "Active",
+        "note": "Can sign in"
+      },
+      "suspended": {
+        "label": "Suspended",
+        "note": "Access paused"
+      },
+      "disabled": {
+        "label": "Deactivated",
+        "note": "Can't sign in"
+      }
+    },
+    "organisations": {
+      "pending": {
+        "label": "To verify",
+        "note": "Waiting for review"
+      },
+      "changes": {
+        "label": "Changes requested",
+        "note": "Waiting for the organisation"
+      },
+      "rejected": {
+        "label": "Rejected",
+        "note": "Not verified"
+      },
+      "verified": {
+        "label": "Verified",
+        "note": "Active on the platform"
+      }
+    },
+    "facilities": {
+      "total": {
+        "label": "Facilities",
+        "note": "Registered"
+      },
+      "active": {
+        "label": "Approved",
+        "note": "In use"
+      },
+      "pending": {
+        "label": "Waiting for approval",
+        "note": "Not usable yet"
+      },
+      "suspended": {
+        "label": "Suspended",
+        "note": "Switched off"
+      }
+    },
+    "certificates": {
+      "total": {
+        "label": "Certificates",
+        "note": "In this list"
+      },
+      "valid": {
+        "label": "Valid",
+        "note": "In date"
+      },
+      "expired": {
+        "label": "Expired",
+        "note": "Past their end date"
+      },
+      "revoked": {
+        "label": "Revoked",
+        "note": "Withdrawn by the issuer"
+      }
+    },
+    "flags": {
+      "total": {
+        "label": "Flags",
+        "note": "Raised"
+      },
+      "open": {
+        "label": "Open",
+        "note": "Being looked into"
+      },
+      "resolved": {
+        "label": "Resolved",
+        "note": "Cleared or confirmed"
+      }
+    },
+    "passports": {
+      "total": { "label": "Passports", "note": "Lots on record" },
+      "active": { "label": "Active", "note": "Can be handed over" },
+      "consumed": { "label": "Consumed", "note": "Transformed or merged" },
+      "revoked": { "label": "Revoked", "note": "Withdrawn" }
+    },
+    "handovers": {
+      "incoming": {
+        "label": "Incoming",
+        "note": "Waiting for you"
+      },
+      "outgoing": {
+        "label": "Outgoing",
+        "note": "Waiting for the receiver"
+      },
+      "done": {
+        "label": "Done",
+        "note": "Accepted or closed"
+      }
+    }
   },
   "list": {
     "search": "Search",
@@ -1051,11 +1187,12 @@
     "handoff": "Switching organisation · ChainTrack",
     "signup": "Create account · ChainTrack",
     "onboarding": "Verification · ChainTrack",
-    "adminOrgs": "Verification queue · ChainTrack",
+    "organisations": "Organisations · ChainTrack",
     "passport": "Product passport · ChainTrack",
     "facilities": "Facilities · ChainTrack",
     "facilityNew": "Register facility · ChainTrack",
     "issue": "Issue passport · ChainTrack",
+    "passports": "Passports · ChainTrack",
     "passportDetail": "Lot · ChainTrack",
     "handover": "Hand over a lot · ChainTrack",
     "handovers": "Handovers · ChainTrack",
@@ -1309,16 +1446,18 @@
     "suspended": "Suspended"
   },
   "admin": {
-    "title": "Verification queue",
+    "title": "Organisations",
     "notAllowedTitle": "You can't review organisations.",
     "notAllowedBody": "Only the platform's reviewers can open this page. Ask a platform admin if you need access.",
     "tabs": {
-      "organisations": "Organisations",
+      "all": "All",
+      "organisations": "Waiting for review",
       "issuers": "Certificate issuers",
       "approved": "Approved",
       "rejected": "Rejected"
     },
     "empty": {
+      "all": "No organisations have registered yet.",
       "organisations": "No organisations are waiting for review.",
       "issuers": "No verified certifiers or regulators yet.",
       "approved": "No organisations have been approved yet.",
@@ -1326,13 +1465,14 @@
     },
     "selectOne": "Choose an organisation from the list to review it.",
     "openFull": "Open full page",
-    "back": "Verification queue",
+    "back": "Organisations",
+    "openSite": "Open organisation site",
     "status": {
       "title": "Status",
       "suspendNote": "Reason for suspending",
       "suspendHelp": "The organisation is shown it.",
-      "suspend": "Suspend organisation",
-      "reactivate": "Reactivate organisation",
+      "suspend": "Suspend",
+      "reactivate": "Reactivate",
       "suspendedBody": "Its members can't use the workspace until it is reactivated.",
       "pendingBody": "Only a verified organisation can be suspended."
     },

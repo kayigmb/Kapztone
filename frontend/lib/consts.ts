@@ -81,6 +81,7 @@ export const documentTypes = [
 
 /** The admin verification queue's tabs: which organisations each one lists. */
 export const adminTabs = [
+  { value: "all", statuses: Object.values(orgStatus) },
   { value: "organisations", statuses: [orgStatus.pending] },
   { value: "issuers", statuses: [orgStatus.verified], kinds: issuerKinds },
   { value: "approved", statuses: [orgStatus.verified, orgStatus.suspended] },
@@ -116,6 +117,37 @@ export const permissions = {
   auditRead: "audit:read",
   reportRead: "report:read",
 } as const;
+
+/** Who may open which screens: the longest matching prefix decides, and any one of its permissions lets a person in. The API checks every call again. */
+export const routeAccess: readonly {
+  prefix: string;
+  anyOf: readonly string[];
+}[] = [
+  { prefix: "/organisations", anyOf: [permissions.orgVerify] },
+  { prefix: "/templates", anyOf: [permissions.templateRead] },
+  { prefix: "/templates/", anyOf: [permissions.templateManage] },
+  {
+    prefix: "/reports",
+    anyOf: [permissions.auditRead, permissions.reportRead],
+  },
+  { prefix: "/users", anyOf: [permissions.userManage] },
+  { prefix: "/issue", anyOf: [permissions.passportIssue] },
+  { prefix: "/passports", anyOf: [permissions.passportRead] },
+  { prefix: "/transform", anyOf: [permissions.transformCreate] },
+  { prefix: "/handover", anyOf: [permissions.handoverCreate] },
+  { prefix: "/handovers", anyOf: [permissions.passportRead] },
+  { prefix: "/certificates", anyOf: [permissions.passportRead] },
+  { prefix: "/certificates/new", anyOf: [permissions.certificateIssue] },
+  { prefix: "/facilities", anyOf: [permissions.facilityRead] },
+  { prefix: "/facilities/new", anyOf: [permissions.facilityManage] },
+  {
+    prefix: "/flags",
+    anyOf: [permissions.flagCreate, permissions.flagResolve],
+  },
+];
+
+/** The platform's own role; inside an organisation's address it acts as that organisation's admin. */
+export const superadminRole = "superadmin";
 
 /** Roles an organisation admin can give a member (POST /invites, PUT /users/{id}/role). */
 export const memberRoles = [
@@ -228,7 +260,7 @@ export const navItems = [
   // Instead of every item above and below, for a member on the bare address (lib/dashboard.ts → hasWorkspace).
   {
     key: "workspaces",
-    href: "/dashboard",
+    href: "/workspaces",
     icon: "workspaces",
     group: "workspace",
   },
@@ -240,11 +272,11 @@ export const navItems = [
     permission: permissions.facilityRead,
   },
   {
-    key: "issue",
-    href: "/issue",
+    key: "passports",
+    href: "/passports",
     icon: "issue",
     group: "workspace",
-    permission: permissions.passportIssue,
+    permission: permissions.passportRead,
   },
   {
     key: "handovers",
@@ -277,8 +309,8 @@ export const navItems = [
     count: "openFlags",
   },
   {
-    key: "adminOrgs",
-    href: "/admin/organisations",
+    key: "organisations",
+    href: "/organisations",
     icon: "orgs",
     group: "trust",
     permission: permissions.orgVerify,
@@ -286,14 +318,14 @@ export const navItems = [
   },
   {
     key: "templates",
-    href: "/admin/templates",
+    href: "/templates",
     icon: "templates",
     group: "manage",
     permission: permissions.templateRead,
   },
   {
     key: "reports",
-    href: "/admin/reports",
+    href: "/reports",
     icon: "reports",
     group: "manage",
     permission: permissions.auditRead,
@@ -383,8 +415,9 @@ export const dashboards = {
     main: ["flags"],
     side: [],
   },
+  // Totals only (the overview row); each screen carries its own breakdown.
   platform: {
-    tiles: ["orgsPending", "orgsChanges", "orgsRejected", "openFlags"],
+    tiles: [],
     actions: ["reviewOrgs", "templates", "users", "reports"],
     main: ["orgsPending"],
     side: [],
@@ -436,16 +469,16 @@ export const quickActions = [
   },
   {
     key: "reviewOrgs",
-    href: "/admin/organisations",
+    href: "/organisations",
     permission: permissions.orgVerify,
   },
   {
     key: "templates",
-    href: "/admin/templates",
+    href: "/templates",
     permission: permissions.templateRead,
   },
   { key: "users", href: "/users", permission: permissions.userManage },
-  { key: "reports", href: "/admin/reports", permission: permissions.auditRead },
+  { key: "reports", href: "/reports", permission: permissions.auditRead },
 ] as const satisfies readonly {
   key: ActionKey;
   href?: string;
@@ -498,14 +531,16 @@ export const routes = {
   verifyEmail: (token: string) => `/verify-email/${token}`,
   handoff: (code: string) => `/handoff?code=${encodeURIComponent(code)}`,
   onboarding: "/onboarding",
-  adminOrgs: "/admin/organisations",
-  adminOrg: (tab: string, id?: string) =>
-    `/admin/organisations?tab=${tab}${id ? `&id=${id}` : ""}`,
-  adminOrgDetail: (id: string) => `/admin/organisations/${id}`,
-  adminTemplates: "/admin/templates",
-  adminTemplate: (id: string) => `/admin/templates/${id}`,
-  adminReports: "/admin/reports",
+  workspaces: "/workspaces",
+  organisations: "/organisations",
+  organisationsTab: (tab: string, id?: string) =>
+    `/organisations?tab=${tab}${id ? `&id=${id}` : ""}`,
+  organisation: (id: string) => `/organisations/${id}`,
+  templates: "/templates",
+  template: (id: string) => `/templates/${id}`,
+  reports: "/reports",
   passport: (id: string) => `/p/${id}`,
+  passports: "/passports",
   passportDetail: (id: string) => `/passports/${id}`,
   facilities: "/facilities",
   facilityNew: "/facilities/new",
@@ -683,6 +718,7 @@ export const copy = {
     theme: copyJson.shell.theme as Record<ThemeChoice, string>,
     yourProfile: (name: string) =>
       fill(copyJson.shell.yourProfile.$template, { name }),
+    actingAs: (org: string) => fill(copyJson.shell.actingAs.$template, { org }),
   },
   list: {
     ...copyJson.list,
@@ -1096,15 +1132,6 @@ export const platformCopy = {
   updated: (when: string) => fill(platformCopyJson.updated.$template, { when }),
   tiles: {
     ...platformCopyJson.tiles,
-    organisations: {
-      ...platformCopyJson.tiles.organisations,
-      note: (pending: number) =>
-        `${pending.toLocaleString()} waiting for review`,
-    },
-    passports: {
-      ...platformCopyJson.tiles.passports,
-      note: (active: number) => `${active.toLocaleString()} active`,
-    },
   },
   outbox: {
     ...platformCopyJson.outbox,

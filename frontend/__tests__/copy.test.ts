@@ -72,5 +72,5 @@ test("confirm builders still return title, body and label", () => {
   const c = confirmCopy.facilityApprove("Acme");
   assert.equal(c.title, "Approve Acme?");
   assert.ok(c.body && c.label);
-  assert.equal(platformCopy.tiles.passports.note(3), "3 active");
+  assert.equal(platformCopy.tiles.passports.note, "Lots issued");
 });

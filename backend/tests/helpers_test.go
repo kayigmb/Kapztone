@@ -63,6 +63,9 @@ func (f *fakeStore) PINHash(context.Context, string) (string, error)            
 func (f *fakeStore) SetPIN(context.Context, string, string) error                  { return nil }
 func (f *fakeStore) SetRecoveryCodes(context.Context, string, []string) error      { return nil }
 func (f *fakeStore) UseRecoveryCode(context.Context, string, string) (bool, error) { return false, nil }
+func (f *fakeStore) StartSession(context.Context, string) (string, error)          { return "", nil }
+func (f *fakeStore) SessionLive(context.Context, string) (bool, error)             { return true, nil }
+func (f *fakeStore) EndSession(context.Context, string) error                      { return nil }
 
 func (f *fakeStore) Scope(_ context.Context, _, slug string) (auth.Scope, error) {
 	if slug != fakeSlug {

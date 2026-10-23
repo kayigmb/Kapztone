@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleCheck,
+  CircleX,
   Clock,
   Factory,
   FileText,
@@ -32,6 +33,7 @@ import {
   ListPager,
 } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { MapView, type Shape } from "@/components/chaintrack/map";
 import { Notice } from "@/components/chaintrack/notice";
 import { DataWidget } from "@/components/chaintrack/data-widget";
@@ -191,6 +193,32 @@ export function Facilities() {
                 </Link>
               )
             }
+          />
+          <PageStats
+            queryKey={queryKeys.facilities}
+            fetch={endpoints.facilitiesPage}
+            cards={[
+              { key: "total", ...copy.stats.facilities.total, icon: Factory },
+              {
+                key: "active",
+                ...copy.stats.facilities.active,
+                icon: CircleCheck,
+                filters: { status: facilityStatus.active },
+              },
+              {
+                key: "pending",
+                ...copy.stats.facilities.pending,
+                icon: Clock,
+                whenAny: "attention",
+                filters: { status: facilityStatus.pending },
+              },
+              {
+                key: "suspended",
+                ...copy.stats.facilities.suspended,
+                icon: CircleX,
+                filters: { status: facilityStatus.suspended },
+              },
+            ]}
           />
 
           {total === 0 && !filtered ? (

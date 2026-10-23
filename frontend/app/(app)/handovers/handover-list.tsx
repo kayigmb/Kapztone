@@ -1,13 +1,21 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, ChevronRight, Plus } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  ChevronRight,
+  CircleCheck,
+  Plus,
+} from "lucide-react";
 import Link from "next/link";
 import { parseAsStringLiteral } from "nuqs";
 
 import { ListCard } from "@/components/chaintrack/list-card";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { HandoverStatusChip } from "@/components/chaintrack/handover-status";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,6 +78,31 @@ export function HandoverList() {
             </Link>
           )
         }
+      />
+      <PageStats
+        queryKey={queryKeys.handovers}
+        fetch={endpoints.handoversPage}
+        cards={[
+          {
+            key: "incoming",
+            ...copy.stats.handovers.incoming,
+            icon: ArrowDownLeft,
+            whenAny: "attention",
+            filters: { box: "incoming" },
+          },
+          {
+            key: "outgoing",
+            ...copy.stats.handovers.outgoing,
+            icon: ArrowUpRight,
+            filters: { box: "outgoing" },
+          },
+          {
+            key: "done",
+            ...copy.stats.handovers.done,
+            icon: CircleCheck,
+            filters: { box: "done" },
+          },
+        ]}
       />
 
       <Tabs

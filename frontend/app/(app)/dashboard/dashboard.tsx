@@ -25,8 +25,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
+import { LoadingWithLogo } from "@/components/chaintrack/page-state";
 import { ListCard } from "@/components/chaintrack/list-card";
 import { ScanButton } from "@/components/chaintrack/scan-button";
 import { StatTile } from "@/components/chaintrack/stat-tile";
@@ -53,7 +56,6 @@ import { actionsFor, layoutFor, toneOf } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { formatDate, humanize } from "@/lib/verification";
 import { PlatformOverview } from "./platform";
-import { WorkspacePicker } from "./workspace-picker";
 
 const t = copy.dashboard;
 const tileIcon: Record<TileKey, LucideIcon> = {
@@ -82,9 +84,9 @@ const actionIcon: Record<ActionKey, LucideIcon> = {
   reports: ChartColumn,
 };
 const tileHref: Partial<Record<TileKey, string>> = {
-  orgsPending: routes.adminOrgs,
-  orgsChanges: routes.adminOrg("rejected"),
-  orgsRejected: routes.adminOrg("rejected"),
+  orgsPending: routes.organisations,
+  orgsChanges: routes.organisationsTab("rejected"),
+  orgsRejected: routes.organisationsTab("rejected"),
 };
 const kindLabel = (kind: string) =>
   orgKinds.find((k) => k.value === kind)?.label ?? humanize(kind);
@@ -92,6 +94,7 @@ const qty = (n: number, unit: string) => `${n.toLocaleString()} ${unit}`;
 
 export function Dashboard() {
   const me = useMe().data!; // the layout only renders once it is loaded
+  const router = useRouter();
   const layout = layoutFor(me);
   // Incoming and outgoing tiles both come from the one list of open handovers.
   const handovers = useQuery({
@@ -103,7 +106,11 @@ export function Dashboard() {
       layout.tiles.some((x) => x === "incoming" || x === "outgoing"),
   });
 
-  if (!layout) return <WorkspacePicker />; // a member on the bare address
+  // A member on the main address acts for nobody yet: they pick a workspace first.
+  useEffect(() => {
+    if (!layout) router.replace(routes.workspaces);
+  }, [layout, router]);
+  if (!layout) return <LoadingWithLogo />;
 
   const mine = me.organisation?.id;
   const incoming = handovers.data?.filter((h) => h.to_org === mine);
@@ -125,20 +132,22 @@ export function Dashboard() {
         )}
       </header>
 
-      <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        {layout.tiles.map((tile) =>
-          tile === "incoming" || tile === "outgoing" ? (
-            <Tile
-              key={tile}
-              tile={tile}
-              value={(tile === "incoming" ? incoming : outgoing)?.length}
-              failed={handovers.isError ? t.loadFailed : undefined}
-            />
-          ) : (
-            <CountTile key={tile} tile={tile} />
-          ),
-        )}
-      </section>
+      {layout.tiles.length > 0 && (
+        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          {layout.tiles.map((tile) =>
+            tile === "incoming" || tile === "outgoing" ? (
+              <Tile
+                key={tile}
+                tile={tile}
+                value={(tile === "incoming" ? incoming : outgoing)?.length}
+                failed={handovers.isError ? t.loadFailed : undefined}
+              />
+            ) : (
+              <CountTile key={tile} tile={tile} />
+            ),
+          )}
+        </section>
+      )}
 
       {!me.organisation && <PlatformOverview />}
 
@@ -376,7 +385,7 @@ function Panel({
       return (
         <QueryPanel
           panel={panel}
-          href={routes.adminOrgs}
+          href={routes.organisations}
           fn={() =>
             endpoints.orgs(orgStatus.pending).then((o) => o.slice(0, 5))
           }
@@ -386,7 +395,7 @@ function Panel({
               className="flex min-h-14 flex-wrap items-center justify-between gap-2 px-5 py-3"
             >
               <Link
-                href={routes.adminOrg("organisations", o.id)}
+                href={routes.organisationsTab("organisations", o.id)}
                 className="text-sm font-semibold text-primary"
               >
                 {o.name}

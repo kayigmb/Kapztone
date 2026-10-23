@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Plus, WifiOff, Eye } from "lucide-react";
+import { Plus, Eye } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -21,7 +21,6 @@ import {
 import { ListBar } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
-import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,7 +35,7 @@ import {
 import {
   endpoints,
   problemOf,
-  useMeGuard,
+  useMe,
   usePaged,
   type Template,
 } from "@/lib/api";
@@ -73,11 +72,8 @@ export function Templates() {
   const [showForm, setShowForm] = useState(false);
   const [tab, setTab] = useState("templates");
 
-  const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed =
-    me.ready && me.data!.permissions.includes(permissions.templateRead);
-  const canCreate =
-    me.ready && me.data!.permissions.includes(permissions.templateManage);
+  const me = useMe().data!; // the layout only renders once it is loaded
+  const canCreate = me.permissions.includes(permissions.templateManage);
 
   const list = useListParams("name");
   const templates = usePaged(
@@ -97,30 +93,9 @@ export function Templates() {
     meta: { inPlace: true },
     onSuccess: ({ data }) => {
       client.invalidateQueries({ queryKey: queryKeys.templates });
-      router.push(routes.adminTemplate(data.id));
+      router.push(routes.template(data.id));
     },
   });
-
-  if (me.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => me.refetch()}
-      >
-        {problemOf(me.error)}
-      </PageState>
-    );
-  }
-  if (!me.ready) return <LoadingWithLogo />;
-  if (!allowed) {
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
-  }
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
@@ -189,10 +164,7 @@ const columns: ListColumn<Template>[] = [
     "name",
     t.listName,
     (x) => (
-      <Link
-        href={routes.adminTemplate(x.id)}
-        className="font-semibold text-primary"
-      >
+      <Link href={routes.template(x.id)} className="font-semibold text-primary">
         {x.name}
       </Link>
     ),
@@ -215,7 +187,7 @@ const columns: ListColumn<Template>[] = [
     { sortable: true },
   ),
   actionsColumn((x) => (
-    <RowAction label={t.open} icon={Eye} href={routes.adminTemplate(x.id)} />
+    <RowAction label={t.open} icon={Eye} href={routes.template(x.id)} />
   )),
 ];
 

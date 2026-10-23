@@ -7,18 +7,20 @@
   "chartsLoading": "Loading charts…",
   "tiles": {
     "organisations": {
-      "label": "Organisations"
+      "label": "Organisations",
+      "note": "On the platform"
     },
     "users": {
       "label": "People",
       "note": "Accounts on the platform"
     },
     "passports": {
-      "label": "Passports"
+      "label": "Passports",
+      "note": "Lots issued"
     },
     "flags": {
       "label": "Open flags",
-      "note": "Waiting for an investigator"
+      "note": "Not yet resolved"
     }
   },
   "activity": {

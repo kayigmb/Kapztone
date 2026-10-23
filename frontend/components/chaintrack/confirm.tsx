@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 
+import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,9 +28,12 @@ export type ConfirmOptions = {
   confirmLabel: string;
   danger?: boolean;
   icon?: LucideIcon;
+  /** Ask for a written reason too; confirming then answers with it. */
+  reason?: { label: string; help?: string };
 };
 
-type Ask = (o: ConfirmOptions) => Promise<boolean>;
+/** false: cancelled; true: confirmed; a string: confirmed with this reason. */
+type Ask = (o: ConfirmOptions) => Promise<boolean | string>;
 const ConfirmContext = createContext<Ask | null>(null);
 
 /** Every decision asks first: `if (await confirm({...})) mutate()`. */
@@ -43,19 +47,21 @@ export function useConfirm(): Ask {
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
-  const answer = useRef<(yes: boolean) => void>(() => {});
+  const [reason, setReason] = useState("");
+  const answer = useRef<(a: boolean | string) => void>(() => {});
 
   const ask = useCallback<Ask>((o) => {
     answer.current(false); // a question still open is answered "no"
     setOptions(o);
+    setReason("");
     setOpen(true);
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean | string>((resolve) => {
       answer.current = resolve;
     });
   }, []);
 
   const close = (yes: boolean) => {
-    answer.current(yes);
+    answer.current(yes && options?.reason ? reason.trim() : yes);
     answer.current = () => {};
     setOpen(false);
   };
@@ -97,12 +103,23 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               >
                 {options.body}
               </DialogDescription>
+              {options.reason && (
+                <TextField
+                  className="px-6 pb-6"
+                  label={options.reason.label}
+                  help={options.reason.help}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  autoFocus
+                />
+              )}
               <div className="flex flex-col-reverse gap-2 border-t border-border bg-surface-sunken p-4 sm:flex-row sm:justify-end">
                 <DialogClose render={<Button variant="secondary" />}>
                   {confirmCopy.cancel}
                 </DialogClose>
                 <Button
                   variant={options.danger ? "danger" : "primary"}
+                  disabled={!!options.reason && !reason.trim()}
                   onClick={() => close(true)}
                 >
                   {options.confirmLabel}

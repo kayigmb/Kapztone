@@ -22,6 +22,15 @@ const (
 	StatusSuspended = "suspended"
 )
 
+// ?status= on GET /users: a member's place in the organisation, or for the
+// platform's list of every account, the account's own status.
+const ParamStatus = "status"
+
+var (
+	MemberStatuses  = []string{StatusActive, StatusSuspended}
+	AccountStatuses = []string{auth.UserActive, auth.UserDisabled}
+)
+
 const (
 	InviteTTL   = 24 * time.Hour
 	tokenBytes  = 32

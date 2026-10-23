@@ -83,10 +83,10 @@ Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks th
 
 ### In containers
 
-`make dev` runs the database, Redis, RustFS, migrations, API, relayer and web app in containers. The API and web app reload on save; restart the relayer after changing its code. `make logs` follows them, `make down` stops them.
+`make dev` runs the database, Redis, RustFS, migrations, a local chain with the contracts deployed (on `localhost:8545`), the API (on `localhost:8080`) and the relayer in containers; run the web app beside it with `make web`. The API reloads on save; restart the relayer after changing its code. `make logs` follows them, `make down` stops them.
 
-- The chain still runs on this machine (`make chain`, `make deploy`), and the contract addresses must be in `.env` before `make dev`.
-- From a container the chain is `CHAIN_RPC_URL=http://host.docker.internal:8545`, not `127.0.0.1`. Switch it back to run `make api` / `make relayer` natively.
+- The containers read `.env` themselves and reach each other by name; `.env` keeps the addresses for running natively (`CHAIN_RPC_URL=http://127.0.0.1:8545`).
+- The dev chain starts empty on every start and the deploy lands on the same addresses each time, the ones in `.env.example`. `make chain` / `make deploy` remain for running outside Docker or deploying to a testnet.
 
 ### Resetting
 
@@ -103,7 +103,7 @@ Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks th
 | `make chain` | A local chain on http://127.0.0.1:8545 (chain id 31337) |
 | `make deploy` | Deploy the contracts to the chain in `.env`; prints the address lines |
 | `make bindings` | Compile the contracts and regenerate the Go bindings |
-| `make dev` / `make prod` | Everything in containers (dev reloads on save; prod uses built images) |
+| `make dev` / `make prod` | Dev: chain (deployed), API, relayer and infra in containers, reloading on save (web via `make web`); prod: everything from built images |
 | `make down` / `make prod-down` / `make logs` | Stop the containers, or follow their logs |
 | `make test` | Go vet + tests, frontend lint + build + unit tests, contract tests |
 | `make test-db` | Backend tests against the real Postgres and Redis, with coverage |

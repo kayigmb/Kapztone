@@ -1,4 +1,5 @@
 import {
+  routeAccess,
   dashboardOfKind,
   dashboards,
   navItems,
@@ -58,3 +59,15 @@ export const layoutFor = (v: Viewer) => {
 /** A tile with something in it may need the reader: attention or alert. */
 export const toneOf = (tile: TileKey, count: number | undefined) =>
   count ? (tileTones[tile] ?? "neutral") : "neutral";
+
+/** Whether this person may open the screen at pathname (routeAccess: longest prefix wins; unlisted screens are open to anyone signed in). */
+export function canOpen(pathname: string, v: Pick<Viewer, "permissions">) {
+  const rule = routeAccess
+    .filter((r) =>
+      r.prefix.endsWith("/")
+        ? pathname.startsWith(r.prefix)
+        : pathname === r.prefix || pathname.startsWith(`${r.prefix}/`),
+    )
+    .sort((a, b) => b.prefix.length - a.prefix.length)[0];
+  return !rule || rule.anyOf.some((p) => v.permissions.includes(p));
+}

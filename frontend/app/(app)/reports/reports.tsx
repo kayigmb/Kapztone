@@ -1,14 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  CheckCircle2,
-  Download,
-  Lock,
-  Search,
-  ShieldX,
-  WifiOff,
-} from "lucide-react";
+import { CheckCircle2, Download, Search, ShieldX } from "lucide-react";
 import { parseAsString } from "nuqs";
 import { useState } from "react";
 
@@ -21,7 +14,6 @@ import {
   type ListColumn,
 } from "@/components/chaintrack/list-table";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
 import { StatusChip } from "@/components/chaintrack/status";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +29,6 @@ import {
   downloadURL,
   endpoints,
   problemOf,
-  useMeGuard,
   usePaged,
   type AuditEntry,
   type OutcomeRow,
@@ -48,10 +39,8 @@ import {
   apiPaths,
   copy,
   exportFormats,
-  permissions,
   queryKeys,
   reportsCopy,
-  routes,
 } from "@/lib/consts";
 import { useListParams } from "@/lib/list-params";
 import { formatDateTime } from "@/lib/verification";
@@ -200,15 +189,9 @@ const auditColumns = (
 ];
 
 export function Reports() {
-  const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed =
-    me.ready &&
-    (me.data!.permissions.includes(permissions.auditRead) ||
-      me.data!.permissions.includes(permissions.reportRead));
   const organisations = useQuery({
     queryKey: queryKeys.directory,
     queryFn: endpoints.directory,
-    enabled: allowed,
   });
 
   const [volumeStart, setVolumeStart] = useState("");
@@ -220,7 +203,6 @@ export function Reports() {
         startDate: volumeStart || undefined,
         endDate: volumeEnd || undefined,
       }),
-    enabled: allowed,
   });
 
   const [outStart, setOutStart] = useState("");
@@ -232,12 +214,10 @@ export function Reports() {
         startDate: outStart || undefined,
         endDate: outEnd || undefined,
       }),
-    enabled: allowed,
   });
   const saved = useQuery({
     queryKey: queryKeys.saved,
     queryFn: endpoints.savedReports,
-    enabled: allowed,
   });
   const [savedName, setSavedName] = useState("");
   const [savedKind, setSavedKind] = useState("volume");
@@ -260,26 +240,6 @@ export function Reports() {
     queryFn: endpoints.auditVerify,
     enabled: false,
   });
-
-  if (me.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => me.refetch()}
-      >
-        {problemOf(me.error)}
-      </PageState>
-    );
-  }
-  if (!me.ready) return <LoadingWithLogo />;
-  if (!allowed)
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">

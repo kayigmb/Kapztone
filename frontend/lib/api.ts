@@ -150,6 +150,8 @@ export const meSchema = z.object({
   // Not every API version says it; undefined means "unknown".
   two_factor: z.boolean().optional(),
   email_notifications: z.boolean().optional(),
+  // The organisation this address names, even when this person can't act for it.
+  address_slug: z.string().optional(),
 });
 export type Me = z.infer<typeof meSchema>;
 
@@ -320,6 +322,7 @@ const verificationSchema: z.ZodType<ApiVerification> = z.object({
 const passportRow = z.object({
   id: z.string(),
   code: z.string(),
+  organisation_id: z.string(),
   commodity: z.string(),
   unit: z.string(),
   remaining: z.number(),

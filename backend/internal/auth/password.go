@@ -35,8 +35,16 @@ func (a *Auth) invalidate(ctx context.Context, userID string) {
 
 // signIn issues a token at the user's current version, sets the session
 // cookie, and writes the token for callers that are not browsers.
-func (a *Auth) signIn(w http.ResponseWriter, userID string, ver int, ttl time.Duration, message string) {
-	token, err := a.issue(userID, ver, ttl, a.now())
+// signIn sets this address's cookie for the browser session sid; "" opens a new one.
+func (a *Auth) signIn(w http.ResponseWriter, r *http.Request, userID string, ver int, sid string, ttl time.Duration, message string) {
+	if sid == "" {
+		var err error
+		if sid, err = a.Store.StartSession(r.Context(), userID); err != nil {
+			httpx.ServerError(w, "start session", err)
+			return
+		}
+	}
+	token, err := a.issue(userID, ver, sid, ttl, a.now())
 	if err != nil {
 		httpx.ServerError(w, "issue token", err)
 		return
@@ -122,7 +130,6 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 			ActionLabel: actionLabel,
 			ActionURL:   link,
 			Footnote:    footnote,
-			LogoURL:     a.LogoURL,
 		})
 		go func() {
 			if err := a.Mail(u.Email, subject, text, html); err != nil {
@@ -173,7 +180,7 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Limiter.reset(ctx, LoginRate, u.Email, ip)
 	a.passwordChanged(ctx, u)
-	a.signIn(w, u.ID, ver, a.TokenTTL, MsgPasswordChanged)
+	a.signIn(w, r, u.ID, ver, CurrentSession(r.Context()), a.TokenTTL, MsgPasswordChanged)
 }
 
 // setPassword checks and stores a new password, bumping the token version.
@@ -383,5 +390,5 @@ func (a *Auth) RevokeSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidate(ctx, userID)
-	a.signIn(w, userID, ver, a.TokenTTL, MsgSessionsRevoked)
+	a.signIn(w, r, userID, ver, CurrentSession(r.Context()), a.TokenTTL, MsgSessionsRevoked)
 }

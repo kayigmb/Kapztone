@@ -194,8 +194,19 @@ func (h *Handlers) Directory(w http.ResponseWriter, r *http.Request) {
 		listq.BadParam(w, ParamKind, Kinds)
 		return
 	}
-	// The route requires a verified acting organisation, so it is set.
-	own := auth.CurrentScope(r.Context()).Organisation.ID
+	// An organisation must be verified to look others up; the platform (no
+	// organisation) sees every verified one, to name holders and parties.
+	own := ""
+	if sc := auth.CurrentScope(r.Context()); sc.Organisation != nil {
+		if sc.Organisation.Status != auth.OrgVerified {
+			httpx.Error(w, http.StatusForbidden, auth.MsgOrgNotVerified)
+			return
+		}
+		own = sc.Organisation.ID
+	} else if !sc.Platform {
+		httpx.Error(w, http.StatusForbidden, auth.MsgNoOrgSelected)
+		return
+	}
 	page, err := h.Store.Directory(r.Context(), q, own, kind)
 	if err != nil {
 		httpx.ServerError(w, "list directory", err)

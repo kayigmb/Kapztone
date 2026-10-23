@@ -7,7 +7,6 @@ import {
   ArrowRight,
   CircleCheck,
   Layers,
-  Lock,
   Plus,
   RefreshCcw,
   Ship,
@@ -23,17 +22,16 @@ import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading, PageState } from "@/components/chaintrack/page-state";
+import { Loading } from "@/components/chaintrack/page-state";
 import type { Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { endpoints, problemOf, useMe, type PassportDetail } from "@/lib/api";
+import { endpoints, problemOf, type PassportDetail } from "@/lib/api";
 import {
   copy,
   limits,
-  permissions,
   queryKeys,
   routes,
   templateEvent,
@@ -77,7 +75,6 @@ type ResultState = {
 };
 
 export function Transform() {
-  const me = useMe().data!; // the layout only renders once it is loaded
   const client = useQueryClient();
   const [known, setKnown] = useState<Record<string, PassportDetail>>({});
   const [result, setResult] = useState<ResultState | null>(null);
@@ -176,13 +173,6 @@ export function Transform() {
     },
   });
 
-  if (!me.permissions.includes(permissions.transformCreate)) {
-    return (
-      <PageState icon={Lock} title={local.notAllowedTitle}>
-        {local.notAllowedBody}
-      </PageState>
-    );
-  }
   if (result) {
     return (
       <Done

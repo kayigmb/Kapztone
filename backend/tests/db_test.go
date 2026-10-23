@@ -173,6 +173,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			`DELETE FROM recovery_codes WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM password_history WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM password_resets WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
+			`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM userscope WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM organisations WHERE slug LIKE $1`,
 			`DELETE FROM users WHERE email::text LIKE $1`,
@@ -363,6 +364,7 @@ type meResponse struct {
 	Organisation *auth.Organisation
 	Role         string
 	Permissions  []string
+	AddressSlug  string `json:"address_slug"`
 }
 
 func TestConventionsInDatabase(t *testing.T) {

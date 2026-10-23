@@ -45,6 +45,9 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_USE_TLS: ${SMTP_USE_TLS}
+      MAIL_FROM: ${MAIL_FROM}
+      LOG_FORMAT: ${LOG_FORMAT}
+      LOG_LEVEL: ${LOG_LEVEL}
     # No published port: only the web app reaches the API (api:${PORT} on the
     # compose network). The API trusts X-Forwarded-For because of this.
     depends_on:

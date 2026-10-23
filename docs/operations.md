@@ -32,7 +32,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` | the private bucket holding uploaded files | see "File storage" below |
 | `STORAGE_PORT` | RustFS's port on this machine (dev) | production ignores it but compose still needs a value |
 | `PINATA_JWT` | copies certificate files to IPFS | `none` turns it off. A pinned file is public and cannot be withdrawn |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | sends notification e-mail | `SMTP_HOST=none` turns it off (the rest are then not needed). `SMTP_USER` is only the login; every recipient sees `MAIL_FROM`, e.g. `ChainTrack <noreply@chaintrack.digital>` (name and address, validated at start-up). With Gmail, add that address under "Send mail as" or Gmail shows the login address; a custom domain needs SPF (and ideally DKIM). `MAIL_LOGO_URL` is the absolute https URL of the mark shown atop HTML mail (see `frontend/public/brand/`); empty means a text wordmark. `SMTP_USE_TLS=true` refuses a server without STARTTLS (port 587); required and `true` in prod, optional in dev; port 465 is not supported. Quote a value with spaces |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | sends notification e-mail | `SMTP_HOST=none` turns it off (the rest are then not needed). `SMTP_USER` is only the login; every recipient sees `MAIL_FROM`, e.g. `ChainTrack <noreply@chaintrack.digital>` (name and address, validated at start-up). With Gmail, add that address under "Send mail as" or Gmail shows the login address; a custom domain needs SPF (and ideally DKIM). The logo travels inside every e-mail as an inline PNG (`cid:logo`, from `backend/internal/mailtmpl/logo.png`), so nothing is hosted. `SMTP_USE_TLS=true` refuses a server without STARTTLS (port 587); required and `true` in prod, optional in dev; port 465 is not supported. Quote a value with spaces |
 
 The API has no domain setting (`DOMAIN` only tells Caddy what to answer). The API takes the frontend's address from each request (the browser's `Origin` header, or the request's own host) and treats its first label as the organisation to act for, if the signed-in user belongs to it.
 
@@ -52,7 +52,7 @@ Outside development the API refuses to start if the bucket does not exist. `make
 
 - `make infra` — Postgres, migrations, Redis, RustFS (the dev bucket).
 - `make api` — the API on your machine, using `.env`.
-- `make dev` / `make prod` — everything in containers.
+- `make dev` — a local chain with the contracts deployed, API, relayer and infra in containers (run `make web` beside it); `make prod` — everything in containers.
 
 ## Deploying to a VPS
 

@@ -7,7 +7,6 @@ import {
   CircleCheck,
   Clock,
   Factory,
-  Lock,
   MapPin,
   OctagonX,
   Pickaxe,
@@ -26,7 +25,6 @@ import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
 import { ChecksList } from "@/components/chaintrack/checks-list";
 import { ListToolbar, Pager } from "@/components/chaintrack/list-controls";
 import { Notice } from "@/components/chaintrack/notice";
-import { PageState } from "@/components/chaintrack/page-state";
 import { KeyValue, type Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
@@ -36,7 +34,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   endpoints,
   problemOf,
-  useMe,
   usePaged,
   type Facility,
   type Paged,
@@ -48,7 +45,6 @@ import {
   copy,
   facilityStatus,
   passportStatus,
-  permissions,
   queryKeys,
   routes,
   templateEvent,
@@ -84,14 +80,6 @@ const stageLabel = (key: string) =>
 const periodOf = (f: Facility) => f.capacity_period;
 
 export function Issue() {
-  const me = useMe().data!; // the layout only renders once it is loaded
-  if (!me.permissions.includes(permissions.passportIssue)) {
-    return (
-      <PageState icon={Lock} title={local.notAllowedTitle}>
-        {local.notAllowedBody}
-      </PageState>
-    );
-  }
   return <Flow />;
 }
 

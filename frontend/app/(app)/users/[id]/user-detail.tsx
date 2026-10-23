@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Ban,
   CircleCheck,
   Clock,
@@ -23,11 +22,11 @@ import {
   column,
   type ListColumn,
 } from "@/components/chaintrack/list-table";
-import { PageHeader } from "@/components/chaintrack/page-header";
+import { DetailHeader } from "@/components/chaintrack/detail-header";
 import { PageState } from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip } from "@/components/chaintrack/status";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -74,13 +73,6 @@ export function UserDetail({ params }: { params: Promise<{ id: string }> }) {
   }
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
-      <Link
-        href={routes.users}
-        className={buttonVariants({ variant: "ghost", className: "w-fit" })}
-      >
-        <ArrowLeft aria-hidden />
-        {t.back}
-      </Link>
       <DataWidget query={user}>
         {(u) => <Account user={u} myId={me.user.id} />}
       </DataWidget>
@@ -93,7 +85,8 @@ function Account({ user: u, myId }: { user: PlatformUserRow; myId: string }) {
   const active = u.status === memberStatus.active;
   return (
     <>
-      <PageHeader
+      <DetailHeader
+        crumb={u.name}
         title={<Person name={u.name} email={u.email} />}
         actions={
           u.id !== myId &&
@@ -199,7 +192,7 @@ function Memberships({ user: u }: { user: PlatformUserRow }) {
   const columns: ListColumn<Membership>[] = [
     column("organisation", t.membershipColumns.organisation, (m) => (
       <Link
-        href={routes.adminOrgDetail(m.organisation_id!)}
+        href={routes.organisation(m.organisation_id!)}
         className="font-semibold hover:underline"
       >
         {m.organisation}

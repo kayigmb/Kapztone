@@ -5,14 +5,35 @@
 package mailtmpl
 
 import (
+	_ "embed"
+	"encoding/base64"
 	"html"
 	"strings"
 )
 
+// The ChainTrack mark travels inside every e-mail as an inline part the HTML
+// points at with cid:logo: no hosted image, nothing for a client to fetch.
+// PNG, not SVG, which Gmail and Outlook render poorly.
+const LogoCID = "logo"
+
+//go:embed logo.png
+var logoPNG []byte
+
+// LogoPart is the logo as a MIME body: base64 in lines of 76 (RFC 2045).
+// ponytail: encoded once at start-up and reused by every message.
+var LogoPart = func() string {
+	enc := base64.StdEncoding.EncodeToString(logoPNG)
+	var b strings.Builder
+	for len(enc) > 76 {
+		b.WriteString(enc[:76] + "\r\n")
+		enc = enc[76:]
+	}
+	b.WriteString(enc)
+	return b.String()
+}()
+
 // Page is one e-mail. Paragraphs are plain text; links in them become
 // clickable, and ActionURL (when set, with ActionLabel) becomes the button.
-// LogoURL is an absolute https URL of the ChainTrack mark; empty means the
-// header shows the name as text instead of an image email clients may block.
 type Page struct {
 	Subject     string
 	Preheader   string
@@ -20,7 +41,6 @@ type Page struct {
 	ActionLabel string
 	ActionURL   string
 	Footnote    string
-	LogoURL     string
 }
 
 // Split turns a plain-text body into paragraphs on blank lines.
@@ -47,25 +67,20 @@ func Render(p Page) string {
 	}
 	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef2f1;padding:24px 12px;">`)
 	b.WriteString(`<tr><td align="center">`)
-	writeBanner(&b, p.LogoURL)
+	writeBanner(&b)
 	writeCard(&b, p)
 	b.WriteString(`<p style="font-family:Arial,sans-serif;font-size:12px;color:#5b6b7a;">Sent by ChainTrack. If you were not expecting this email, you can ignore it.</p>`)
 	b.WriteString(`</td></tr></table></body></html>`)
 	return b.String()
 }
 
-// writeBanner is the dark strip with the logo, or the name when there is none.
-func writeBanner(b *strings.Builder, logoURL string) {
+// writeBanner is the dark strip with the logo (the inline part) and the name.
+func writeBanner(b *strings.Builder) {
 	b.WriteString(`<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#0f2a43;border-radius:12px 12px 0 0;">`)
-	b.WriteString(`<tr><td style="padding:20px 24px;">`)
-	if logoURL != "" {
-		b.WriteString(`<img src="`)
-		b.WriteString(html.EscapeString(logoURL))
-		b.WriteString(`" alt="ChainTrack" width="32" height="32" style="display:block;border:0;" />`)
-	} else {
-		b.WriteString(`<span style="color:#ffffff;font-family:Arial,sans-serif;font-size:20px;font-weight:bold;">ChainTrack</span>`)
-	}
-	b.WriteString(`</td></tr></table>`)
+	b.WriteString(`<tr><td style="padding:20px 24px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>`)
+	b.WriteString(`<td style="padding-right:10px;"><img src="cid:` + LogoCID + `" alt="" width="32" height="32" style="display:block;border:0;" /></td>`)
+	b.WriteString(`<td style="color:#ffffff;font-family:Arial,sans-serif;font-size:20px;font-weight:bold;">ChainTrack</td>`)
+	b.WriteString(`</tr></table></td></tr></table>`)
 }
 
 // writeCard is the white card: heading, paragraphs, button and footnote.

@@ -100,6 +100,12 @@ type Store interface {
 	SetRecoveryCodes(ctx context.Context, userID string, hashes []string) error
 	// UseRecoveryCode burns an unused code; false means no such unused code.
 	UseRecoveryCode(ctx context.Context, userID, hash string) (bool, error)
+	// StartSession opens a browser session for the user and returns its id.
+	StartSession(ctx context.Context, userID string) (string, error)
+	// SessionLive reports whether the session has not been signed out of.
+	SessionLive(ctx context.Context, sid string) (bool, error)
+	// EndSession signs the session out, at every address that shares it.
+	EndSession(ctx context.Context, sid string) error
 }
 
 // AccountStore is the database access of the account flows: password
@@ -120,6 +126,10 @@ type AccountStore interface {
 	LinkUser(ctx context.Context, kind, tokenHash string, now time.Time) (userID string, err error)
 	// UseLink spends an unused, unexpired link of that kind; ErrNotFound otherwise.
 	UseLink(ctx context.Context, kind, tokenHash string, now time.Time) (userID string, err error)
+	// AddHandoff stores a handoff code (only its hash) with the session it continues.
+	AddHandoff(ctx context.Context, userID, sessionID, tokenHash string, expires time.Time) error
+	// UseHandoff spends a handoff code; sessionID is "" for a code without one.
+	UseHandoff(ctx context.Context, tokenHash string, now time.Time) (userID, sessionID string, err error)
 	// Lock disables the account and bumps the token version.
 	Lock(ctx context.Context, userID string) error
 	// UserByID returns the user (any status) with email and password hash.
@@ -138,10 +148,7 @@ type Auth struct {
 	// AppURL is the web app's bare address; e-mailed links start with it.
 	AppURL string
 	// Mail sends one email now; nil when e-mail is off (links are then only logged in dev).
-	Mail func(to, subject, text, html string) error
-	// LogoURL is the absolute URL of the ChainTrack mark shown atop HTML
-	// mail; empty means the header shows the name as text.
-	LogoURL string
+	Mail    func(to, subject, text, html string) error
 	Dev     bool             // accept ?pslug= in place of the frontend subdomain
 	Secrets *secret.Box      // seals 2FA secrets
 	Limiter *Limiter         // nil disables rate limiting
@@ -168,16 +175,18 @@ func CheckPassword(hash, password string) bool {
 // permissions are deliberately left out: they are looked up on every request,
 // so removing them takes effect immediately.
 func (a *Auth) IssueToken(userID string, now time.Time) (string, error) {
-	return a.issue(userID, 0, a.TokenTTL, now)
+	return a.issue(userID, 0, "", a.TokenTTL, now)
 }
 
-// tokenClaims are who the user is, plus the token version they signed in at.
+// tokenClaims are who the user is, the token version they signed in at, and
+// the browser session the token belongs to (empty for script tokens).
 type tokenClaims struct {
 	jwt.RegisteredClaims
-	Ver int `json:"ver"`
+	Ver int    `json:"ver"`
+	Sid string `json:"sid,omitempty"`
 }
 
-func (a *Auth) issue(userID string, ver int, ttl time.Duration, now time.Time) (string, error) {
+func (a *Auth) issue(userID string, ver int, sid string, ttl time.Duration, now time.Time) (string, error) {
 	claims := tokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
@@ -185,31 +194,32 @@ func (a *Auth) issue(userID string, ver int, ttl time.Duration, now time.Time) (
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 		Ver: ver,
+		Sid: sid,
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(a.Secret)
 }
 
 // ParseToken returns the user id from a valid, unexpired token.
 func (a *Auth) ParseToken(token string) (string, error) {
-	userID, _, err := a.parse(token)
-	return userID, err
+	claims, err := a.parse(token)
+	return claims.Subject, err
 }
 
-// parse returns the user id and the token version a token was issued at.
-func (a *Auth) parse(token string) (userID string, ver int, err error) {
+// parse checks a token and returns its claims.
+func (a *Auth) parse(token string) (tokenClaims, error) {
 	var claims tokenClaims
-	_, err = jwt.ParseWithClaims(token, &claims,
+	_, err := jwt.ParseWithClaims(token, &claims,
 		func(*jwt.Token) (any, error) { return a.Secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return "", 0, err
+		return tokenClaims{}, err
 	}
 	if claims.Subject == "" {
-		return "", 0, errors.New("token has no subject")
+		return tokenClaims{}, errors.New("token has no subject")
 	}
-	return claims.Subject, claims.Ver, nil
+	return claims, nil
 }
 
 // siteHost is the host (with port) of the site the browser is on: the one
@@ -246,14 +256,22 @@ func frontendHost(r *http.Request) string {
 	return strings.ToLower(host)
 }
 
+// appHost is the bare address's host name, from AppURL ("" if unset).
+func (a *Auth) appHost() string {
+	u, err := url.Parse(a.AppURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
 // Slug returns the organisation slug the request names, or "" if none: the
-// first label of the frontend's host ("acme" in acme.chaintrack.app). In dev,
-// ?pslug= names it instead.
+// first label of the frontend's host ("acme" in acme.chaintrack.app). The
+// bare address (AppURL's host) names none. In dev, ?pslug= names it instead.
 //
-// No domain is configured, so this cannot tell an organisation's subdomain
-// from the platform's own name; it does not need to. The slug is only a
-// candidate: ResolveOrg asks the database whether the user belongs to an
-// organisation with that slug, and anything else means "no organisation".
+// The slug is only a candidate: ResolveOrg asks the database whether the user
+// may act for an organisation with that slug, and anything else means "no
+// organisation".
 func (a *Auth) Slug(r *http.Request) string {
 	slug := ""
 	if a.Dev {
@@ -262,8 +280,8 @@ func (a *Auth) Slug(r *http.Request) string {
 	if slug == "" {
 		host := frontendHost(r)
 		label, _, hasMore := strings.Cut(host, ".")
-		if !hasMore || net.ParseIP(host) != nil {
-			return "" // "localhost" or an IP address has no subdomain
+		if !hasMore || net.ParseIP(host) != nil || host == a.appHost() {
+			return "" // "localhost", an IP address or the bare address names no organisation
 		}
 		slug = label
 	}

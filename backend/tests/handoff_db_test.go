@@ -78,3 +78,34 @@ func TestHandoff(t *testing.T) {
 		t.Fatalf("expired code = %d", got)
 	}
 }
+
+// One sign-in in one browser is one session, shared by every address a
+// handoff carried it to: signing out at one ends it at all of them, while the
+// same person signed in elsewhere (another device) stays signed in.
+func TestSignOutEndsTheSharedSession(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	acme := e.register("acme", "producer")
+	e.addUser(tStaff, auth.RoleMember, acme.ID)
+	orgTok := e.login(tStaff)
+	otherDevice := e.login(tStaff)
+
+	rec := do(e.h, http.MethodPost, as(acme.Slug, "/auth/handoff"), orgTok, `{"slug":""}`)
+	want(t, "start handoff", rec, http.StatusOK)
+	rec = do(e.h, http.MethodPost, "/auth/handoff/accept", "", `{"code":"`+decodeTo[struct{ Code string }](t, rec).Code+`"}`)
+	want(t, "accept at the bare address", rec, http.StatusOK)
+	bareTok := decodeTo[struct{ Token string }](t, rec).Token
+
+	want(t, "sign out at the organisation's address", do(e.h, http.MethodPost, as(acme.Slug, "/auth/logout"), orgTok, ""), http.StatusOK)
+	if got := meCode(e, bareTok); got != http.StatusUnauthorized {
+		t.Fatalf("the bare address is still signed in after signing out at the organisation's: %d", got)
+	}
+	if got := meCode(e, orgTok); got != http.StatusUnauthorized {
+		t.Fatalf("the organisation's address is still signed in: %d", got)
+	}
+	if got := meCode(e, otherDevice); got != http.StatusOK {
+		t.Fatalf("another device was signed out too: %d", got)
+	}
+	if got := meCode(e, e.login(tStaff)); got != http.StatusOK {
+		t.Fatalf("signing in again doesn't work: %d", got)
+	}
+}

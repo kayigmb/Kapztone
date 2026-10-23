@@ -28,6 +28,7 @@ import { JourneyTimeline } from "@/components/chaintrack/journey-timeline";
 import { Notice } from "@/components/chaintrack/notice";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { LoadingWithLogo, PageState } from "@/components/chaintrack/page-state";
+import { useRecordTitle } from "@/components/chaintrack/record-title";
 import { PassportCard, type Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { Status, StatusChip } from "@/components/chaintrack/status";
@@ -190,6 +191,7 @@ export function PassportDetail() {
 
 function Detail({ passport: p }: { passport: PassportDetail }) {
   const me = useMe().data!;
+  useRecordTitle(p.code);
   const holder = me.organisation?.id === p.organisation_id;
   const [retiring, setRetiring] = useState(false);
 

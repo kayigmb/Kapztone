@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Building2, FileText, Lock, WifiOff } from "lucide-react";
+import { BadgeCheck, Building2, CircleX, Clock, FileText } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { parseAsString, parseAsStringLiteral } from "nuqs";
@@ -9,11 +9,8 @@ import { parseAsString, parseAsStringLiteral } from "nuqs";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { PageStats } from "@/components/chaintrack/page-stats";
 import { Notice } from "@/components/chaintrack/notice";
-import {
-  LoadingWithLogo,
-  PageState,
-} from "@/components/chaintrack/page-state";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { OrgStatusChip } from "@/components/chaintrack/status";
 import { buttonVariants } from "@/components/ui/button";
@@ -21,8 +18,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   documentFileURL,
   endpoints,
-  problemOf,
-  useMeGuard,
   usePaged,
   type Organisation,
 } from "@/lib/api";
@@ -33,7 +28,6 @@ import {
   listSorts,
   orgKinds,
   orgStatus,
-  permissions,
   queryKeys,
   routes,
   upload,
@@ -66,10 +60,6 @@ export function Queue() {
   const tab = adminTabs.find((x) => x.value === state.filters.tab)!;
   const selectedId = state.filters.id;
 
-  const me = useMeGuard((me) => (me ? undefined : routes.signin));
-  const allowed =
-    me.ready && me.data!.permissions.includes(permissions.orgVerify);
-
   const list = usePaged([...queryKeys.orgs, tab.value], endpoints.orgsPage, {
     ...state.query(filtersOf(tab)),
   });
@@ -84,36 +74,16 @@ export function Queue() {
           sort: "created_at",
           filters: filtersOf(x),
         }),
-      enabled: allowed,
     })),
   });
   const picked = useQuery({
     queryKey: [...queryKeys.orgs, "one", selectedId],
     queryFn: () => endpoints.org(selectedId!),
-    enabled: allowed && !!selectedId,
+    enabled: !!selectedId,
   });
 
-  if (me.isError) {
-    return (
-      <PageState
-        icon={WifiOff}
-        tone="danger"
-        title={copy.errors.loadTitle}
-        retry={() => me.refetch()}
-      >
-        {problemOf(me.error)}
-      </PageState>
-    );
-  }
-  if (!me.ready) return <LoadingWithLogo />;
-  if (!allowed)
-    return (
-      <PageState icon={Lock} title={t.notAllowedTitle}>
-        {t.notAllowedBody}
-      </PageState>
-    );
-
-  const waiting = counts[0].data;
+  const waiting =
+    counts[adminTabs.findIndex((x) => x.value === "organisations")].data;
   const oldest = waiting?.data[0];
   const selected = picked.data;
 
@@ -122,6 +92,37 @@ export function Queue() {
       <PageHeader
         title={t.title}
         sub={t.sub(waiting?.total ?? 0, oldest && daysSince(oldest.created_at))}
+      />
+      <PageStats
+        queryKey={queryKeys.orgs}
+        fetch={endpoints.orgsPage}
+        cards={[
+          {
+            key: "pending",
+            ...copy.stats.organisations.pending,
+            icon: Building2,
+            whenAny: "attention",
+            filters: { status: orgStatus.pending },
+          },
+          {
+            key: "changes",
+            ...copy.stats.organisations.changes,
+            icon: Clock,
+            filters: { status: orgStatus.changesRequested },
+          },
+          {
+            key: "rejected",
+            ...copy.stats.organisations.rejected,
+            icon: CircleX,
+            filters: { status: orgStatus.rejected },
+          },
+          {
+            key: "verified",
+            ...copy.stats.organisations.verified,
+            icon: BadgeCheck,
+            filters: { status: orgStatus.verified },
+          },
+        ]}
       />
 
       <Tabs
@@ -193,7 +194,7 @@ function OrgList({
     const next = new URLSearchParams(params);
     next.set("tab", tab);
     next.set("id", id);
-    return `${routes.adminOrgs}?${next}`;
+    return `${routes.organisations}?${next}`;
   };
   if (orgs.length === 0)
     return (
@@ -243,7 +244,13 @@ function OrgList({
 }
 
 /** One organisation's facts, documents and the review; `full` on its own page (no link to itself). */
-export function OrgDetail({ org, full }: { org: Organisation; full?: boolean }) {
+export function OrgDetail({
+  org,
+  full,
+}: {
+  org: Organisation;
+  full?: boolean;
+}) {
   const docs = useQuery({
     queryKey: queryKeys.orgDocuments(org.id),
     queryFn: () => endpoints.documents(org.id),
@@ -253,25 +260,25 @@ export function OrgDetail({ org, full }: { org: Organisation; full?: boolean }) 
 
   return (
     <section className="grid min-w-0 content-start gap-6 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-section">{org.name}</h2>
-          <p className="text-small text-ink-muted">
-            {t.submitted(formatDateTime(org.created_at))}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <OrgStatusChip status={org.status} />
-          {!full && (
+      {!full && (
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-section">{org.name}</h2>
+            <p className="text-small text-ink-muted">
+              {t.submitted(formatDateTime(org.created_at))}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <OrgStatusChip status={org.status} />
             <Link
-              href={routes.adminOrgDetail(org.id)}
+              href={routes.organisation(org.id)}
               className={buttonVariants({ variant: "secondary" })}
             >
               {t.openFull}
             </Link>
-          )}
-        </div>
-      </header>
+          </div>
+        </header>
+      )}
 
       <KeyValue
         facts={[

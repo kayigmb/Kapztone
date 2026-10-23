@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { navGroups, permissions } from "../lib/consts.ts";
 import {
   actionsFor,
+  canOpen,
   dashboardFor,
   layoutFor,
   hasWorkspace,
@@ -47,11 +48,17 @@ test("each kind of organisation gets its dashboard; the platform admin gets the 
 test("nav and actions need their permission", () => {
   assert.deepEqual(
     navFor(producer).map((n) => n.key),
-    ["home", "issue", "profile"],
+    ["home", "profile"],
+  ); // issuing alone isn't reading: the passports list needs passport:read
+  assert.deepEqual(
+    navFor({ ...producer, permissions: [permissions.passportRead] }).map(
+      (n) => n.key,
+    ),
+    ["home", "passports", "handovers", "certificates", "profile"],
   );
   assert.deepEqual(
     navFor(admin).map((n) => n.key),
-    ["home", "adminOrgs", "templates", "reports", "users", "profile"],
+    ["home", "organisations", "templates", "reports", "users", "profile"],
   );
   const orgAdmin = {
     organisation: { kind: "producer" },
@@ -101,4 +108,18 @@ test("every nav item but Profile sits in a sidebar group, groups in their order"
     order,
     [...order].sort((a, b) => a - b),
   );
+});
+
+test("screens open only to the permissions they need; the longest prefix decides", () => {
+  assert.equal(canOpen("/organisations", admin), true);
+  assert.equal(canOpen("/organisations/o1", admin), true);
+  assert.equal(canOpen("/organisations", producer), false);
+  assert.equal(canOpen("/reports", producer), false);
+  assert.equal(canOpen("/templates", admin), true);
+  assert.equal(canOpen("/templates/t1", admin), false); // editing needs template:manage
+  assert.equal(canOpen("/issue", producer), true);
+  assert.equal(canOpen("/handover", producer), false);
+  assert.equal(canOpen("/handovers", { permissions: ["passport:read"] }), true);
+  assert.equal(canOpen("/dashboard", producer), true);
+  assert.equal(canOpen("/profile", { permissions: [] }), true);
 });

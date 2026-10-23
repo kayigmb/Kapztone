@@ -71,9 +71,6 @@ const (
 	EnvSMTPUseTLS   = "SMTP_USE_TLS" // true or false
 	// MAIL_FROM is the sender every recipient sees, e.g. ChainTrack <noreply@chaintrack.digital>.
 	EnvMailFrom = "MAIL_FROM"
-	// MAIL_LOGO_URL is the absolute https URL of the ChainTrack mark shown atop
-	// HTML mail; empty means the header shows the name as text.
-	EnvMailLogoURL = "MAIL_LOGO_URL"
 )
 
 // Off is the value that turns an outside service off.
@@ -118,8 +115,6 @@ type Config struct {
 	// PinataJWT is empty and SMTP nil when the service is off.
 	PinataJWT string
 	SMTP      *notify.SMTP
-	// MailLogoURL is empty unless the logo should top HTML mail.
-	MailLogoURL string
 }
 
 // Domain is the signing domain for handovers on the configured chain.
@@ -295,13 +290,6 @@ func (r *reader) address(name string) common.Address {
 func (r *reader) mail(c *Config) {
 	if host := r.get(EnvSMTPHost); host != "" && host != Off {
 		c.SMTP = r.smtp(host, c.Dev)
-	}
-	if v := strings.TrimSpace(os.Getenv(EnvMailLogoURL)); v != "" {
-		if isWebURL(v) {
-			c.MailLogoURL = v
-		} else {
-			r.invalid(v, EnvMailLogoURL, "must be an absolute http or https URL, or empty")
-		}
 	}
 }
 

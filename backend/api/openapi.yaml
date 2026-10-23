@@ -918,6 +918,7 @@ paths:
       summary: Members of the acting organisation; every account for the platform
       x-permission: user:manage
       parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, suspended, disabled] }, description: "members: active or suspended; the platform's accounts: active or disabled" }
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/size"
         - $ref: "#/components/parameters/search"
