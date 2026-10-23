@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 import { copy, routes } from "@/lib/consts";
+import { indexed } from "@/lib/site";
 import { SignInForm } from "./signin-form";
 
 const t = copy.signin;
 
-export const metadata = { title: copy.meta.signin };
+export const metadata = { title: copy.meta.signin, ...indexed(routes.signin) };
 
 // Phone-first, inside the access layout.
 export default async function Page({ searchParams }: PageProps<"/signin">) {

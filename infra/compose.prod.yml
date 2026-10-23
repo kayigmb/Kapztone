@@ -67,10 +67,16 @@ services:
         condition: service_completed_successfully
 
   web:
-    build: ../frontend
+    build:
+      context: ../frontend
+      # Static pages (the home page, the sitemap) are rendered at build time with it.
+      args:
+        APP_URL: ${APP_URL:?set APP_URL in .env}
     restart: unless-stopped
     environment:
       API_URL: http://api:${PORT}
+      # The site's address, for canonical links, link previews and the sitemap.
+      APP_URL: ${APP_URL:?set APP_URL in .env}
     # No published port: visitors come in through Caddy, which fills in their real address.
     depends_on:
       - api

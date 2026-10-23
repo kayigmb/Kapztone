@@ -5,6 +5,9 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY . .
+# The site's address, baked into the pages rendered at build time (canonical links, previews, sitemap).
+ARG APP_URL
+ENV APP_URL=$APP_URL
 # The runtime is Alpine (musl): drop sharp's glibc build that standalone traced in too.
 RUN pnpm build && rm -rf .next/standalone/node_modules/.pnpm/@img+sharp-libvips-linux-* \
     .next/standalone/node_modules/.pnpm/@img+sharp-linux-*

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { copy } from "@/lib/consts";
+import { siteURL } from "@/lib/site";
 import { DM_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -14,9 +15,15 @@ const mono = DM_Mono({
   variable: "--font-dm-mono",
 });
 
+// Pages stay out of search results unless they opt in (lib/site.ts → indexed).
 export const metadata: Metadata = {
+  metadataBase: new URL(siteURL()),
   title: copy.brand,
-  description: "Digital product passports for business shipments.",
+  applicationName: copy.brand,
+  description: copy.meta.landingDescription,
+  openGraph: { siteName: copy.brand, type: "website", locale: "en_GB" },
+  twitter: { card: "summary_large_image" },
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

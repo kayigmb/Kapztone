@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 import { copy, routes } from "@/lib/consts";
+import { indexed } from "@/lib/site";
 import { SignUpForm } from "./signup-form";
 
 const t = copy.signup;
 
-export const metadata = { title: copy.meta.signup };
+export const metadata = { title: copy.meta.signup, ...indexed(routes.signup) };
 
 // Phone-first, inside the access layout.
 export default function Page() {
