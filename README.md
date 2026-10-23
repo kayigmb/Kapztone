@@ -83,10 +83,10 @@ Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks th
 
 ### In containers
 
-`make dev` runs the database, Redis, RustFS, migrations, a local chain with the contracts deployed (on `localhost:8545`), the API (on `localhost:8080`) and the relayer in containers; run the web app beside it with `make web`. The API reloads on save; restart the relayer after changing its code. `make logs` follows them, `make down` stops them.
+`make dev` runs the database, Redis, RustFS, migrations, a local chain with the contracts deployed (on `localhost:8545`), the API (on `localhost:8080`) and the relayer in containers; run the web app beside it with `make web`. They run from small built images (the same multi-stage Dockerfiles as production); run `make dev` again after changing Go or contract code, and the cached rebuild takes seconds. `make logs` follows them, `make down` stops them.
 
 - The containers read `.env` themselves and reach each other by name; `.env` keeps the addresses for running natively (`CHAIN_RPC_URL=http://127.0.0.1:8545`).
-- The dev chain starts empty on every start and the deploy lands on the same addresses each time, the ones in `.env.example`. `make chain` / `make deploy` remain for running outside Docker or deploying to a testnet.
+- The dev chain (`contracts/Dockerfile`: Foundry's anvil, contracts compiled at build time, deployed by `contracts/chain.sh`) starts empty on every start and the deploy lands on the same addresses each time, the ones in `.env.example`. `make chain` / `make deploy` remain for running outside Docker or deploying to a testnet.
 
 ### Resetting
 

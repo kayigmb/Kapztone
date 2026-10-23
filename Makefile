@@ -45,8 +45,8 @@ chain: ## a local chain on http://127.0.0.1:8545 (chain id 31337)
 deploy: ## deploy the contracts to the chain in the env file; prints the address lines
 	$(LOAD_ENV) && cd contracts && pnpm hardhat run scripts/deploy.ts --network target
 
-dev: ## chain (contracts deployed), API, relayer and infra in containers (run `make web` beside it)
-	$(DEV) up -d
+dev: ## chain (contracts deployed), API, relayer and infra in containers; rebuilds (cached), so rerun after code changes (web: `make web`)
+	$(DEV) up -d --build --remove-orphans
 
 prod: ## built images
 	$(PROD) up --build -d

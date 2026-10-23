@@ -1,16 +1,10 @@
 name: chaintrack_dev
 
+# The API, relayer and chain run from the same small images as production;
+# `make dev` rebuilds them (cached), so run it again after changing Go or contracts.
 services:
   api:
-    image: golang:1.26-alpine
-    working_dir: /src
-    # air rebuilds and restarts the API whenever a .go file changes.
-    command:
-      - go
-      - run
-      - github.com/air-verse/air@v1.67.4
-      - --build.cmd=go build -o /tmp/api ./cmd/api
-      - --build.bin=/tmp/api
+    build: ../backend
     # Every setting comes from the repo's .env (the file `make` reads); only the
     # addresses differ from running on your machine: the other containers by name.
     env_file: ../.env
@@ -21,10 +15,6 @@ services:
       CHAIN_RPC_URL: http://chain:8545
     ports:
       - "${PORT}:${PORT}"
-    volumes:
-      - ../backend:/src
-      - go-cache:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -33,59 +23,22 @@ services:
       rustfs:
         condition: service_healthy
 
-  # Carries queued changes to the chain. Restart it after changing relayer code.
+  # Carries queued changes to the chain.
   relayer:
-    image: golang:1.26-alpine
-    working_dir: /src
-    command: go run ./cmd/relayer
+    build: ../backend
+    entrypoint: ["/relayer"]
     env_file: ../.env
     environment: *containers
-    volumes:
-      - ../backend:/src
-      - go-cache:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
     depends_on:
       migrate:
         condition: service_completed_successfully
       chain:
         condition: service_healthy
 
-  # A local chain with the contracts deployed, left running. A fresh chain and
-  # the same admin key give the same contract addresses every time, so the
-  # addresses in .env stay right across restarts (each restart is an empty chain).
+  # A local chain with the contracts deployed, left running (contracts/Dockerfile).
+  # Each start is an empty chain; the contracts land on the addresses in .env.
   chain:
-    image: node:22-alpine
-    working_dir: /contracts
+    build: ../contracts
     env_file: ../.env
-    environment:
-      CI: "true"
-      npm_config_store_dir: /pnpm-store
-      CHAIN_RPC_URL: http://127.0.0.1:8545
-    command:
-      - sh
-      - -c
-      - |
-        rm -f /tmp/deployed
-        corepack enable && pnpm install --frozen-lockfile || exit 1
-        pnpm hardhat node --hostname 0.0.0.0 &
-        until wget -qO- --header='content-type: application/json' \
-          --post-data='{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
-          http://127.0.0.1:8545 >/dev/null 2>&1; do sleep 1; done
-        pnpm hardhat run scripts/deploy.ts --network target && touch /tmp/deployed
-        wait
     ports:
       - "8545:8545"
-    volumes:
-      - ../contracts:/contracts
-      - chain-node-modules:/contracts/node_modules
-      - pnpm-store:/pnpm-store
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/deployed"]
-      interval: 5s
-      retries: 60
-
-volumes:
-  go-cache:
-  go-build-cache:
-  chain-node-modules:
-  pnpm-store:

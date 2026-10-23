@@ -1,5 +1,7 @@
 // Deploys the five contracts to the network .env points at (CHAIN_RPC_URL)
 // and prints the address lines to paste into .env.
+// The dev chain (Dockerfile + chain.sh) deploys the same way with cast: keep
+// the two in step.
 //
 //   make deploy
 //
