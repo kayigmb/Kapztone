@@ -76,9 +76,20 @@ func SameOrigin(next http.Handler) http.Handler {
 	})
 }
 
+// cookieDomain shares cookies between the bare address and every
+// organisation's subdomain. Dev keeps them host-only: browsers reject
+// Domain=localhost.
+func (a *Auth) cookieDomain() string {
+	if a.Dev {
+		return ""
+	}
+	u, _ := url.Parse(a.AppURL)
+	return u.Hostname()
+}
+
 func (a *Auth) sessionCookie(value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name: SessionCookie, Value: value, Path: "/", MaxAge: maxAge,
+		Name: SessionCookie, Value: value, Path: "/", MaxAge: maxAge, Domain: a.cookieDomain(),
 		HttpOnly: true,                 // never readable by scripts
 		Secure:   !a.Dev,               // https only, except on a developer's machine
 		SameSite: http.SameSiteLaxMode, // not sent on requests other sites make in the background
@@ -356,6 +367,10 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.SetCookie(w, a.sessionCookie("", -1))
+	// Also drop a host-only cookie set before sessions were shared.
+	hostOnly := a.sessionCookie("", -1)
+	hostOnly.Domain = ""
+	http.SetCookie(w, hostOnly)
 	httpx.OK(w, http.StatusOK, MsgSignedOut, nil)
 }
 

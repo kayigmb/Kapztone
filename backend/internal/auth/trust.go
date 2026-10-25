@@ -26,7 +26,7 @@ func (a *Auth) trustCookie(u User, now time.Time) *http.Cookie {
 	value := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
 		base64.RawURLEncoding.EncodeToString(a.trustMAC(payload))
 	return &http.Cookie{
-		Name: TrustCookie, Value: value, Path: "/", MaxAge: int(TrustTTL.Seconds()),
+		Name: TrustCookie, Value: value, Path: "/", MaxAge: int(TrustTTL.Seconds()), Domain: a.cookieDomain(),
 		HttpOnly: true, Secure: !a.Dev, SameSite: http.SameSiteLaxMode,
 	}
 }

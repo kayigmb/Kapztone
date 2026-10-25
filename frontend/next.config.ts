@@ -13,10 +13,20 @@ const nextConfig: NextConfig = {
     ];
   },
   // OWASP A02: deny framing and MIME sniffing, limit referrer data.
+  // API files may be framed by the app's own pages (the document viewer).
   async headers() {
     return [
       {
-        source: "/:path*",
+        source: "/api/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+      {
+        source: "/((?!api/).*)",
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },

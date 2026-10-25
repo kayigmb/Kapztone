@@ -52,12 +52,13 @@ func TestSessionCookie(t *testing.T) {
 		return sessionCookie(t, rec)
 	}
 
+	a.AppURL = testAppURL
 	c := signIn()
-	if !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.MaxAge <= 0 || c.Domain != "" {
-		t.Fatalf("session cookie in production: %+v", c)
+	if !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.MaxAge <= 0 || c.Domain != testBaseDomain {
+		t.Fatalf("session cookie in production must cover every subdomain: %+v", c)
 	}
 	a.Dev = true
-	if dev := signIn(); !dev.HttpOnly || dev.Secure {
+	if dev := signIn(); !dev.HttpOnly || dev.Secure || dev.Domain != "" {
 		t.Fatalf("session cookie in dev must stay HttpOnly and drop Secure: %+v", dev)
 	}
 	a.Dev = false

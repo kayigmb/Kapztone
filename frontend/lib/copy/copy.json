@@ -1523,6 +1523,7 @@
     },
     "documents": "Documents",
     "noDocuments": "No documents uploaded yet. It can't be approved until it has at least one.",
+    "openNewTab": "Open in new tab",
     "review": {
       "title": "Decision",
       "note": "Decision note",

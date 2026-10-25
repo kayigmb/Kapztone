@@ -18,7 +18,7 @@
 	}
 	# Up to 6 handover photos of 10 MB each, plus the form around them.
 	request_body {
-		max_size 64MB
+		max_size 100MB
 	}
 	# Keeps Host (the subdomain names the organisation; the API's Origin check
 	# compares against it) and sets X-Forwarded-For to the real visitor address,

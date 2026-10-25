@@ -5,6 +5,7 @@ import { BadgeCheck, Building2, CircleX, Clock, FileText } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { parseAsString, parseAsStringLiteral } from "nuqs";
+import { useState } from "react";
 
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
@@ -14,11 +15,13 @@ import { Notice } from "@/components/chaintrack/notice";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { OrgStatusChip } from "@/components/chaintrack/status";
 import { buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   documentFileURL,
   endpoints,
   usePaged,
+  type OrgDocument,
   type Organisation,
 } from "@/lib/api";
 import {
@@ -257,6 +260,7 @@ export function OrgDetail({
   });
   const issuer =
     org.status === orgStatus.verified && issuerKinds.includes(org.kind);
+  const [viewing, setViewing] = useState<OrgDocument | null>(null);
 
   return (
     <section className="grid min-w-0 content-start gap-6 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
@@ -306,30 +310,33 @@ export function OrgDetail({
                     key={d.id}
                     className="grid gap-2 rounded-md border border-border p-3"
                   >
-                    {upload.imageTypes.includes(d.content_type) && (
-                      // Opens full size in a new tab to zoom.
-                      <a
-                        href={documentFileURL(d.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- served with the session cookie; the image optimiser would fetch it without one */}
+                    <button
+                      type="button"
+                      onClick={() => setViewing(d)}
+                      className="grid h-56 place-items-center overflow-hidden rounded-sm bg-surface-sunken"
+                    >
+                      {upload.imageTypes.includes(d.content_type) ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- served with the session cookie; the image optimiser would fetch it without one
                         <img
                           src={documentFileURL(d.id)}
                           alt={d.file_name}
-                          className="max-h-56 w-full rounded-sm bg-surface-sunken object-contain"
+                          className="size-full object-contain"
                         />
-                      </a>
-                    )}
-                    <a
-                      href={documentFileURL(d.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex min-h-tap items-center gap-2 text-sm font-semibold text-primary underline"
+                      ) : (
+                        <FileText
+                          className="size-16 text-ink-muted"
+                          aria-hidden
+                        />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewing(d)}
+                      className="flex min-h-tap items-center gap-2 text-left text-sm font-semibold text-primary underline"
                     >
                       <FileText className="size-4 shrink-0" aria-hidden />
                       <span className="min-w-0 truncate">{d.file_name}</span>
-                    </a>
+                    </button>
                     <p className="text-small text-ink-muted">
                       {copy.documentTypeLabel(d.type)} ·{" "}
                       {formatDate(d.created_at)}
@@ -340,11 +347,61 @@ export function OrgDetail({
             )
           }
         </DataWidget>
+        {viewing && (
+          <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+        )}
       </div>
 
       {org.status !== orgStatus.verified &&
         org.status !== orgStatus.suspended && <ReviewForm orgId={org.id} />}
       {issuer && <AccreditationForm orgId={org.id} />}
     </section>
+  );
+}
+
+/** A document full size in a dialog: PDFs in the browser's viewer, images fitted. */
+function DocumentViewer({
+  doc,
+  onClose,
+}: {
+  doc: OrgDocument;
+  onClose: () => void;
+}) {
+  const url = documentFileURL(doc.id);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex h-[90vh] max-w-full flex-col gap-4 rounded-lg border border-border bg-surface p-6 shadow-overlay sm:max-w-5xl">
+        <DialogTitle className="grid gap-1 pr-10">
+          <span className="truncate text-lg font-semibold">
+            {doc.file_name}
+          </span>
+          <span className="text-small font-normal text-ink-muted">
+            {copy.documentTypeLabel(doc.type)}
+          </span>
+        </DialogTitle>
+        {upload.imageTypes.includes(doc.content_type) ? (
+          // eslint-disable-next-line @next/next/no-img-element -- served with the session cookie; the image optimiser would fetch it without one
+          <img
+            src={url}
+            alt={doc.file_name}
+            className="min-h-0 w-full flex-1 rounded-sm bg-surface-sunken object-contain"
+          />
+        ) : (
+          <iframe
+            src={url}
+            title={doc.file_name}
+            className="min-h-0 w-full flex-1 rounded-sm border border-border"
+          />
+        )}
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="justify-self-start text-sm font-semibold text-primary underline"
+        >
+          {t.openNewTab}
+        </a>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -209,7 +209,8 @@ func (b *Bucket) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 	return obj, nil
 }
 
-// Serve streams a stored file as a download.
+// Serve streams a stored file: PDFs and images open in the browser, anything
+// else downloads.
 func Serve(w http.ResponseWriter, r *http.Request, b *Bucket, key, name, contentType string, modified time.Time) {
 	f, err := b.Open(r.Context(), key)
 	if err != nil {
@@ -219,7 +220,11 @@ func Serve(w http.ResponseWriter, r *http.Request, b *Bucket, key, name, content
 	defer f.Close()
 
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	disposition := "attachment"
+	if slices.Contains(AllowedContentTypes, contentType) {
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": name}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// The object can seek, so range requests keep working.
 	http.ServeContent(w, r, "", modified, f.(io.ReadSeeker))
