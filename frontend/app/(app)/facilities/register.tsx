@@ -10,6 +10,7 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { useRecordTitle } from "@/components/chaintrack/record-title";
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { MapView } from "@/components/chaintrack/map";
 import { DataWidget } from "@/components/chaintrack/data-widget";
@@ -44,6 +45,7 @@ const periodItems = capacityPeriods.map((p) => ({
 }));
 
 export function Register() {
+  useRecordTitle(t.title);
   const router = useRouter();
   const client = useQueryClient();
   const kinds = useQuery({

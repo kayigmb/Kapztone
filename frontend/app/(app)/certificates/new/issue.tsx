@@ -10,6 +10,7 @@ import { useForm, useWatch, Controller } from "react-hook-form";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { useRecordTitle } from "@/components/chaintrack/record-title";
 import { Notice } from "@/components/chaintrack/notice";
 
 import { SelectInput } from "@/components/chaintrack/select-input";
@@ -40,6 +41,7 @@ const inAYear = () => {
 };
 
 export function IssueCertificate() {
+  useRecordTitle(t.title);
   const me = useMe().data!;
   const router = useRouter();
   const client = useQueryClient();
