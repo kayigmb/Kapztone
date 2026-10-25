@@ -77,28 +77,9 @@ services:
       API_URL: http://api:${PORT}
       # The site's address, for canonical links, link previews and the sitemap.
       APP_URL: ${APP_URL:?set APP_URL in .env}
-    # No published port: visitors come in through Caddy, which fills in their real address.
+    # Loopback only: the server's own Caddy (infra/Caddyfile) terminates TLS
+    # and fills in the visitor's real address; nobody can reach this port directly.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       - api
-
-  # The only published ports. Gets and renews a certificate for the domain
-  # and each organisation's subdomain on its own (infra/Caddyfile).
-  caddy:
-    image: caddy:2.10-alpine
-    restart: unless-stopped
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-      API: api:${PORT}
-      UPSTREAM: web:3000
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    depends_on:
-      - web
-
-volumes:
-  caddy_data:

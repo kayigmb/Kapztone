@@ -24,7 +24,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | first platform admin | used only when no superadmin exists; password 12 to 72 characters in prod, up to 72 in dev |
 | `APP_ENV` | `dev` or `prod` | `dev` also accepts `?pslug=` to choose the acting organisation |
 | `APP_URL` | the web app's bare address, no path | e-mailed links (reset, verify, lock, invite) start with it, never with a request header; an invite puts the organisation's slug in front of the host (`https://acme.chaintrack.app`) |
-| `DOMAIN` | Caddy in production: the bare domain it answers (and `*.DOMAIN`) | `make prod` only; dev ignores it. Must be the host of `APP_URL`: the API's `/tls/allowed` compares against that |
+| `WEB_PORT` | Host port of the web app in production, bound to 127.0.0.1 (default 3000) | `make prod` only; must match the port in the server's Caddyfile |
 | `CHAIN_RPC_URL`, `CHAIN_ID` | the chain the relayer writes to | local: `http://127.0.0.1:8545` and `31337` |
 | `CHAIN_RELAYER_KEY` | sends every transaction; relayer + operator on-chain | must hold funds on a real network; the value in `.env.example` is a public test key, local only |
 | `CHAIN_ADMIN_KEY` | deploys, wires the contracts, grants roles | read only by `make deploy`; outside a local chain it differs from the relayer key and stays offline afterwards |
@@ -34,7 +34,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `PINATA_JWT` | copies certificate files to IPFS | `none` turns it off. A pinned file is public and cannot be withdrawn |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | sends notification e-mail | `SMTP_HOST=none` turns it off (the rest are then not needed). `SMTP_USER` is only the login; every recipient sees `MAIL_FROM`, e.g. `ChainTrack <noreply@chaintrack.digital>` (name and address, validated at start-up). With Gmail, add that address under "Send mail as" or Gmail shows the login address; a custom domain needs SPF (and ideally DKIM). The logo travels inside every e-mail as an inline PNG (`cid:logo`, from `backend/internal/mailtmpl/logo.png`), so nothing is hosted. `SMTP_USE_TLS=true` refuses a server without STARTTLS (port 587); required and `true` in prod, optional in dev; port 465 is not supported. Quote a value with spaces |
 
-The API has no domain setting (`DOMAIN` only tells Caddy what to answer). The API takes the frontend's address from each request (the browser's `Origin` header, or the request's own host) and treats its first label as the organisation to act for, if the signed-in user belongs to it.
+The API has no domain setting beyond `APP_URL`. The API takes the frontend's address from each request (the browser's `Origin` header, or the request's own host) and treats its first label as the organisation to act for, if the signed-in user belongs to it.
 
 ## File storage
 
@@ -56,12 +56,12 @@ Outside development the API refuses to start if the bucket does not exist. `make
 
 ## Deploying to a VPS
 
-`make prod` runs everything in containers behind Caddy (`infra/Caddyfile`), the only service with published ports (80, 443). Organisations live on their own subdomains. DNS needs only two A records, `DOMAIN` and `*.DOMAIN`, at any provider. Caddy gets a Let's Encrypt certificate for each host on its first visit (HTTP challenge) and renews it; no certbot, no DNS keys. Before each one it asks the API (`GET /tls/allowed?domain=`), which allows `DOMAIN`, the subdomains of registered organisations, and up to 3 well-formed unknown subdomains a day (a Redis counter; Let's Encrypt allows 50 new certificates per domain a week, so random names can't use them up). An unknown subdomain within that allowance opens over https and shows the web app's "no such organisation" page: the web app asks the API (`GET /address`) on each page request and caches the answer per host for a minute. Past the allowance an unknown name gets no certificate and the browser shows a connection error. Certificates live in the `caddy_data` volume; keep it, or every restart re-issues them and runs into Let's Encrypt's limits.
+`make prod` runs everything in containers; only the web app is published, on `127.0.0.1:WEB_PORT`. TLS is the server's own Caddy, shared with other apps: paste `infra/Caddyfile` into its Caddyfile (domain and port filled in) and reload it. Organisations live on their own subdomains. DNS needs only two A records, `DOMAIN` and `*.DOMAIN`, at any provider. Caddy gets a Let's Encrypt certificate for each host on its first visit (HTTP challenge) and renews it; no certbot, no DNS keys. Before each one it asks the API (`GET /tls/allowed?domain=`), which allows `DOMAIN`, the subdomains of registered organisations, and up to 3 well-formed unknown subdomains a day (a Redis counter; Let's Encrypt allows 50 new certificates per domain a week, so random names can't use them up). An unknown subdomain within that allowance opens over https and shows the web app's "no such organisation" page: the web app asks the API (`GET /address`) on each page request and caches the answer per host for a minute. Past the allowance an unknown name gets no certificate and the browser shows a connection error. Certificates live in Caddy's data directory; keep it, or every restart re-issues them and runs into Let's Encrypt's limits.
 
 1. A Linux server with Docker and the Compose plugin; clone the repository there.
 2. DNS: two A records to the server, `DOMAIN` and `*.DOMAIN`.
-3. `.env` from `.env.example`, with production values: `APP_ENV=prod`, `APP_URL=https://DOMAIN`, `DOMAIN`, new `JWT_SECRET` and `ENCRYPTION_KEY`, a managed bucket (File storage), `SMTP_USE_TLS=true`, and the Amoy addresses (Chain: Polygon Amoy). Prod refuses Hardhat's test keys.
-4. `make prod`. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (shows `"mode":"prod"`). The first visit to a new organisation's subdomain takes a few seconds while its certificate is issued.
+3. `.env` from `.env.example`, with production values: `APP_ENV=prod`, `APP_URL=https://DOMAIN`, new `JWT_SECRET` and `ENCRYPTION_KEY`, a managed bucket (File storage), `SMTP_USE_TLS=true`, and the Amoy addresses (Chain: Polygon Amoy). Prod refuses Hardhat's test keys.
+4. `make prod`, then add `infra/Caddyfile` to the server's Caddy and reload it. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (shows `"mode":"prod"`). The first visit to a new organisation's subdomain takes a few seconds while its certificate is issued.
 5. Firewall: open 22, 80 and 443 only (80 carries the certificate challenge and the redirect to https). The database and Redis bind to 127.0.0.1; the API and web app publish nothing.
 
 ## Chain: local set-up
@@ -172,7 +172,7 @@ Production only. Five failed sign-ins for one email from one address lock that p
 
 ## Visitor addresses and the API port
 
-Rate limits count per visitor address. In production Caddy sets `X-Forwarded-For` to the real visitor address, dropping what the visitor sent; the web app passes on the last entry, and the API trusts that header. A visitor's own `X-Forwarded-For` therefore changes nothing. That holds only while the API and the web app are reachable through Caddy alone: `compose.prod.yml` publishes no port for either, and none must ever be opened.
+Rate limits count per visitor address. In production Caddy sets `X-Forwarded-For` to the real visitor address, dropping what the visitor sent; the web app passes on the last entry, and the API trusts that header. A visitor's own `X-Forwarded-For` therefore changes nothing. That holds only while the API and the web app are reachable through Caddy alone: `compose.prod.yml` publishes the web app on 127.0.0.1 only and the API not at all; neither must ever be opened to the outside.
 
 In dev nothing sits in front of the web app, so a request may name its own address. The e2e tests and the sim use that to stay under the per-address limits; behind Caddy it no longer works, which is the point.
 

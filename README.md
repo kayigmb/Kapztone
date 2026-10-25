@@ -149,7 +149,7 @@ Start from `.env.example`. The API refuses to start in prod if any of these is w
 | Setting | Prod value |
 | --- | --- |
 | `APP_ENV` | `prod` |
-| `APP_URL` / `DOMAIN` | `https://DOMAIN` / `DOMAIN` (bare, e.g. `chaintrack.app`) |
+| `APP_URL` | `https://DOMAIN` (bare, e.g. `https://chaintrack.app`) |
 | `JWT_SECRET` | at least 32 characters (`openssl rand -hex 32`) |
 | `ENCRYPTION_KEY` | exactly 64 hex characters (`openssl rand -hex 32`); changing it makes stored secrets unreadable |
 | `SUPERADMIN_PASSWORD` | 12 to 72 characters |
@@ -161,9 +161,9 @@ Also set `LOG_FORMAT=json` and fresh `POSTGRES_PASSWORD`. Leave `PINATA_JWT=none
 
 ### 4. Deploy
 
-`make prod` builds the images, runs the migrations and starts everything behind Caddy, the only service on ports 80 and 443. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (answers `"mode":"prod"`).
+`make prod` builds the images, runs the migrations and starts everything; only the web app is published, on `127.0.0.1:WEB_PORT` (default 3000). The server's own Caddy handles TLS: paste `infra/Caddyfile` into it (domain and port filled in) and reload. Check `https://DOMAIN` and `https://DOMAIN/api/healthz` (answers `"mode":"prod"`).
 
-Caddy gets a Let's Encrypt certificate for each host on its first visit, after asking the API (`GET /tls/allowed`), so only the platform's own domain and registered organisations' subdomains get one. The first visit to a new subdomain takes a few seconds. Keep the `caddy_data` volume, or every restart re-issues certificates and runs into Let's Encrypt's limits.
+Caddy gets a Let's Encrypt certificate for each host on its first visit, after asking the API (`GET /tls/allowed`), so only the platform's own domain and registered organisations' subdomains get one. The first visit to a new subdomain takes a few seconds. Keep Caddy's data directory, or every restart re-issues certificates and runs into Let's Encrypt's limits.
 
 ### 5. Running it
 
@@ -185,6 +185,6 @@ Watch `chain_outbox` for `failed` items (refused by a contract, never retried) a
 - **Two-factor sign-in and signing PIN:** 2FA has recovery codes. The signing PIN is required for every action that goes to the chain.
 - **Organisation keys:** each organisation's signing key is encrypted at rest (`ENCRYPTION_KEY`).
 - **Database:** every query takes values as bound parameters. List sorting is limited to an allow-list of columns.
-- **Visitor addresses:** in production the API and web app publish no ports. Caddy sets the real visitor address, so a visitor cannot fake their own.
+- **Visitor addresses:** in production the API publishes no port and the web app only on 127.0.0.1. Caddy sets the real visitor address, so a visitor cannot fake their own.
 
 See `docs/operations.md` for settings, key handling, lockouts and the audit log.
