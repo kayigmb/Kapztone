@@ -45,7 +45,7 @@ import {
   type RejectReason,
 } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
-import { toleranceOf, weigh } from "@/lib/handover";
+import { tolerancePct, weigh } from "@/lib/handover";
 import {
   receiveFormSchema,
   rejectFormSchema,
@@ -72,11 +72,6 @@ export function HandoverView({ id }: { id: string }) {
     queryFn: () => endpoints.verify(hv!.passport_id),
     enabled: !!hv,
   });
-  const templates = useQuery({
-    queryKey: queryKeys.templates,
-    queryFn: endpoints.templatesList,
-    enabled: !!hv,
-  });
   const names = useQuery({
     queryKey: queryKeys.directory,
     queryFn: endpoints.directory,
@@ -100,9 +95,7 @@ export function HandoverView({ id }: { id: string }) {
 
   const p = lot.data?.passport;
   const unit = p?.unit ?? "";
-  const stages =
-    templates.data?.find((x) => x.commodity === p?.commodity)?.stages ?? [];
-  const tolerance = toleranceOf(stages, hv.stage);
+  const tolerance = tolerancePct;
   const mine = me.organisation?.id;
   const sender = names.data?.get(hv.from_org) ?? copy.dashboard.someOrg;
   const receiver = names.data?.get(hv.to_org) ?? copy.dashboard.someOrg;
@@ -157,7 +150,9 @@ export function HandoverView({ id }: { id: string }) {
               value: formatQuantity(hv.quantity, unit),
               mono: true,
             },
-            { label: h.stage, value: humanize(hv.stage) },
+            ...(hv.stage
+              ? [{ label: h.stage, value: humanize(hv.stage) }]
+              : []),
             ...(hv.received_quantity != null
               ? [
                   {

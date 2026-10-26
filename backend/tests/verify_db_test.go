@@ -269,8 +269,6 @@ func TestVerifyFiftyAncestors(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
 	tplIn := withoutOriginEvidence(coffeeTemplate("deep_" + e.suffix))
-	whole := 1.0
-	tplIn.Stages[1].MaxYield = &whole // a split stage: each transform keeps every kilo
 	tpl := w.template(t, tplIn)
 
 	rec := w.issue(tpl, 1000)

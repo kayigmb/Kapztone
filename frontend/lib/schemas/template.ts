@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { copy, limits, templateEvents } from "../consts.ts";
+import { copy, limits } from "../consts.ts";
 
 const v = copy.validation;
 
@@ -18,17 +18,6 @@ export const capacityRuleSchema = z
       message: v.capacity,
     },
   );
-
-export const stageFormSchema = z.object({
-  key: z.string().trim().min(1, v.stage),
-  events: z
-    .array(z.enum(templateEvents.map((e) => e.value) as [string, ...string[]]))
-    .min(1, v.events),
-  maxYield: z.coerce.number().positive(v.capacity).optional(),
-  requiredEvidence: z.array(z.string().trim().min(1)),
-});
-
-export type StageForm = z.infer<typeof stageFormSchema>;
 
 export const templateFormSchema = z.object({
   commodity: z
@@ -48,14 +37,19 @@ export const templateFormSchema = z.object({
     .min(1, v.facilityKind)
     .regex(/^[a-z][a-z0-9_]{0,49}$/, v.facilityKind),
   capacityRule: capacityRuleSchema.nullable(),
-  stages: z.array(stageFormSchema).min(1, v.stages),
+  /** Typed comma separated; sent as the list of certificate types the origin facility must hold. */
+  requiredEvidence: z
+    .string()
+    .transform((s) =>
+      s
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().regex(/^[a-z][a-z0-9_]{0,49}$/, v.evidence))),
 });
 
 export type TemplateForm = z.infer<typeof templateFormSchema>;
 /** What the form holds before zod coerces it (numbers typed as text). */
 export type TemplateFormInput = z.input<typeof templateFormSchema>;
 
-/** The API holds a stage's maximum yield as a fraction (0.2: output ≤ input × 0.2); every screen shows and takes it as a percentage (20). */
-export const yieldToPct = (fraction: number) =>
-  Math.round(fraction * 1e6) / 1e4;
-export const yieldToFraction = (pct: number) => Math.round(pct * 1e4) / 1e6;

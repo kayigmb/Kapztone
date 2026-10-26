@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -33,19 +31,17 @@ var (
 	ErrReceiverInvalid   = errors.New("receiver invalid")
 	ErrHandoverClosed    = errors.New("handover closed")
 	ErrHandoverStale     = errors.New("handover stale")
-	ErrHandoverStage     = errors.New("handover stage invalid")
 )
 
-// EvidenceError lists the evidence a stage asks for that has no valid
-// certificate yet.
+// EvidenceError lists the evidence the template asks for that has no valid
+// certificate on the origin facility yet.
 type EvidenceError struct {
-	Stage   string
 	Missing []string
 }
 
 func (e EvidenceError) Error() string {
-	return fmt.Sprintf("stage %s needs evidence that is missing: %s. Attach a valid certificate of each first",
-		e.Stage, strings.Join(e.Missing, ", "))
+	return fmt.Sprintf("this product needs evidence that is missing: %s. Attach a valid certificate of each first",
+		strings.Join(e.Missing, ", "))
 }
 
 // CapacityError says by how much an issue would exceed the facility's
@@ -269,13 +265,16 @@ func lockOrigin(ctx context.Context, tx pgx.Tx, orgID, facilityID string, now ti
 	return f, nil
 }
 
-// originTemplate loads the template, checks it fits the facility, and checks
-// the origin stage's evidence, which is about the facility the goods come from.
+// originTemplate loads the template (the product), checks it fits the
+// facility, and checks the facility holds the evidence the template asks for.
 func originTemplate(ctx context.Context, tx pgx.Tx, in IssueInput, f originFacility) (commodity, unit string, err error) {
-	var originKind, stagesJSON string
+	var (
+		originKind string
+		evidence   []string
+	)
 	err = tx.QueryRow(ctx,
-		`SELECT commodity, unit, origin_facility_kind, stages::text FROM commodity_templates
-		 WHERE id = $1::uuid AND NOT is_deleted`, in.TemplateID).Scan(&commodity, &unit, &originKind, &stagesJSON)
+		`SELECT commodity, unit, origin_facility_kind, required_evidence FROM commodity_templates
+		 WHERE id = $1::uuid AND NOT is_deleted`, in.TemplateID).Scan(&commodity, &unit, &originKind, &evidence)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return "", "", ErrTemplateNotFound
@@ -286,16 +285,8 @@ func originTemplate(ctx context.Context, tx pgx.Tx, in IssueInput, f originFacil
 	case unit != f.unit:
 		return "", "", ErrUnitMismatch
 	}
-	stages, err := parseStages(stagesJSON)
-	if err != nil {
+	if err := requireEvidence(ctx, tx, evidence, in.FacilityID); err != nil {
 		return "", "", err
-	}
-	for _, st := range stages {
-		if slices.Contains(st.Events, EventIssue) {
-			if err := requireEvidence(ctx, tx, st, attestation.SubjectFacility, in.FacilityID); err != nil {
-				return "", "", err
-			}
-		}
 	}
 	return commodity, unit, nil
 }

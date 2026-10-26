@@ -58,8 +58,6 @@ var errorStatus = map[error]struct {
 	ErrHandoverStale:     {http.StatusConflict, MsgHandoverStale},
 	ErrInputNotHeld:      {http.StatusBadRequest, MsgInputNotHeld},
 	ErrMixedInputs:       {http.StatusBadRequest, MsgMixedInputs},
-	ErrStageInvalid:      {http.StatusBadRequest, MsgStageInvalid},
-	ErrHandoverStage:     {http.StatusBadRequest, MsgHandoverStage},
 	// Not holding a passport looks the same as the passport not existing.
 	ErrNotHolder: {http.StatusNotFound, httpx.MsgNotFound},
 }
@@ -249,7 +247,7 @@ func (h *Handlers) Transform(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	t, err := h.Store.Transform(r.Context(), orgID, userID, in, h.now(), h.RaiseFlag)
+	t, err := h.Store.Transform(r.Context(), orgID, userID, in, h.now())
 	h.countRefusal(r, orgID, err)
 	respond(w, http.StatusCreated, MsgTransformed, "transform", t, err)
 }

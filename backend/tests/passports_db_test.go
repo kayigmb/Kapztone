@@ -24,11 +24,10 @@ import (
 // and transforms, and asks for no evidence.
 const stageWashing = "washing_station"
 
-// withoutOriginEvidence drops the evidence the origin stage asks for, for
-// tests about something else (TestRequiredEvidence covers evidence).
+// withoutOriginEvidence drops the evidence the template asks for, for tests
+// about something else (TestRequiredEvidence covers evidence).
 func withoutOriginEvidence(in template.Input) template.Input {
-	in.Stages = append([]template.Stage(nil), in.Stages...)
-	in.Stages[0].RequiredEvidence = nil
+	in.RequiredEvidence = nil
 	return in
 }
 
@@ -70,6 +69,30 @@ func (w passportWorld) template(t *testing.T, in template.Input) template.Templa
 func (w passportWorld) issue(tpl template.Template, quantity int64) *httptest.ResponseRecorder {
 	return post(w.e, w.prodTok, as(w.prodSlug, "/passports"),
 		passport.IssueInput{FacilityID: w.plot.ID, TemplateID: tpl.ID, Quantity: quantity})
+}
+
+// Evidence a template asks for must be a valid certificate on the origin
+// facility before a passport is issued; a revoked one does not count.
+func TestRequiredEvidence(t *testing.T) {
+	w := newPassportWorld(t)
+	e := w.e
+	tpl := w.template(t, coffeeTemplate("coffee_"+e.suffix)) // plot_geolocation
+	want(t, "accredit", accredit(e, w.root, "/orgs/"+w.certifier.ID+"/accreditations", grant("plot_geolocation")), http.StatusOK)
+
+	missing := func(what string) {
+		t.Helper()
+		rec := w.issue(tpl, 1000)
+		want(t, what, rec, http.StatusConflict)
+		if msg := errorOf(t, rec); !strings.Contains(msg, "plot_geolocation") {
+			t.Fatalf("%s: %q does not name plot_geolocation", what, msg)
+		}
+	}
+	missing("issue without facility evidence")
+	cert := w.certify(t, attestation.SubjectFacility, w.plot.ID, "plot_geolocation")
+	want(t, "issue with evidence", w.issue(tpl, 1000), http.StatusCreated)
+	want(t, "revoke", post(e, w.certTok, as(w.certSlug, "/attestations/"+cert.ID+"/revoke"),
+		attestation.RevokeInput{Reason: "issued in error"}), http.StatusOK)
+	missing("issue with a revoked certificate")
 }
 
 // certify has the certifier attach a certificate of certType to a subject.
@@ -207,73 +230,38 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 // chainStatusRetired is PassportRegistry.Status.Retired.
 const chainStatusRetired = 3
 
-// Evidence a stage asks for must be a valid certificate before the action
-// that enters the stage: at issue on the facility, on the passport before a
-// handover, on every input before a transform.
-func TestRequiredEvidence(t *testing.T) {
+// Lots move freely: the template only names the product. No certificate is
+// needed to issue, hand over or transform, a handover's stage is any label or
+// none, and a transform never gives out more than went in.
+func TestFreestyleMoves(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
-	in := coffeeTemplate("coffee_" + e.suffix) // origin: plot_geolocation; export: export_permit, certificate_of_origin
-	in.Stages[1].RequiredEvidence = []string{"moisture_reading"}
-	tpl := w.template(t, in)
-	want(t, "accredit", accredit(e, w.root, "/orgs/"+w.certifier.ID+"/accreditations",
-		grant("plot_geolocation"), grant("moisture_reading"), grant("export_permit"), grant("certificate_of_origin")), http.StatusOK)
-
-	missing := func(what string, rec *httptest.ResponseRecorder, keys ...string) {
-		t.Helper()
-		want(t, what, rec, http.StatusConflict)
-		msg := errorOf(t, rec)
-		for _, k := range keys {
-			if !strings.Contains(msg, k) {
-				t.Fatalf("%s: %q does not name %s", what, msg, k)
-			}
-		}
-	}
-
-	// Issue: the facility needs its plot geolocation.
-	missing("issue without facility evidence", w.issue(tpl, 1000), "plot_geolocation")
-	w.certify(t, attestation.SubjectFacility, w.plot.ID, "plot_geolocation")
+	tpl := w.template(t, coffeeTemplate("coffee_"+e.suffix)) // its stages ask for certificates; none are given
 	rec := w.issue(tpl, 1000)
-	want(t, "issue with evidence", rec, http.StatusCreated)
+	want(t, "issue without evidence", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
 
-	handover := func(stage string) *httptest.ResponseRecorder {
-		return post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"),
-			passport.HandoverInput{ToOrganisationID: w.processor.ID, Stage: stage})
+	part := int64(400)
+	var held passport.Handover
+	for _, stage := range []string{"", "transport"} {
+		rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"),
+			passport.HandoverInput{ToOrganisationID: w.processor.ID, Stage: stage, Quantity: &part})
+		want(t, "handover labelled "+stage, rec, http.StatusCreated)
+		held = decodeTo[passport.Handover](t, rec)
+		want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+held.ID+"/accept"), received(held)), http.StatusOK)
 	}
-	want(t, "handover to an unknown stage", handover("moon"), http.StatusBadRequest)
-	want(t, "handover to a stage without handovers", handover("origin"), http.StatusBadRequest)
-	missing("handover to export without evidence", handover("export"), "export_permit", "certificate_of_origin")
 
-	// A revoked certificate does not count.
-	permit := w.certify(t, attestation.SubjectPassport, lot.ID, "export_permit")
-	w.certify(t, attestation.SubjectPassport, lot.ID, "certificate_of_origin")
-	want(t, "revoke permit", post(e, w.certTok, as(w.certSlug, "/attestations/"+permit.ID+"/revoke"),
-		attestation.RevokeInput{Reason: "issued in error"}), http.StatusOK)
-	missing("handover with a revoked permit", handover("export"), "export_permit")
-
-	// Handover into the washing station needs the moisture reading on the passport.
-	missing("handover to washing without moisture", handover(stageWashing), "moisture_reading")
-	w.certify(t, attestation.SubjectPassport, lot.ID, "moisture_reading")
-	rec = handover(stageWashing)
-	want(t, "handover with evidence", rec, http.StatusCreated)
-	h := decodeTo[passport.Handover](t, rec)
-	want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
-
-	// Transform: every input needs the stage's evidence. A second lot without it blocks the whole transform.
-	rec = w.issue(tpl, 500)
-	want(t, "issue second", rec, http.StatusCreated)
-	second := decodeTo[passport.Passport](t, rec)
-	e.exec(`UPDATE passports SET organisation_id = $2::uuid WHERE id = $1::uuid`, second.ID, w.processor.ID) // as if handed over
-	transform := func(ids ...string) *httptest.ResponseRecorder {
-		in := passport.TransformInput{Stage: stageWashing, Outputs: []passport.TransformOutput{{Quantity: 100}}}
-		for _, id := range ids {
-			in.Inputs = append(in.Inputs, passport.TransformSource{PassportID: id, Quantity: 500})
-		}
-		return post(e, w.procTok, as(w.procSlug, "/transforms"), in)
+	transform := func(out int64) *httptest.ResponseRecorder {
+		return post(e, w.procTok, as(w.procSlug, "/transforms"), passport.TransformInput{
+			Inputs:  []passport.TransformSource{{PassportID: held.PassportID, Quantity: 400}},
+			Outputs: []passport.TransformOutput{{Quantity: out}}})
 	}
-	missing("transform with an input lacking evidence", transform(lot.ID, second.ID), "moisture_reading")
-	want(t, "transform with evidence", transform(lot.ID), http.StatusCreated)
+	want(t, "transform giving out more than went in", transform(401), http.StatusConflict)
+	rec = transform(400)
+	want(t, "transform keeping everything", rec, http.StatusCreated)
+	if tr := decodeTo[passport.Transform](t, rec); tr.Stage != passport.DefaultTransformStage {
+		t.Fatalf("unlabelled transform stage = %q", tr.Stage)
+	}
 }
 
 // Every signing action needs the signing PIN; reading does not.

@@ -87,19 +87,18 @@ func TestCommodityChainsEndToEnd(t *testing.T) {
 		name         string
 		facilityKind string
 		rule         template.CapacityRule
-		yield        float64
 	}{
-		{"coffee", facility.KindFarmPlot, template.CapacityRule{Type: template.CapacityYieldPerArea, KgPerHaPerSeason: 1200}, washingYield},
-		{"mineral", facility.KindMineSite, template.CapacityRule{Type: template.CapacityFacility}, 0.05},
+		{"coffee", facility.KindFarmPlot, template.CapacityRule{Type: template.CapacityYieldPerArea, KgPerHaPerSeason: 1200}},
+		{"mineral", facility.KindMineSite, template.CapacityRule{Type: template.CapacityFacility}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			runChain(t, tc.name, tc.facilityKind, tc.rule, tc.yield)
+			runChain(t, tc.name, tc.facilityKind, tc.rule)
 		})
 	}
 }
 
-func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRule, yield float64) {
+func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRule) {
 	e, _, _ := newEnv(t, false)
 	c := e.newChain()
 	ctx := context.Background()
@@ -139,21 +138,14 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		return p.Status, p.Remaining.Int64()
 	}
 
-	// ---- Origin: a facility, a template with a lossy stage and a yield-1 stage, two passports.
+	// ---- Origin: a facility, a template, two passports.
 	fIn := facilityInput(newPlot())
 	fIn.Kind = facilityKind
 	site := e.approvedFacility(prodTok, prodSlug, root, fIn)
 
-	whole := 1.0
 	tplIn := template.Input{
 		Commodity: name + "_" + e.suffix, Name: name + " " + e.suffix, Unit: site.CapacityUnit,
 		OriginFacilityKind: facilityKind, CapacityRule: rule,
-		Stages: []template.Stage{
-			{Key: "origin", Events: []string{template.EventIssue}},
-			{Key: stageProcess, Events: []string{template.EventHandover, template.EventTransform}, MaxYield: &yield},
-			{Key: stageSort, Events: []string{template.EventTransform}, MaxYield: &whole},
-			{Key: "export", Events: []string{template.EventHandover, template.EventExport}, RequiredEvidence: []string{"export_permit"}},
-		},
 	}
 	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
@@ -194,12 +186,10 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		return o
 	}
 	inputs := []passport.TransformSource{src(a.ID, qtyA), src(b.ID, usedB)}
-	maxOut := int64(float64(qtyA+usedB) * yield)
+	maxOut := int64(qtyA + usedB) // whatever the stage, nothing is gained
 	const small = 10_000
 
 	want(t, "former holder transforms", transform(prodTok, prodSlug, passport.TransformInput{Stage: stageProcess, Inputs: inputs, Outputs: outs(1)}), http.StatusBadRequest)
-	want(t, "unknown stage", transform(procTok, procSlug, passport.TransformInput{Stage: "smelting", Inputs: inputs, Outputs: outs(1)}), http.StatusBadRequest)
-	want(t, "stage that does not transform", transform(procTok, procSlug, passport.TransformInput{Stage: "export", Inputs: inputs, Outputs: outs(1)}), http.StatusBadRequest)
 	want(t, "same input twice", transform(procTok, procSlug, passport.TransformInput{
 		Stage: stageProcess, Inputs: []passport.TransformSource{src(a.ID, 1), src(a.ID, 1)}, Outputs: outs(1)}), http.StatusBadRequest)
 
@@ -224,20 +214,13 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	rec = transform(procTok, procSlug, passport.TransformInput{Stage: stageProcess, Inputs: inputs, Outputs: outs(maxOut-small, small)})
 	want(t, "transform", rec, http.StatusCreated)
 	tr := decodeTo[passport.Transform](t, rec)
-	if len(tr.Outputs) != 2 || tr.MaxYieldPPM != template.YieldPPM(yield) || len(tr.Inputs) != 2 {
+	if len(tr.Outputs) != 2 || tr.MaxYieldPPM != chain.YieldScale || len(tr.Inputs) != 2 {
 		t.Fatalf("transform recorded wrongly: %+v", tr)
 	}
 	child1, child2 := tr.Outputs[0], tr.Outputs[1]
 	if child1.OrganisationID != processor.ID || child1.FacilityID != nil || child1.Period != nil ||
 		child1.TransformID == nil || *child1.TransformID != tr.ID || child1.Quantity != maxOut-small || child1.Status != passport.StatusActive {
 		t.Fatalf("output passport: %+v", child1)
-	}
-	// At the very limit the transform is allowed, but the rules flag its first output.
-	var ruleFlags int
-	e.pool.QueryRow(ctx, `SELECT count(*) FROM flags WHERE passport_id = $1::uuid AND source = $2`,
-		child1.ID, flag.SourceRules).Scan(&ruleFlags)
-	if ruleFlags != 1 {
-		t.Fatalf("rules raised %d flags about a transform at its yield limit, want 1", ruleFlags)
 	}
 	if got := passportOf(a.ID); got.Remaining != 0 || got.Status != passport.StatusConsumed {
 		t.Fatalf("an input used up is not consumed: %+v", got)
@@ -260,8 +243,8 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 
 	// ---- The chain agrees with all of it.
 	c.drain()
-	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(stageProcess)); got.Int64() != template.YieldPPM(yield) {
-		t.Fatalf("on-chain yield = %s, want %d", got, template.YieldPPM(yield))
+	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(template.StageSplit)); got.Int64() != chain.YieldScale {
+		t.Fatalf("on-chain split yield = %s, want %d", got, chain.YieldScale)
 	}
 	if status, _ := onChain(a.ID); status != chainConsumed {
 		t.Fatalf("on-chain input status = %d, want consumed", status)
@@ -777,7 +760,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 
 // A template's commodity and unit are copied onto its passports, so they are
 // frozen once passports exist; the rest can still change, and every saved
-// yield is queued for the chain.
+// change queues the commodity's split yield for the chain once.
 func TestTemplateInUse(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
@@ -830,27 +813,18 @@ func TestTemplateInUse(t *testing.T) {
 	want(t, "change commodity once in use", put(renamed), http.StatusConflict)
 
 	stricter := in
-	lower := washingYield / 2
-	stricter.Stages = slices.Clone(in.Stages)
-	stricter.Stages[1].MaxYield = &lower
-	want(t, "change a yield once in use", put(stricter), http.StatusOK)
+	stricter.RequiredEvidence = []string{"plot_geolocation"}
+	want(t, "change the evidence once in use", put(stricter), http.StatusOK)
 	// Issuing still works by the published version while the draft waits.
 	want(t, "issue with a draft waiting", post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1}), http.StatusCreated)
-	if got := publish(); got.Version != 4 || *got.Stages[1].MaxYield != lower {
-		t.Fatalf("published the stricter yield: %+v", got)
+	if got := publish(); got.Version != 4 || !slices.Equal(got.RequiredEvidence, stricter.RequiredEvidence) {
+		t.Fatalf("published the stricter evidence: %+v", got)
 	}
 
-	// Each publish (and the create) queues the stage's yield and the split stage's yield of 1.
+	// The create queued the split stage's yield of 1; publishes do not repeat it.
 	statuses, _ := e.outbox(tpl.ID)
-	if len(statuses) != 8 {
-		t.Fatalf("queued %d yields for the template, want 8", len(statuses))
-	}
-	var ppm int64
-	e.pool.QueryRow(t.Context(),
-		`SELECT (payload->>'parts_per_million')::bigint FROM chain_outbox WHERE subject_id = $1::uuid
-		 AND payload->>'stage' <> $2 ORDER BY seq DESC LIMIT 1`, tpl.ID, template.StageSplit).Scan(&ppm)
-	if ppm != template.YieldPPM(lower) {
-		t.Fatalf("last queued yield = %d, want %d", ppm, template.YieldPPM(lower))
+	if len(statuses) != 1 {
+		t.Fatalf("queued %d yields for the template, want 1", len(statuses))
 	}
 }
 
@@ -860,7 +834,6 @@ func TestProvenanceInputValidation(t *testing.T) {
 	out := []passport.TransformOutput{{Quantity: 1}}
 	many := make([]passport.TransformOutput, passport.MaxTransformItems+1)
 	for name, in := range map[string]passport.TransformInput{
-		"no stage":         {Inputs: one, Outputs: out},
 		"no inputs":        {Stage: stageSort, Outputs: out},
 		"no outputs":       {Stage: stageSort, Inputs: one},
 		"too many outputs": {Stage: stageSort, Inputs: one, Outputs: many},
@@ -984,11 +957,6 @@ func TestMailerRefusesPlainServerWhenTLSRequired(t *testing.T) {
 
 // Yields reach the contract as whole parts per million.
 func TestYieldPPM(t *testing.T) {
-	for yield, want := range map[float64]int64{0.2: 200_000, 1: 1_000_000, 0.05: 50_000, 0.333333: 333_333} {
-		if got := template.YieldPPM(yield); got != want {
-			t.Errorf("YieldPPM(%v) = %d, want %d", yield, got, want)
-		}
-	}
 	if chain.YieldScale != 1_000_000 {
 		t.Fatal("YieldScale must equal PassportRegistry.YIELD_SCALE")
 	}

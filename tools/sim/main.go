@@ -39,12 +39,12 @@ var chains = []struct {
 	{"medicine.json", [2]float64{30.06, -1.95}},
 }
 
+// stage is one step the sim walks a lot through. Templates have no stages:
+// the journey is the sim's own scenario and is not sent to the API.
 type stage struct {
-	Key              string   `json:"key"`
-	Events           []string `json:"events"`
-	MaxYield         *float64 `json:"maxYield,omitempty"`
-	RequiredEvidence []string `json:"requiredEvidence,omitempty"`
-	Tolerance        *float64 `json:"handoverTolerance,omitempty"`
+	Key      string   `json:"key"`
+	Events   []string `json:"events"`
+	MaxYield *float64 `json:"maxYield,omitempty"`
 }
 
 type tmpl struct {
@@ -54,7 +54,8 @@ type tmpl struct {
 	Unit               string         `json:"unit"`
 	OriginFacilityKind string         `json:"originFacilityKind"`
 	CapacityRule       map[string]any `json:"capacityRule"`
-	Stages             []stage        `json:"stages"`
+	RequiredEvidence   []string       `json:"requiredEvidence"`
+	Stages             []stage        `json:"journey"`
 }
 
 func (t tmpl) transforms() bool {
@@ -243,10 +244,8 @@ func (s *sim) accredit(ts []tmpl) error {
 	var grants []map[string]string
 	from, to := time.Now().AddDate(0, 0, -1).Format(time.DateOnly), time.Now().AddDate(3, 0, 0).Format(time.DateOnly)
 	for _, t := range ts {
-		for _, st := range t.Stages {
-			for _, ev := range st.RequiredEvidence {
-				grants = append(grants, map[string]string{"type": ev, "valid_from": from, "valid_to": to})
-			}
+		for _, ev := range t.RequiredEvidence {
+			grants = append(grants, map[string]string{"type": ev, "valid_from": from, "valid_to": to})
 		}
 	}
 	return s.admin.json(http.MethodPut, "/orgs/"+s.cert.ID+"/accreditations", grants, false, nil)
@@ -295,7 +294,6 @@ func (s *sim) buildChain(t tmpl, p ChainPlan) ([]lot, error) {
 		holders[st.Key] = o
 	}
 
-	origin := t.Stages[0]
 	newFacility := func(i int, fp FacilityPlan, approve bool) (facility, error) {
 		owner := producers[i%len(producers)]
 		var f struct{ ID string }
@@ -313,7 +311,7 @@ func (s *sim) buildChain(t tmpl, p ChainPlan) ([]lot, error) {
 				return facility{}, fmt.Errorf("approve facility %d: %w", i+1, err)
 			}
 		}
-		for _, ev := range origin.RequiredEvidence {
+		for _, ev := range t.RequiredEvidence {
 			if _, err := s.certify("facility", f.ID, ev); err != nil {
 				return facility{}, fmt.Errorf("facility %d evidence: %w", i+1, err)
 			}
@@ -376,15 +374,16 @@ func (s *sim) walk(name string, t tmpl, lp LotPlan, f facility, holders map[stri
 	}
 	s.events++
 	l := lot{plan: lp, passports: []string{p.ID}, code: p.Code}
+	// The lot carries a copy of its origin evidence, for the certificate frauds.
+	for _, ev := range t.RequiredEvidence {
+		id, err := s.certify("passport", p.ID, ev)
+		if err != nil {
+			return l, fmt.Errorf("evidence %s: %w", ev, err)
+		}
+		l.certs = append(l.certs, id)
+	}
 	holder := f.owner
 	for _, st := range t.Stages[1:] {
-		for _, ev := range st.RequiredEvidence {
-			id, err := s.certify("passport", p.ID, ev)
-			if err != nil {
-				return l, fmt.Errorf("evidence %s: %w", ev, err)
-			}
-			l.certs = append(l.certs, id)
-		}
 		to := holders[st.Key]
 		var h struct{ ID string }
 		if err := holder.c.json(http.MethodPost, "/passports/"+p.ID+"/handovers", map[string]any{"to_org": to.ID, "stage": st.Key}, true, &h); err != nil {
@@ -416,7 +415,7 @@ func (s *sim) walk(name string, t tmpl, lp LotPlan, f facility, holders map[stri
 			}
 			allowed := float64(p.Quantity) * *st.MaxYield
 			if l.plan.Attempt == F4 {
-				_, err := transform(int64(allowed*1.5) + 1)
+				_, err := transform(p.Quantity + 1) // more than went in
 				s.attempt(name, name+"-f4yield-"+l.code, F4, p.ID, err)
 				l.plan.Attempt = ""
 			}

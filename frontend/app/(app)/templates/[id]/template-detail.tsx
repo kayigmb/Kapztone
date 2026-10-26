@@ -2,17 +2,16 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, WifiOff } from "lucide-react";
+import { WifiOff } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
-import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { DetailHeader } from "@/components/chaintrack/detail-header";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   copy,
   queryKeys,
   routes,
-  templateEvents,
   screenCopy,
 } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
@@ -110,8 +108,6 @@ function EditForm({
     setValue,
     formState: { errors },
   } = form;
-  const { fields, append, remove } = useFieldArray({ control, name: "stages" });
-  const stageValues = useWatch({ control, name: "stages" });
   const capacityRule = useWatch({ control, name: "capacityRule" });
   const ruleType = capacityRule?.type ?? "none";
   const originKinds = kinds.some((kind) => kind.key === tpl.originFacilityKind)
@@ -228,102 +224,12 @@ function EditForm({
           )}
         </div>
 
-        <div className="grid gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">{t.stages}</span>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() =>
-                append({
-                  key: "",
-                  events: [],
-                  maxYield: undefined,
-                  requiredEvidence: [],
-                })
-              }
-              disabled={fields.length >= 10}
-            >
-              <Plus aria-hidden />
-              {t.addStage}
-            </Button>
-          </div>
-          {fields.map((field, i) => (
-            <div
-              key={field.id}
-              className="grid gap-3 rounded-md border border-border p-3"
-            >
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <TextField
-                  label={t.stageKey}
-                  className="flex-1 min-w-30"
-                  error={errors.stages?.[i]?.key?.message}
-                  {...register(`stages.${i}.key` as const)}
-                />
-                {fields.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="danger-outline"
-                    onClick={() => remove(i)}
-                  >
-                    {t.removeStage}
-                  </Button>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <span className="text-sm font-semibold">{t.events}</span>
-                <div className="flex flex-wrap gap-3">
-                  {templateEvents.map((ev) => {
-                    const current = stageValues?.[i]?.events ?? [];
-                    const checked = current.includes(ev.value);
-                    return (
-                      <label key={ev.value} className="flex items-center gap-2">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(c) => {
-                            if (c)
-                              setValue(`stages.${i}.events`, [
-                                ...current,
-                                ev.value,
-                              ]);
-                            else
-                              setValue(
-                                `stages.${i}.events`,
-                                current.filter((x) => x !== ev.value),
-                              );
-                          }}
-                        />
-                        <span className="text-sm">{ev.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {errors.stages?.[i]?.events?.message && (
-                  <p className="text-small font-semibold text-danger">
-                    {errors.stages?.[i]?.events?.message}
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <TextField
-                  label={t.maxYield}
-                  type="number"
-                  inputMode="numeric"
-                  mono
-                  error={errors.stages?.[i]?.maxYield?.message}
-                  {...register(`stages.${i}.maxYield` as const, {
-                    valueAsNumber: true,
-                  })}
-                />
-                <TextField
-                  label={t.requiredEvidence}
-                  error={errors.stages?.[i]?.requiredEvidence?.message}
-                  {...register(`stages.${i}.requiredEvidence` as const)}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <TextField
+          label={t.requiredEvidence}
+          help={t.requiredEvidenceHelp}
+          error={errors.requiredEvidence?.message}
+          {...register("requiredEvidence")}
+        />
 
         <div className="grid gap-2 text-small text-ink-muted">
           <div>
@@ -357,9 +263,9 @@ function EditForm({
   );
 }
 
-function fromTemplate(tpl: Template): TemplateForm {
+function fromTemplate(tpl: Template): TemplateFormInput {
   const rule = tpl.capacityRule;
-  let cr: TemplateForm["capacityRule"] = null;
+  let cr: TemplateFormInput["capacityRule"] = null;
   if (rule?.type === "yield_per_area") {
     cr = {
       type: "yield_per_area",
@@ -374,12 +280,7 @@ function fromTemplate(tpl: Template): TemplateForm {
     unit: tpl.unit,
     originFacilityKind: tpl.originFacilityKind ?? "",
     capacityRule: cr,
-    stages: (tpl.stages ?? []).map((s) => ({
-      key: s.key,
-      events: s.events ?? [],
-      maxYield: s.maxYield ?? undefined,
-      requiredEvidence: s.requiredEvidence ?? [],
-    })),
+    requiredEvidence: tpl.requiredEvidence.join(", "),
   };
 }
 
@@ -401,11 +302,6 @@ function toApiBody(v: TemplateForm) {
     unit: v.unit,
     originFacilityKind: v.originFacilityKind === "" ? "" : v.originFacilityKind,
     capacityRule: rule,
-    stages: v.stages.map((s) => ({
-      key: s.key,
-      events: s.events,
-      maxYield: s.maxYield ?? null,
-      requiredEvidence: s.requiredEvidence.filter((e) => e.trim().length > 0),
-    })),
+    requiredEvidence: v.requiredEvidence,
   };
 }

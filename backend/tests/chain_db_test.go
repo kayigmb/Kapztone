@@ -592,7 +592,7 @@ func TestPassportInputValidation(t *testing.T) {
 	if msg := h.Validate(); msg != "" || h.Note != "at the gate" || h.Stage != stageWashing {
 		t.Errorf("handover input: %q %q %q", msg, h.Note, h.Stage)
 	}
-	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID},
+	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID, Stage: strings.Repeat("x", passport.MaxStageLen+1)},
 		{ToOrganisationID: fakeOrgID, Stage: stageWashing, Note: strings.Repeat("x", passport.MaxNoteLen+1)}} {
 		if in.Validate() == "" {
 			t.Errorf("%+v accepted", in)

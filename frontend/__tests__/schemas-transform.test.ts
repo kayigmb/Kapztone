@@ -25,7 +25,8 @@ test("transform: at least one input and one output, each a whole number above ze
   };
   assert.ok(bad({ inputs: [] }).length > 0);
   assert.ok(bad({ outputs: [] }).length > 0);
-  assert.ok(bad({ stage: "  " }).length > 0);
+  assert.equal(bad({ stage: "  " }).length, 0); // the label is optional
+  assert.ok(bad({ stage: "a".repeat(61) }).length > 0);
   assert.ok(bad({ inputs: [{ passport_id: "p-1", quantity: 0 }] }).length > 0);
   assert.ok(
     bad({ inputs: [{ passport_id: "p-1", quantity: 1.5 }] }).length > 0,

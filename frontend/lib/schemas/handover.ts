@@ -8,12 +8,12 @@ const quantity = z.coerce
   .int(v.quantity)
   .positive(v.quantityPositive);
 
-/** The sender: how much leaves (`all` = the whole passport), into which stage, and where / how. */
+/** The sender: how much leaves (`all` = the whole passport), an optional label for the move, and where / how. */
 export const handoverFormSchema = z
   .object({
     all: z.boolean(),
     quantity: quantity.optional(),
-    stage: z.string().min(1, v.handoverStage),
+    stage: z.string().trim().max(limits.stage, v.tooLong(limits.stage)),
     note: z.string().trim().max(limits.note, v.tooLong(limits.note)),
   })
   .refine((f) => f.all || f.quantity !== undefined, {

@@ -6,10 +6,9 @@ import { CircleCheck, Clock, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { useForm, useWatch, Controller } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
 
@@ -17,7 +16,6 @@ import {
   PlaceAndPhotos,
   type Place,
 } from "@/components/chaintrack/place-and-photos";
-import { SelectInput } from "@/components/chaintrack/select-input";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
 import { Stepper } from "@/components/chaintrack/stepper";
@@ -27,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { endpoints, problemOf, useMe, type PassportDetail } from "@/lib/api";
 import { copy, passportStatus, queryKeys, routes } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
-import { handoverStages, isPartial } from "@/lib/handover";
+import { isPartial } from "@/lib/handover";
 import {
   handoverFormSchema,
   handoverQuantity,
@@ -204,12 +202,6 @@ function Details({
   onPhotos: (f: File[]) => void;
   onNext: (d: HandoverForm) => void;
 }) {
-  const template = useQuery({
-    queryKey: queryKeys.template(p.template_id ?? ""),
-    queryFn: () => endpoints.template(p.template_id!),
-    enabled: !!p.template_id,
-  });
-  const stages = handoverStages(template.data?.stages ?? []);
   const {
     register,
     handleSubmit,
@@ -277,41 +269,12 @@ function Details({
         )}
       </fieldset>
 
-      <label className="grid gap-1.5">
-        <span className="text-sm font-semibold">{t.stage}</span>
-        {!p.template_id ? (
-          <Notice kind="warning">{t.noStages}</Notice>
-        ) : (
-          <DataWidget query={template}>
-            {(tpl) => {
-              const pickStages = handoverStages(tpl.stages ?? []);
-              return pickStages.length === 0 ? (
-                <Notice kind="warning">{t.noStages}</Notice>
-              ) : (
-                <Controller
-                  control={control}
-                  name="stage"
-                  render={({ field }) => (
-                    <SelectInput
-                      label={t.stage}
-                      placeholder={t.stagePlaceholder}
-                      value={field.value ?? ""}
-                      onChange={field.onChange}
-                      invalid={!!errors.stage}
-                      options={pickStages.map((st) => ({
-                        value: st.key,
-                        label: humanize(st.key),
-                      }))}
-                    />
-                  )}
-                />
-              );
-            }}
-          </DataWidget>
-        )}
-        <FieldNote error={errors.stage?.message} help={t.stageHelp} />
-      </label>
-
+      <TextField
+        label={t.stage}
+        help={t.stageHelp}
+        error={errors.stage?.message}
+        {...register("stage")}
+      />
       <TextField
         label={t.note}
         help={t.noteHelp}
@@ -325,9 +288,7 @@ function Details({
         onPhotos={onPhotos}
         copy={t}
       />
-      <Button type="submit" disabled={stages.length === 0}>
-        {t.next}
-      </Button>
+      <Button type="submit">{t.next}</Button>
     </form>
   );
 }

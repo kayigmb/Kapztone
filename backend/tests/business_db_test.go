@@ -23,7 +23,6 @@ func TestFacilityRulesAndReports(t *testing.T) {
 	e := w.e
 	ctx := context.Background()
 	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tplIn.Stages[2].RequiredEvidence = nil // exports without paperwork, for the volume report
 	tpl := w.template(t, tplIn)
 
 	// ---- Pending and expired facilities originate nothing.
@@ -49,9 +48,6 @@ func TestFacilityRulesAndReports(t *testing.T) {
 
 	// ---- Refusals by a rule are counted, though their own transaction rolls back.
 	want(t, "over capacity", issueAt(w.plot.ID, w.plot.Capacity*1000), http.StatusConflict)
-	evidenceTpl := w.template(t, coffeeTemplate("tea_"+e.suffix)) // its origin asks for a geolocation certificate
-	want(t, "issue without evidence", post(e, w.prodTok, as(w.prodSlug, "/passports"),
-		passport.IssueInput{FacilityID: w.plot.ID, TemplateID: evidenceTpl.ID, Quantity: 10}), http.StatusConflict)
 
 	rec = issueAt(w.plot.ID, 1000)
 	want(t, "issue", rec, http.StatusCreated)
@@ -63,7 +59,7 @@ func TestFacilityRulesAndReports(t *testing.T) {
 		return post(e, w.procTok, as(w.procSlug, "/transforms"), passport.TransformInput{Stage: stageWashing,
 			Inputs: []passport.TransformSource{{PassportID: lot.ID, Quantity: 500}}, Outputs: []passport.TransformOutput{{Quantity: out}}})
 	}
-	want(t, "mass balance breach", transform(101), http.StatusConflict)
+	want(t, "mass balance breach", transform(501), http.StatusConflict)
 
 	// A new template version: the transform records the one it was judged by.
 	edited := tpl.Input // the same rules, a new version all the same
@@ -109,7 +105,7 @@ func TestFacilityRulesAndReports(t *testing.T) {
 		}
 		return out
 	}
-	if got := blocked(w.prodTok, w.prodSlug); got[audit.RuleCapacity] != 1 || got[audit.RuleEvidence] != 1 ||
+	if got := blocked(w.prodTok, w.prodSlug); got[audit.RuleCapacity] != 1 || got[audit.RuleEvidence] != 0 ||
 		got[audit.RuleMassBalance] != 0 || got[audit.RuleHandoverRejected] != 1 {
 		t.Fatalf("producer's blocked report: %v", got)
 	}

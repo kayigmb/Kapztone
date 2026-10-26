@@ -17,7 +17,7 @@ export const inputRowSchema = z.object({
 export const outputRowSchema = z.object({ quantity });
 
 export const transformFormSchema = z.object({
-  stage: z.string().trim().min(1, v.stage),
+  stage: z.string().trim().max(limits.stage, v.tooLong(limits.stage)),
   inputs: z
     .array(inputRowSchema)
     .min(1, v.quantity)

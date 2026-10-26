@@ -1,17 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeftRight,
   ArrowRight,
   CircleCheck,
-  Layers,
   Plus,
   RefreshCcw,
-  Ship,
   Trash2,
-  Warehouse,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -20,23 +16,14 @@ import { toast } from "sonner";
 
 import { FieldNote } from "@/components/chaintrack/field-note";
 import { PageHeader } from "@/components/chaintrack/page-header";
-import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { Notice } from "@/components/chaintrack/notice";
-import { Loading } from "@/components/chaintrack/page-state";
 import type { Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { endpoints, problemOf, type PassportDetail } from "@/lib/api";
-import {
-  copy,
-  limits,
-  queryKeys,
-  routes,
-  templateEvent,
-  screenCopy,
-} from "@/lib/consts";
+import { copy, limits, queryKeys, routes, screenCopy } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import { lotCodeSchema, type LotCodeForm } from "@/lib/schemas/scan";
 import {
@@ -57,14 +44,8 @@ const v = copy.passportView;
 // Copy this screen needs that consts doesn't hold yet.
 const local = screenCopy.transform;
 
-// Stage keys are a template's own; the label is worked out from the key here.
-const stageIcons: Record<string, typeof Layers> = {
-  HANDOVER: ArrowLeftRight,
-  TRANSFORM: RefreshCcw,
-  EXPORT: Ship,
-  IMPORT: Warehouse,
-};
-const stageLabel = humanize;
+// Whatever the label, a transform gives out at most what went in.
+const maxYield = 100;
 
 type ResultState = {
   rows: PassportDetail[];
@@ -107,24 +88,13 @@ export function Transform() {
   const rows = form.inputs;
   const first = rows[0] ? known[rows[0].passport_id] : undefined;
   const unit = first?.unit ?? "";
-  const templateId = first?.template_id;
-  const template = useQuery({
-    queryKey: queryKeys.template(templateId ?? ""),
-    queryFn: () => endpoints.template(templateId!),
-    enabled: !!templateId,
-  });
-  const stages = (template.data?.stages ?? []).filter((st) =>
-    st.events?.includes(templateEvent.transform),
-  );
-  const stageKey = form.stage;
-  const maxYield = stages.find((st) => st.key === stageKey)?.maxYield ?? null;
 
   const y = yieldOf(
     rows.map((r) => Number(r.quantity) || 0),
     (form.outputs ?? []).map((o) => Number(o.quantity) || 0),
     maxYield,
   );
-  const allowed = maxYield === null ? null : (y.totalIn * maxYield) / 100;
+  const allowed = (y.totalIn * maxYield) / 100;
   const share = allowed && allowed > 0 ? y.totalOut / allowed : 0;
 
   const atCap = rows.length >= limits.maxItems;
@@ -161,7 +131,7 @@ export function Transform() {
         into: formatQuantity(into, unit),
         out: formatQuantity(out, unit),
         pct: (into === 0 ? 0 : (out / into) * 100).toFixed(1),
-        max: maxYield === null ? null : String(maxYield),
+        max: String(maxYield),
       });
       vars.values.inputs.forEach((r) =>
         client.invalidateQueries({
@@ -231,13 +201,10 @@ export function Transform() {
     },
     { label: t.outputs, value: formatQuantity(y.totalOut, unit), mono: true },
     { label: local.newLots, value: String(outputs.fields.length) },
-    { label: t.stage, value: stageLabel(stageKey) },
+    { label: t.stage, value: form.stage || local.defaultStage },
     {
       label: local.yieldLabel,
-      value:
-        maxYield === null
-          ? local.noYieldShort
-          : t.yieldLine(y.pct.toFixed(1), String(maxYield)),
+      value: t.yieldLine(y.pct.toFixed(1), String(maxYield)),
     },
   ];
 
@@ -340,45 +307,15 @@ export function Transform() {
         </section>
 
         <div className="grid min-w-0 content-start gap-4 lg:gap-6">
-          {first && (
-            <section className="grid min-w-0 gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-              <header className="grid gap-1">
-                <h2 className="text-section">{t.stage}</h2>
-                <p className="text-small text-ink-muted">{t.stageHelp}</p>
-                {template.data && (
-                  <p className="text-small text-ink-muted">
-                    {local.templateLine(template.data.name)}
-                  </p>
-                )}
-              </header>
-              {template.isPending && <Loading />}
-              {template.isError && (
-                <Notice kind="blocking">{problemOf(template.error)}</Notice>
-              )}
-              {template.isSuccess && stages.length === 0 && (
-                <Notice kind="info">{local.noTemplate}</Notice>
-              )}
-              {stages.length > 0 && (
-                <ChoiceCards
-                  legend={t.stage}
-                  error={errors.stage?.message}
-                  options={stages.map((st) => ({
-                    value: st.key,
-                    label: stageLabel(st.key),
-                    sub:
-                      st.maxYield == null
-                        ? local.noYieldShort
-                        : local.allowedYield(st.maxYield),
-                    icon: stageIcons[st.key] ?? Layers,
-                  }))}
-                  {...register("stage")}
-                />
-              )}
-              {stageKey !== "" && maxYield === null && (
-                <Notice kind="info">{t.noYield}</Notice>
-              )}
-            </section>
-          )}
+          <section className="grid min-w-0 gap-3 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
+            <TextField
+              label={t.stage}
+              help={t.stageHelp}
+              placeholder={local.defaultStage}
+              error={errors.stage?.message}
+              {...register("stage")}
+            />
+          </section>
 
           <section
             className={cn(
@@ -447,10 +384,8 @@ export function Transform() {
                 )}
               </p>
             </header>
-            {stageKey === "" ? (
+            {rows.length === 0 ? (
               <Notice kind="info">{local.pickStage}</Notice>
-            ) : maxYield === null || allowed === null ? (
-              <Notice kind="info">{t.noYield}</Notice>
             ) : (
               <>
                 <div

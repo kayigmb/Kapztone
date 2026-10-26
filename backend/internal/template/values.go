@@ -1,5 +1,5 @@
 // Package template handles commodity templates: the platform-wide rules for
-// one commodity (unit, stages, allowed events, yields, capacity rule).
+// one commodity (unit, origin facility kind, required evidence, capacity rule).
 package template
 
 import "regexp"
@@ -7,7 +7,7 @@ import "regexp"
 // Every value in this file is declared here once and referenced everywhere
 // else, including SQL arguments and tests.
 
-// Events a stage may allow.
+// Passport event kinds.
 const (
 	EventIssue     = "ISSUE"
 	EventHandover  = "HANDOVER"
@@ -15,8 +15,6 @@ const (
 	EventExport    = "EXPORT"
 	EventImport    = "IMPORT"
 )
-
-var Events = []string{EventIssue, EventHandover, EventTransform, EventExport, EventImport}
 
 // How the amount a facility may originate per period is worked out.
 const (
@@ -33,22 +31,21 @@ const (
 	MaxUnitLen = 16
 )
 
-// StageSplit is the stage at which part of a lot is cut into its own passport
-// before being handed over. It is the platform's, at a yield of 1, so no
-// template may use the key for a stage of its own.
+// StageSplit is the one stage the contract knows, at a yield of 1: every
+// transform, and every part of a lot cut off before a handover, runs at it.
 const StageSplit = "split"
 
 // DefaultHandoverTolerance is the weight difference, in percent, a receiver
-// may accept when the stage sets no handoverTolerance of its own.
+// may accept.
 const DefaultHandoverTolerance = 1.0
 
-// Keys (commodity, stage, evidence) are lowercase identifiers such as "washing_station".
+// Keys (commodity, evidence) are lowercase identifiers such as "washing_station".
 var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
 
 const keyRule = "lowercase letters, digits and underscores, starting with a letter"
 
 // KeyRule and ValidKey let other packages hold their keys to the same rule:
-// a certificate's type is the evidence key a stage asks for.
+// a certificate's type is the evidence key a template asks for.
 const KeyRule = keyRule
 
 func ValidKey(s string) bool { return keyPattern.MatchString(s) }

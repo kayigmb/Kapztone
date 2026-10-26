@@ -57,20 +57,23 @@ test.beforeAll(async ({ browser }) => {
         unit: "kg",
         originFacilityKind: "farm_plot",
         capacityRule: { type: "facility_capacity" },
-        stages: [
-          { key: "origin", events: ["ISSUE"] },
-          {
-            key: "washing_station",
-            events: ["HANDOVER", "TRANSFORM"],
-            maxYield: 0.2,
-          },
-          // Never entered here: it only makes the certificate type exist.
-          { key: "export", events: ["HANDOVER"], requiredEvidence: [certType] },
-        ],
       },
     }),
   );
   templateID = template.id;
+  // Never issued under: it only makes the certificate type exist.
+  await ok(
+    await admin.request.post("/api/templates", {
+      data: {
+        commodity: `e2e_custody_cert_${run}`,
+        name: `E2E custody certificate ${run}`,
+        unit: "kg",
+        originFacilityKind: "farm_plot",
+        capacityRule: { type: "facility_capacity" },
+        requiredEvidence: [certType],
+      },
+    }),
+  );
 
   farm = await business(browser, admin, "producer", `E2E Custody Farm ${run}`);
   wash = await business(browser, admin, "processor", `E2E Custody Wash ${run}`);

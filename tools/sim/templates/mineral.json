@@ -4,10 +4,11 @@
   "unit": "kg",
   "originFacilityKind": "mine_site",
   "capacityRule": { "type": "facility_capacity" },
-  "stages": [
-    { "key": "origin", "events": ["ISSUE"], "requiredEvidence": ["mining_licence"] },
+  "requiredEvidence": ["mining_licence"],
+  "journey": [
+    { "key": "origin", "events": ["ISSUE"] },
     { "key": "trader", "events": ["HANDOVER"] },
-    { "key": "smelter", "events": ["HANDOVER", "TRANSFORM"], "maxYield": 0.7, "requiredEvidence": ["assay_report"] },
-    { "key": "export", "events": ["HANDOVER", "EXPORT"], "requiredEvidence": ["export_permit"] }
+    { "key": "smelter", "events": ["HANDOVER", "TRANSFORM"], "maxYield": 0.7 },
+    { "key": "export", "events": ["HANDOVER", "EXPORT"] }
   ]
 }

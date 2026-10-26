@@ -410,10 +410,7 @@ func (s Store) Accreditations(ctx context.Context, orgID string) ([]Accreditatio
 }
 
 // evidenceKeys are the certificate types a live template asks for.
-const evidenceKeys = `SELECT DISTINCT ev FROM commodity_templates t,
-	jsonb_array_elements(t.stages) st,
-	jsonb_array_elements_text(COALESCE(st->'requiredEvidence', '[]'::jsonb)) ev
-	WHERE NOT t.is_deleted`
+const evidenceKeys = `SELECT DISTINCT unnest(required_evidence) FROM commodity_templates WHERE NOT is_deleted`
 
 // SetAccreditations replaces an organisation's accreditations with grants.
 // Only what changed is written, and each change is queued for the chain in

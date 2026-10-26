@@ -6,7 +6,7 @@ import { Plus, Eye } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { DataWidget } from "@/components/chaintrack/data-widget";
@@ -23,7 +23,6 @@ import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -45,8 +44,6 @@ import {
   permissions,
   queryKeys,
   routes,
-  templateEvent,
-  templateEvents,
   screenCopy,
 } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
@@ -179,7 +176,7 @@ const columns: ListColumn<Template>[] = [
   column("origin", t.listOrigin, (x) =>
     originLabel(x.originFacilityKind ?? ""),
   ),
-  column("stages", t.listStageCount, (x) => x.stages?.length ?? 0),
+  column("evidence", t.listEvidence, (x) => x.requiredEvidence.length),
   column(
     "created_at",
     t.listUpdated,
@@ -213,12 +210,7 @@ function toApiBody(v: TemplateForm) {
     unit: v.unit,
     originFacilityKind: v.originFacilityKind === "" ? "" : v.originFacilityKind,
     capacityRule: rule,
-    stages: v.stages.map((s) => ({
-      key: s.key,
-      events: s.events,
-      maxYield: s.maxYield ?? null,
-      requiredEvidence: s.requiredEvidence.filter((e) => e.trim().length > 0),
-    })),
+    requiredEvidence: v.requiredEvidence,
   };
 }
 
@@ -244,20 +236,7 @@ function NewTemplateForm({
       unit: "kg",
       originFacilityKind: kinds[0]?.key ?? "",
       capacityRule: null,
-      stages: [
-        {
-          key: "origin",
-          events: [templateEvent.issue],
-          maxYield: undefined,
-          requiredEvidence: [],
-        },
-        {
-          key: "transport",
-          events: [templateEvent.handover],
-          maxYield: undefined,
-          requiredEvidence: [],
-        },
-      ],
+      requiredEvidence: "",
     },
   });
 
@@ -268,8 +247,6 @@ function NewTemplateForm({
     setValue,
     formState: { errors },
   } = form;
-  const { fields, append, remove } = useFieldArray({ control, name: "stages" });
-  const stageValues = useWatch({ control, name: "stages" });
   const capacityRule = useWatch({ control, name: "capacityRule" });
   const ruleType = capacityRule?.type ?? "none";
 
@@ -364,103 +341,12 @@ function NewTemplateForm({
         )}
       </div>
 
-      <div className="grid gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">{t.stages}</span>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              append({
-                key: "",
-                events: [],
-                maxYield: undefined,
-                requiredEvidence: [],
-              })
-            }
-            disabled={fields.length >= 10}
-          >
-            <Plus aria-hidden />
-            {t.addStage}
-          </Button>
-        </div>
-        {fields.map((field, i) => (
-          <div
-            key={field.id}
-            className="grid gap-3 rounded-md border border-border p-3"
-          >
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <TextField
-                label={t.stageKey}
-                className="flex-1 min-w-30"
-                error={errors.stages?.[i]?.key?.message}
-                {...register(`stages.${i}.key` as const)}
-              />
-              {fields.length > 1 && (
-                <Button
-                  type="button"
-                  variant="danger-outline"
-                  onClick={() => remove(i)}
-                >
-                  {t.removeStage}
-                </Button>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <span className="text-sm font-semibold">{t.events}</span>
-              <div className="flex flex-wrap gap-3">
-                {templateEvents.map((ev) => {
-                  const current = stageValues?.[i]?.events ?? [];
-                  const checked = current.includes(ev.value);
-                  return (
-                    <label key={ev.value} className="flex items-center gap-2">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(c) => {
-                          if (c) {
-                            setValue(`stages.${i}.events`, [
-                              ...current,
-                              ev.value,
-                            ]);
-                          } else {
-                            setValue(
-                              `stages.${i}.events`,
-                              current.filter((x) => x !== ev.value),
-                            );
-                          }
-                        }}
-                      />
-                      <span className="text-sm">{ev.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              {errors.stages?.[i]?.events?.message && (
-                <p className="text-small font-semibold text-danger">
-                  {errors.stages?.[i]?.events?.message}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <TextField
-                label={t.maxYield}
-                type="number"
-                inputMode="numeric"
-                mono
-                error={errors.stages?.[i]?.maxYield?.message}
-                {...register(`stages.${i}.maxYield` as const, {
-                  valueAsNumber: true,
-                })}
-              />
-              <TextField
-                label={t.requiredEvidence}
-                error={errors.stages?.[i]?.requiredEvidence?.message}
-                {...register(`stages.${i}.requiredEvidence` as const)}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      <TextField
+        label={t.requiredEvidence}
+        help={t.requiredEvidenceHelp}
+        error={errors.requiredEvidence?.message}
+        {...register("requiredEvidence")}
+      />
 
       <div className="flex flex-wrap justify-end gap-3">
         <Button

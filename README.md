@@ -8,8 +8,8 @@ Every lot (coffee, cocoa, minerals, medicines, any commodity) gets a passport at
 
 - **Passports at the origin.** A passport can only be issued from an approved facility, within the facility's declared capacity for the period, and with any evidence the commodity's first stage requires.
 - **Custody handovers signed by both sides.** The sender signs the handover (EIP-712 typed data) and the receiver accepts or rejects it after weighing the goods. A handover can carry photos, a seal number, a checklist and a location. Part of a lot can be handed over, which splits it into its own passport.
-- **Transforms with mass balance.** Processing turns input passports into output passports. Outputs may never exceed inputs × the stage's maximum yield; the contract checks the same rule.
-- **Commodity templates.** The platform defines each commodity's stages: which events each allows, its maximum yield, its handover weight tolerance and the certificates it requires.
+- **Transforms with mass balance.** Processing turns input passports into output passports. Outputs may never exceed inputs; the contract checks the same rule.
+- **Commodity templates.** The platform defines each product (commodity, unit, origin facility kind, capacity). Lots then move freely: any holder hands over to any verified business, with an optional label for the move.
 - **Certificates.** Accredited certifiers and regulators attach certificates to facilities and passports. The file's hash goes on-chain; a copy can go to IPFS. Certificates can be revoked.
 - **Rules and flags.** The API flags actions it allows but finds close to a limit, such as a yield of 98% or more of the maximum, or a weight near the tolerance. Anyone in the chain can raise a flag, and a regulator's admin clears or upholds it. A revoked passport revokes everything made from it.
 - **Public verification.** `/p/<code>` shows the lot's journey, origins, certificates and a verdict (verified, warning, failed). The verdict comes from re-checking the database against the chain, the stored files and the mass balance.

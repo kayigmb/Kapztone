@@ -24,14 +24,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
         unit: "kg",
         originFacilityKind: "farm_plot",
         capacityRule: { type: "facility_capacity" },
-        stages: [
-          { key: "origin", events: ["ISSUE"] },
-          {
-            key: "washing_station",
-            events: ["HANDOVER", "TRANSFORM"],
-            maxYield: 0.2,
-          }, // the API holds a fraction
-        ],
       },
     }),
   );
@@ -85,8 +77,7 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
 
   const h = copy.handover;
   await p.getByRole("link", { name: i.handOver }).click();
-  await p.getByRole("combobox", { name: h.stage }).click();
-  await p.getByRole("option", { name: "Washing station" }).click();
+  await p.getByLabel(h.stage).fill("transport");
   await p.getByRole("button", { name: h.next }).click();
   await p.getByLabel(h.receiverSearch).fill(wash.name);
   await p.getByRole("radio", { name: new RegExp(wash.name) }).click();
@@ -109,7 +100,7 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   await w.getByLabel(copy.scan.codeLabel).fill(code);
   await w.getByRole("button", { name: "Add lot" }).click();
   await w.getByLabel(t.quantity, { exact: true }).fill("1000");
-  await w.getByText("Washing station", { exact: true }).click();
+  await w.getByLabel(t.stage).fill("washing");
   await w.getByLabel(t.output(1)).fill("180");
   await sign(w, t.sign(1));
   await expect(

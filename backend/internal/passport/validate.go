@@ -33,7 +33,7 @@ func (in IssueInput) Validate() string {
 type HandoverInput struct {
 	ToOrganisationID string `json:"to_organisation_id"`
 	ToOrg            string `json:"to_org"` // the same, under its shorter name
-	// Stage is the template stage the lot enters with the receiver.
+	// Stage is an optional label for the move: transport, storage, sale...
 	Stage string `json:"stage"`
 	// Quantity is how much is handed over; unset means all that remains.
 	// Less than that splits the part off into its own passport first.
@@ -54,8 +54,8 @@ func (in *HandoverInput) Validate() string {
 	switch {
 	case !httpx.IsUUID(in.ToOrganisationID):
 		return "to_org is required"
-	case in.Stage == "":
-		return "stage is required"
+	case len(in.Stage) > MaxStageLen:
+		return fmt.Sprintf("stage may be up to %d characters", MaxStageLen)
 	case in.Quantity != nil && *in.Quantity <= 0:
 		return "quantity must be a whole number above 0"
 	case len(in.Note) > MaxNoteLen:

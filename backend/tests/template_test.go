@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
@@ -12,23 +13,14 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
-const washingYield = 0.2
-
 // coffeeTemplate is the example from PLAN.md §4.2.
 func coffeeTemplate(commodity string) template.Input {
-	yield := washingYield
 	return template.Input{
 		Commodity:          commodity,
 		Unit:               "kg",
 		OriginFacilityKind: facility.KindFarmPlot,
 		CapacityRule:       template.CapacityRule{Type: template.CapacityYieldPerArea, KgPerHaPerSeason: 1200},
-		Stages: []template.Stage{
-			{Key: "origin", Events: []string{template.EventIssue}, RequiredEvidence: []string{"plot_geolocation"}},
-			{Key: "washing_station", Events: []string{template.EventHandover, template.EventTransform}, MaxYield: &yield},
-			{Key: "export", Events: []string{template.EventHandover, template.EventExport},
-				RequiredEvidence: []string{"export_permit", "certificate_of_origin"}},
-			{Key: "import", Events: []string{template.EventHandover, template.EventImport}},
-		},
+		RequiredEvidence:   []string{"plot_geolocation"},
 	}
 }
 
@@ -46,7 +38,6 @@ func TestTemplateValidate(t *testing.T) {
 		t.Fatalf("facility-capacity template rejected: %s", msg)
 	}
 
-	zero, negative := 0.0, -0.5
 	cases := map[string]func(*template.Input){
 		"commodity with spaces":      func(in *template.Input) { in.Commodity = "Green Coffee" },
 		"no unit":                    func(in *template.Input) { in.Unit = "" },
@@ -54,18 +45,8 @@ func TestTemplateValidate(t *testing.T) {
 		"unknown capacity rule":      func(in *template.Input) { in.CapacityRule.Type = "guess" },
 		"yield rule without a rate":  func(in *template.Input) { in.CapacityRule.KgPerHaPerSeason = 0 },
 		"rate on the wrong rule":     func(in *template.Input) { in.CapacityRule.Type = template.CapacityFacility },
-		"no stages":                  func(in *template.Input) { in.Stages = nil },
-		"first stage cannot issue":   func(in *template.Input) { in.Stages[0].Events = []string{template.EventHandover} },
-		"issue in a later stage":     func(in *template.Input) { in.Stages[2].Events = append(in.Stages[2].Events, template.EventIssue) },
-		"stage key twice":            func(in *template.Input) { in.Stages[3].Key = in.Stages[1].Key },
-		"bad stage key":              func(in *template.Input) { in.Stages[1].Key = "Washing Station" },
-		"stage without events":       func(in *template.Input) { in.Stages[3].Events = nil },
-		"unknown event":              func(in *template.Input) { in.Stages[3].Events = []string{"TELEPORT"} },
-		"event listed twice":         func(in *template.Input) { in.Stages[3].Events = []string{template.EventImport, template.EventImport} },
-		"zero yield":                 func(in *template.Input) { in.Stages[1].MaxYield = &zero },
-		"negative yield":             func(in *template.Input) { in.Stages[1].MaxYield = &negative },
-		"yield without a transform":  func(in *template.Input) { in.Stages[3].MaxYield = in.Stages[1].MaxYield },
-		"evidence that is not a key": func(in *template.Input) { in.Stages[0].RequiredEvidence = []string{"Plot Photo"} },
+		"evidence that is not a key": func(in *template.Input) { in.RequiredEvidence = []string{"Plot Photo"} },
+		"evidence listed twice":      func(in *template.Input) { in.RequiredEvidence = []string{"plot_geolocation", "plot_geolocation"} },
 	}
 	for name, breakIt := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -93,7 +74,7 @@ func TestTemplateCRUD(t *testing.T) {
 	rec := do(e.h, http.MethodPost, "/templates", root, string(body))
 	want(t, "create", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)
-	if len(tpl.Stages) != len(in.Stages) || tpl.Stages[1].MaxYield == nil || *tpl.Stages[1].MaxYield != washingYield ||
+	if !slices.Equal(tpl.RequiredEvidence, in.RequiredEvidence) ||
 		tpl.CapacityRule != in.CapacityRule || tpl.OriginFacilityKind != in.OriginFacilityKind {
 		t.Fatalf("template did not round-trip: %s", rec.Body)
 	}

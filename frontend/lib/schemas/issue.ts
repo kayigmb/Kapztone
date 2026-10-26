@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { copy } from "../consts.ts";
-import type { Facility, Template } from "../api.ts";
+import type { Facility } from "../api.ts";
 
 const v = copy.validation;
 
@@ -38,9 +38,4 @@ export function issueBlock(
     capacity: facility.capacity,
     capacityUsed: facility.capacity_used,
   };
-}
-
-/** The stages a template supports, in its own order (for the event chips on issue). */
-export function templateStages(template: Pick<Template, "stages">): string[] {
-  return template.stages.map((s) => s.key);
 }

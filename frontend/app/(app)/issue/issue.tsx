@@ -47,8 +47,6 @@ import {
   passportStatus,
   queryKeys,
   routes,
-  templateEvent,
-  templateEvents,
   type PassportStatus,
   screenCopy,
 } from "@/lib/consts";
@@ -57,7 +55,6 @@ import {
   capacityLeft,
   issueBlock,
   issueFormSchema,
-  templateStages,
   type IssueForm,
   type IssueFormInput,
 } from "@/lib/schemas/issue";
@@ -75,8 +72,6 @@ const kindIcon: Record<string, LucideIcon> = {
   processing_plant: Factory,
   warehouse: Warehouse,
 };
-const stageLabel = (key: string) =>
-  templateEvents.find((e) => e.value === key)?.label ?? humanize(key);
 const periodOf = (f: Facility) => f.capacity_period;
 
 export function Issue() {
@@ -143,8 +138,7 @@ function Flow() {
   });
 
   const required =
-    template?.stages.find((s) => s.events?.includes(templateEvent.issue))
-      ?.requiredEvidence ?? [];
+    template?.requiredEvidence ?? [];
   const onFile = new Set((evidence.data ?? []).map((c) => c.type));
   const missing = required.filter((type) => !onFile.has(type));
   const checks = required.map((type) => ({
@@ -440,7 +434,7 @@ function PickerFrame({
   );
 }
 
-/** Radio rows for the commodity template: name, commodity, unit and the stages it moves through. */
+/** Radio rows for the commodity template: name, commodity and unit. */
 function TemplatePicker({
   page,
   picking,
@@ -472,8 +466,7 @@ function TemplatePicker({
               <span className="grid min-w-0 gap-1">
                 <span className="truncate text-sm font-semibold">{m.name}</span>
                 <span className="truncate text-xs text-ink-muted">
-                  {humanize(m.commodity)} · {m.unit} ·{" "}
-                  {templateStages(m).map(stageLabel).join(" → ")}
+                  {humanize(m.commodity)} · {m.unit}
                 </span>
               </span>
               <input

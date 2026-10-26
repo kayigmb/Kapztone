@@ -97,9 +97,7 @@ func lotForFlags(t *testing.T, e *env, root string) flag.Flag {
 
 	tplIn := coffeeTemplate("coffee_" + e.suffix)
 	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	for i := range tplIn.Stages {
-		tplIn.Stages[i].RequiredEvidence = nil // evidence rules are not what this test is about
-	}
+	tplIn.RequiredEvidence = nil // evidence rules are not what this test is about
 	rec := post(e, root, "/templates", tplIn)
 	want(t, "create template", rec, http.StatusCreated)
 	tpl := decodeTo[template.Template](t, rec)

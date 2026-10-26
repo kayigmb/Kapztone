@@ -631,7 +631,7 @@
     "steps": ["Facility", "Quantity", "Sign"],
     "where": "Where was it produced?",
     "template": "Product template",
-    "templateHelp": "Sets the unit, the stages your lot moves through and the evidence each stage needs.",
+    "templateHelp": "Sets the unit and the evidence your facility needs before issuing.",
     "templateEmpty": "No templates yet. A platform admin creates the commodity templates.",
     "facility": "Facility",
     "facilityEmpty": "No facilities yet. Register a farm plot, site or warehouse first.",
@@ -641,7 +641,7 @@
     "howMuch": "How much?",
     "quantity": "Quantity",
     "evidence": "Evidence on file",
-    "evidenceHelp": "The template's first stage asks for a valid certificate of each of these, attached to this facility.",
+    "evidenceHelp": "The template asks for a valid certificate of each of these, attached to this facility.",
     "evidenceNone": "This template asks for no evidence before issuing.",
     "evidenceMissing": {
       "$template": "Missing: {keys}. Ask a certifier to issue these certificates for this facility, then issue the passport."
@@ -687,10 +687,8 @@
     "partial": {
       "$template": "Sending less keeps the rest ({rest}) on this passport; the part you send gets its own lot code."
     },
-    "stage": "Stage it goes into",
-    "stageHelp": "Only stages of this product that allow a handover.",
-    "stagePlaceholder": "Choose a stage",
-    "noStages": "This product's template has no stage that allows a handover. Ask your platform admin to add one.",
+    "stage": "What is this move?",
+    "stageHelp": "Optional, e.g. transport, storage, sale.",
     "location": "Add my location",
     "locationAdded": {
       "$template": "Location added · {lat}, {lon}"
@@ -844,8 +842,8 @@
   "transform": {
     "title": "Transform lots",
     "sub": "Processing that turns lots into new lots: washing, drying, milling, concentrating.",
-    "stage": "Stage",
-    "stageHelp": "The stage the new lots enter. It comes from the template of the lots you select.",
+    "stage": "What is done to the lots?",
+    "stageHelp": "Optional, e.g. washing, drying, sorting. The new lots can't hold more than went in.",
     "inputs": "Inputs",
     "addInput": "Scan or add another lot",
     "inputEmpty": "Select the lots that go into this operation.",
@@ -1069,14 +1067,13 @@
   },
   "templates": {
     "title": "Product templates",
-    "sub": "The platform's rules for one commodity: its unit, the stages a lot moves through, yields and evidence.",
+    "sub": "The platform's rules for one commodity: its unit, origin facility, evidence and capacity rule.",
     "new": "New template",
     "empty": "No templates yet.",
     "headers": {
       "name": "Template",
       "commodity": "Commodity",
       "unit": "Unit",
-      "stages": "Stages",
       "updated": "Updated"
     },
     "open": "Open",
@@ -1099,20 +1096,11 @@
       "kgPerHa": "Kilograms per hectare per season",
       "originKind": "Origin facility type",
       "originKindHelp": "The kind of facility a lot may be issued at.",
-      "stages": "Stages",
-      "addStage": "Add stage",
-      "removeStage": "Remove stage",
-      "stageKey": "Stage key",
-      "stageKeyHelp": "Lowercase letters, digits and underscores, like washing_station.",
-      "events": "Allowed events",
-      "maxYield": "Maximum yield (%)",
-      "maxYieldHelp": "On a transform, the outputs may be at most this share of the inputs. Leave empty for no limit.",
       "evidence": "Required evidence",
-      "evidenceHelp": "A valid certificate of each key must be attached before a lot may enter this stage.",
+      "evidenceHelp": "A valid certificate of each key must be on the origin facility before a lot is issued.",
       "evidenceKey": "Evidence key",
       "evidenceAdd": "Add evidence",
       "preview": "Live preview",
-      "previewNote": "A lot enters at the first stage and moves through them in order.",
       "save": "Save template",
       "saving": "Saving…",
       "create": "Create template",
@@ -1374,7 +1362,6 @@
     "quantityPositive": "Enter a whole number above zero.",
     "note": "Say something, so the next person knows what happened.",
     "stage": "Choose the event that happens.",
-    "handoverStage": "Choose the stage the lot goes into.",
     "facilityLocation": "Drop a pin or draw the boundary on the map.",
     "licenceExpired": "The licence must still be valid: choose a date after today.",
     "facility": "Choose where this comes from.",
@@ -1396,8 +1383,7 @@
     "templateName": "Enter the template's name.",
     "commodity": "Enter the commodity, like coffee or cassava.",
     "unit": "Enter the unit, like kg or bags.",
-    "stages": "Each template needs at least one stage.",
-    "events": "Choose at least one event."
+    "evidence": "Evidence keys use lowercase letters, digits and underscores, separated by commas."
   },
   "onboarding": {
     "eyebrow": "Organisation verification",

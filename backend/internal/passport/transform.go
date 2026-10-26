@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
@@ -21,7 +19,6 @@ import (
 var (
 	ErrInputNotHeld = errors.New("input not held")
 	ErrMixedInputs  = errors.New("mixed inputs")
-	ErrStageInvalid = errors.New("stage invalid")
 )
 
 // InsufficientError says which input does not have the quantity asked of it.
@@ -67,10 +64,12 @@ type TransformOutput struct {
 }
 
 func (in *TransformInput) Validate() string {
-	in.Stage = strings.TrimSpace(in.Stage)
+	if in.Stage = strings.TrimSpace(in.Stage); in.Stage == "" {
+		in.Stage = DefaultTransformStage
+	}
 	switch {
-	case in.Stage == "":
-		return "stage is required"
+	case len(in.Stage) > MaxStageLen:
+		return fmt.Sprintf("stage may be up to %d characters", MaxStageLen)
 	case len(in.Inputs) == 0 || len(in.Inputs) > MaxTransformItems:
 		return fmt.Sprintf("inputs: give 1 to %d passports", MaxTransformItems)
 	case len(in.Outputs) == 0 || len(in.Outputs) > MaxTransformItems:
@@ -148,63 +147,27 @@ type outputRecord struct {
 	Quantity       int64  `json:"quantity"`
 }
 
-// transformStage finds the commodity's live template and one of its stages
-// that transforms with a maximum yield.
-func transformStage(ctx context.Context, tx pgx.Tx, commodity, stage string) (templateID string, st template.Stage, err error) {
-	templateID, stages, err := liveStages(ctx, tx, commodity)
-	if err != nil {
-		return "", st, err
-	}
-	for _, st := range stages {
-		if st.Key == stage && st.MaxYield != nil && slices.Contains(st.Events, EventTransform) {
-			return templateID, st, nil
-		}
-	}
-	return "", st, ErrStageInvalid
-}
-
 // Transform uses (parts of) input passports to create output passports,
 // after checking every rule the contract will check again: the inputs are
 // active, held by the acting organisation and of one commodity, none is
-// overdrawn, and the outputs do not exceed inputs × the stage's maximum yield.
-//
-// Outputs of at least RuleYieldShare of the maximum are allowed, but at a
-// stage that loses mass the rules raise a flag about the first output in the
-// same transaction.
-func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput, now time.Time, raise RaiseFlag) (Transform, error) {
+// overdrawn, and the outputs do not exceed the inputs.
+func (s Store) Transform(ctx context.Context, orgID, userID string, in TransformInput, now time.Time) (Transform, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Transform{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	t, err := transformTx(ctx, tx, orgID, userID, in, now, false)
+	t, err := transformTx(ctx, tx, orgID, userID, in, now)
 	if err != nil {
 		return Transform{}, err
-	}
-	var totalIn, totalOut int64
-	for _, u := range t.Inputs {
-		totalIn += u.QuantityUsed
-	}
-	for _, p := range t.Outputs {
-		totalOut += p.Quantity
-	}
-	// share = out / (in × yield); compared in floats, it only decides a flag.
-	share := float64(totalOut) * chain.YieldScale / (float64(totalIn) * float64(t.MaxYieldPPM))
-	// A stage that keeps all the mass (sorting, splitting) always yields 100%: never flagged.
-	if raise != nil && t.MaxYieldPPM < chain.YieldScale && share >= RuleYieldShare && len(t.Outputs) > 0 {
-		reason := fmt.Sprintf(MsgRuleYieldFmt, share*100, t.Stage)
-		if err := raise(ctx, tx, orgID, userID, orgID, t.Outputs[0].ID, reason, SourceRules); err != nil {
-			return Transform{}, err
-		}
 	}
 	return t, tx.Commit(ctx)
 }
 
-// transformTx is Transform in the caller's transaction. With split, the stage
-// is the platform's own split stage (yield 1, no evidence): a handover of part
-// of a lot cuts that part into its own passport this way first.
-func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in TransformInput, now time.Time, split bool) (Transform, error) {
+// transformTx is Transform in the caller's transaction: a handover of part of
+// a lot cuts that part into its own passport this way first.
+func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in TransformInput, now time.Time) (Transform, error) {
 	j := &transformJob{tx: tx, orgID: orgID, userID: userID, in: in, now: now}
 	locked, err := lockInputs(ctx, tx, in.Inputs)
 	if err != nil {
@@ -214,14 +177,8 @@ func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in Transf
 	if err != nil {
 		return Transform{}, err
 	}
-	stage, err := j.rule(ctx, split)
-	if err != nil {
+	if err := j.rule(ctx); err != nil {
 		return Transform{}, err
-	}
-	for _, u := range j.used {
-		if err := requireEvidence(ctx, tx, stage, attestation.SubjectPassport, u.PassportID); err != nil {
-			return Transform{}, err
-		}
 	}
 	if err := j.checkYield(totalIn); err != nil {
 		return Transform{}, err
@@ -299,27 +256,16 @@ func (j *transformJob) checkInputs(locked map[string]heldInput) (totalIn int64, 
 	return totalIn, nil
 }
 
-// rule finds the stage and its yield. A split keeps everything (yield 1);
-// publishing a template queues the split yield, and one published before
-// splits existed gets it now, ahead of this transform.
-func (j *transformJob) rule(ctx context.Context, split bool) (template.Stage, error) {
-	var stage template.Stage
+// rule: whatever the label, a transform keeps at most what went in (the
+// platform's split yield of 1). A template published before splits existed
+// gets that yield queued now, ahead of this transform.
+func (j *transformJob) rule(ctx context.Context) error {
 	var err error
-	if split {
-		if j.templateID, _, err = liveStages(ctx, j.tx, j.commodity); err != nil {
-			return stage, err
-		}
-		whole := 1.0
-		stage = template.Stage{Key: template.StageSplit, MaxYield: &whole}
-		err = template.QueueSplitYield(ctx, j.tx, j.templateID, j.commodity)
-	} else {
-		j.templateID, stage, err = transformStage(ctx, j.tx, j.commodity, j.in.Stage)
+	if j.templateID, err = liveTemplate(ctx, j.tx, j.commodity); err != nil {
+		return err
 	}
-	if err != nil {
-		return stage, err
-	}
-	j.ppm = template.YieldPPM(*stage.MaxYield)
-	return stage, nil
+	j.ppm = chain.YieldScale
+	return template.QueueSplitYield(ctx, j.tx, j.templateID, j.commodity)
 }
 
 // checkYield is the mass balance, compared without dividing exactly as the
@@ -377,7 +323,8 @@ func (j *transformJob) write(ctx context.Context) (Transform, error) {
 	if t.Outputs, err = j.createOutputs(ctx); err != nil {
 		return Transform{}, err
 	}
-	payload := chain.Transform{TransformID: j.id, Stage: j.in.Stage, Outputs: j.queued, DataHash: j.dataHash}
+	// The contract finds the yield by stage: always the split stage's.
+	payload := chain.Transform{TransformID: j.id, Stage: template.StageSplit, Outputs: j.queued, DataHash: j.dataHash}
 	for _, u := range j.used {
 		payload.Inputs = append(payload.Inputs, u.PassportID)
 		payload.InputsUsed = append(payload.InputsUsed, u.QuantityUsed)

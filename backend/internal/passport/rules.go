@@ -2,7 +2,6 @@ package passport
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,43 +13,31 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
-func parseStages(stagesJSON string) ([]template.Stage, error) {
-	var stages []template.Stage
-	err := json.Unmarshal([]byte(stagesJSON), &stages)
-	return stages, err
-}
-
-// liveStages returns the commodity's live template and its stages.
-func liveStages(ctx context.Context, tx pgx.Tx, commodity string) (templateID string, stages []template.Stage, err error) {
-	var stagesJSON string
+// liveTemplate returns the id of the commodity's live template.
+func liveTemplate(ctx context.Context, tx pgx.Tx, commodity string) (templateID string, err error) {
 	err = tx.QueryRow(ctx,
-		`SELECT id::text, stages::text FROM commodity_templates WHERE commodity = $1 AND NOT is_deleted`, commodity,
-	).Scan(&templateID, &stagesJSON)
+		`SELECT id::text FROM commodity_templates WHERE commodity = $1 AND NOT is_deleted`, commodity,
+	).Scan(&templateID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil, ErrTemplateNotFound
+		return "", ErrTemplateNotFound
 	}
-	if err != nil {
-		return "", nil, err
-	}
-	stages, err = parseStages(stagesJSON)
-	return templateID, stages, err
+	return templateID, err
 }
 
-// requireEvidence refuses the action entering stage st unless every piece of
-// evidence it asks for is a valid certificate on the subject: issued under
-// that evidence key, not revoked, and inside its validity window now.
-func requireEvidence(ctx context.Context, tx pgx.Tx, st template.Stage, subjectType, subjectID string) error {
-	if len(st.RequiredEvidence) == 0 {
+// requireEvidence refuses an issue unless every piece of evidence the
+// template asks for is a valid certificate on the origin facility: issued
+// under that evidence key, not revoked, and inside its validity window now.
+func requireEvidence(ctx context.Context, tx pgx.Tx, required []string, facilityID string) error {
+	if len(required) == 0 {
 		return nil
 	}
 	rows, err := tx.Query(ctx,
 		`SELECT DISTINCT type FROM attestations
 		 WHERE subject_type = $1 AND subject_id = $2::uuid AND type = ANY($3) AND status = $4
 		   AND valid_from <= now() AND valid_to >= now() AND NOT is_deleted`,
-		subjectType, subjectID, st.RequiredEvidence, attestation.StatusValid)
+		attestation.SubjectFacility, facilityID, required, attestation.StatusValid)
 	if err != nil {
 		return err
 	}
@@ -59,13 +46,13 @@ func requireEvidence(ctx context.Context, tx pgx.Tx, st template.Stage, subjectT
 		return err
 	}
 	var missing []string
-	for _, key := range st.RequiredEvidence {
+	for _, key := range required {
 		if !slices.Contains(have, key) {
 			missing = append(missing, key)
 		}
 	}
 	if len(missing) > 0 {
-		return EvidenceError{Stage: st.Key, Missing: missing}
+		return EvidenceError{Missing: missing}
 	}
 	return nil
 }

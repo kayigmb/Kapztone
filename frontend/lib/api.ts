@@ -20,7 +20,6 @@ import {
   type TileKey,
 } from "@/lib/consts";
 import type { ApiVerification } from "@/lib/verification";
-import { yieldToFraction, yieldToPct } from "@/lib/schemas/template";
 import { listQuery, type ListParams } from "@/lib/list";
 import { orgAddress } from "@/lib/address";
 import { placeSchema } from "@/lib/geocode";
@@ -177,17 +176,6 @@ const page = <T extends z.ZodType>(item: T) =>
 /** One page of a list, paged, searched and sorted by the API. */
 export type Paged<T> = { data: T[]; total: number };
 
-const stage = z.object({
-  key: z.string(),
-  events: z.array(z.string()).optional(),
-  maxYield: z
-    .number()
-    .nullable()
-    .transform((f) => (f == null ? f : yieldToPct(f)))
-    .optional(), // percent on screen
-  requiredEvidence: z.array(z.string()).optional(),
-  handoverTolerance: z.number().nullable().optional(),
-});
 const templateSchema = z.object({
   id: z.string(),
   commodity: z.string(),
@@ -201,7 +189,7 @@ const templateSchema = z.object({
     })
     .nullable()
     .optional(),
-  stages: z.array(stage),
+  requiredEvidence: z.array(z.string()).catch([]),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
 });
@@ -754,9 +742,7 @@ export const endpoints = {
     api(`${apiPaths.templates}${all}`, page(templateSchema)).then((p) =>
       [
         ...new Set(
-          p.data.flatMap((t) =>
-            t.stages.flatMap((s) => s.requiredEvidence ?? []),
-          ),
+          p.data.flatMap((t) => t.requiredEvidence),
         ),
       ].sort(),
     ),
@@ -929,18 +915,10 @@ export const endpoints = {
       (p) => p.data,
     ),
   template: (id: string) => api(apiPaths.template(id), templateSchema),
-  createTemplate: (body: TemplateBody) =>
-    write(
-      apiPaths.templates,
-      templateSchema,
-      send("POST", withFractions(body)),
-    ),
-  updateTemplate: (id: string, body: TemplateBody) =>
-    write(
-      apiPaths.template(id),
-      templateSchema,
-      send("PUT", withFractions(body)),
-    ),
+  createTemplate: (body: object) =>
+    write(apiPaths.templates, templateSchema, send("POST", body)),
+  updateTemplate: (id: string, body: object) =>
+    write(apiPaths.template(id), templateSchema, send("PUT", body)),
 
   passportsList: (status?: string) =>
     api(
@@ -1126,16 +1104,6 @@ const countSources: Record<
   orgsChanges: [apiPaths.orgs, `status=${orgStatus.changesRequested}`],
   orgsRejected: [apiPaths.orgs, `status=${orgStatus.rejected}`],
 };
-
-/** A template as the forms send it: maximum yields in percent. */
-type TemplateBody = { stages: { maxYield?: number | null }[] };
-const withFractions = <B extends TemplateBody>(b: B): B => ({
-  ...b,
-  stages: b.stages.map((st) => ({
-    ...st,
-    maxYield: st.maxYield == null ? st.maxYield : yieldToFraction(st.maxYield),
-  })),
-});
 
 const countRow = z.object({ key: z.string(), count: z.number() });
 export const platformStatsSchema = z.object({

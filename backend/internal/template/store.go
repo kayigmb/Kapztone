@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -42,16 +41,16 @@ var List = listq.Config{
 }
 
 const columns = `t.id::text, t.commodity, t.name, t.unit, t.origin_facility_kind,
-                 t.capacity_rule::text, t.stages::text, t.version, t.draft::text, t.created_at, t.updated_at`
+                 t.capacity_rule::text, t.required_evidence, t.version, t.draft::text, t.created_at, t.updated_at`
 
 func scan(row pgx.CollectableRow) (Template, error) {
 	var (
 		t            Template
-		rule, stages string
+		rule  string
 		draft        *string
 	)
 	err := row.Scan(&t.ID, &t.Commodity, &t.Name, &t.Unit, &t.OriginFacilityKind,
-		&rule, &stages, &t.Version, &draft, &t.CreatedAt, &t.UpdatedAt)
+		&rule, &t.RequiredEvidence, &t.Version, &draft, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return t, err
 	}
@@ -61,10 +60,7 @@ func scan(row pgx.CollectableRow) (Template, error) {
 			return t, err
 		}
 	}
-	if err := json.Unmarshal([]byte(rule), &t.CapacityRule); err != nil {
-		return t, err
-	}
-	return t, json.Unmarshal([]byte(stages), &t.Stages)
+	return t, json.Unmarshal([]byte(rule), &t.CapacityRule)
 }
 
 func one(rows pgx.Rows, err error) (Template, error) {
@@ -83,43 +79,19 @@ func one(rows pgx.Rows, err error) (Template, error) {
 	return Template{}, err
 }
 
-// jsonArgs returns the two JSON columns of an input as text.
-func jsonArgs(in Input) (rule, stages string) {
+// ruleArg returns the capacity rule of an input as JSON text.
+func ruleArg(in Input) string {
 	r, _ := json.Marshal(in.CapacityRule)
-	s, _ := json.Marshal(in.Stages)
-	return string(r), string(s)
+	return string(r)
 }
 
 type Store struct {
 	Pool *pgxpool.Pool
 }
 
-// YieldPPM writes a stage's maximum yield the way the contract holds it.
-func YieldPPM(maxYield float64) int64 {
-	return int64(math.Round(maxYield * chain.YieldScale))
-}
-
-// queueYields tells the chain every yield the template sets, and the split
-// stage's yield of 1 (see StageSplit). The contract refuses a transform at a
-// stage whose yield it has not been told.
-func queueYields(ctx context.Context, tx pgx.Tx, t Template) error {
-	whole := 1.0
-	stages := append(t.Stages, Stage{Key: StageSplit, MaxYield: &whole})
-	for _, st := range stages {
-		if st.MaxYield == nil {
-			continue
-		}
-		err := chain.Enqueue(ctx, tx, chain.KindMaxYieldSet, t.ID,
-			chain.MaxYieldSet{Commodity: t.Commodity, Stage: st.Key, PartsPerMillion: YieldPPM(*st.MaxYield)})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// QueueSplitYield queues the split stage's yield for a commodity unless it
-// was queued before: templates published before splits existed lack it.
+// QueueSplitYield queues the split stage's yield of 1 for a commodity unless
+// it was queued before. The contract refuses a transform at a stage whose
+// yield it has not been told, and every transform runs at the split stage.
 func QueueSplitYield(ctx context.Context, tx pgx.Tx, templateID, commodity string) error {
 	var queued bool
 	err := tx.QueryRow(ctx,
@@ -133,7 +105,7 @@ func QueueSplitYield(ctx context.Context, tx pgx.Tx, templateID, commodity strin
 		chain.MaxYieldSet{Commodity: commodity, Stage: StageSplit, PartsPerMillion: chain.YieldScale})
 }
 
-// save runs one insert or update and queues the template's yields with it.
+// save runs one insert or update and queues the commodity's split yield with it.
 func (s Store) save(ctx context.Context, check func(pgx.Tx) error, sql string, args ...any) (Template, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -150,7 +122,7 @@ func (s Store) save(ctx context.Context, check func(pgx.Tx) error, sql string, a
 	if err != nil {
 		return Template{}, err
 	}
-	if err := queueYields(ctx, tx, t); err != nil {
+	if err := QueueSplitYield(ctx, tx, t.ID, t.Commodity); err != nil {
 		return Template{}, err
 	}
 	return t, tx.Commit(ctx)
@@ -197,11 +169,10 @@ func checkKind(ctx context.Context, tx pgx.Tx, kind, existingTemplateID string) 
 }
 
 func (s Store) Create(ctx context.Context, in Input) (Template, error) {
-	rule, stages := jsonArgs(in)
 	return s.save(ctx, func(tx pgx.Tx) error { return checkKind(ctx, tx, in.OriginFacilityKind, "") },
-		`INSERT INTO commodity_templates AS t (commodity, name, unit, origin_facility_kind, capacity_rule, stages)
-		 VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb) RETURNING `+columns,
-		in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, rule, stages)
+		`INSERT INTO commodity_templates AS t (commodity, name, unit, origin_facility_kind, capacity_rule, required_evidence)
+		 VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING `+columns,
+		in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, ruleArg(in), in.RequiredEvidence)
 }
 
 func (s Store) Find(ctx context.Context, q listq.Query) (listq.Page[Template], error) {
@@ -256,7 +227,7 @@ func (s Store) Update(ctx context.Context, id string, in Input) (Template, error
 }
 
 // Publish makes the draft the template's rules, as the next version, and
-// queues its yields for the chain. Transforms and handovers record the
+// queues the commodity's split yield for the chain. Transforms and handovers record the
 // version they were judged by.
 func (s Store) Publish(ctx context.Context, id string) (Template, error) {
 	tx, err := s.Pool.Begin(ctx)
@@ -274,17 +245,16 @@ func (s Store) Publish(ctx context.Context, id string) (Template, error) {
 	if err := inUse(ctx, tx, id, in); err != nil {
 		return Template{}, err
 	}
-	rule, stages := jsonArgs(in)
 	t, err := one(tx.Query(ctx,
 		`UPDATE commodity_templates AS t
 		 SET commodity = $2, name = $3, unit = $4, origin_facility_kind = $5,
-		     capacity_rule = $6::jsonb, stages = $7::jsonb, version = t.version + 1, draft = NULL
+		     capacity_rule = $6::jsonb, required_evidence = $7, version = t.version + 1, draft = NULL
 		 WHERE t.id = $1::uuid RETURNING `+columns,
-		id, in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, rule, stages))
+		id, in.Commodity, in.Name, in.Unit, in.OriginFacilityKind, ruleArg(in), in.RequiredEvidence))
 	if err != nil {
 		return Template{}, err
 	}
-	if err := queueYields(ctx, tx, t); err != nil {
+	if err := QueueSplitYield(ctx, tx, t.ID, t.Commodity); err != nil {
 		return Template{}, err
 	}
 	return t, tx.Commit(ctx)

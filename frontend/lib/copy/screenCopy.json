@@ -2,7 +2,7 @@
   "templateDetail": {
     "back": "Back to templates",
     "title": "Product template",
-    "sub": "Edit the template and its stages.",
+    "sub": "Edit the template: its unit, origin, evidence and capacity rule.",
     "notAllowedTitle": "You can't manage templates.",
     "notAllowedBody": "Only the platform admin can manage product templates.",
     "name": "Name",
@@ -15,13 +15,8 @@
     "perArea": "Per area (yield per hectare per season)",
     "facilityCapacity": "Facility capacity",
     "kgPerHaPerSeason": "Kg per ha per season",
-    "stages": "Stages",
-    "addStage": "Add stage",
-    "stageKey": "Stage key",
-    "events": "Events",
-    "maxYield": "Max yield (%)",
     "requiredEvidence": "Required evidence (comma separated)",
-    "removeStage": "Remove",
+    "requiredEvidenceHelp": "Certificate types the origin facility must hold before a lot is issued, like plot_registration.",
     "save": "Save",
     "saving": "Saving…",
     "saved": "Template saved",
@@ -31,7 +26,7 @@
   },
   "templates": {
     "title": "Product templates",
-    "sub": "Define how a commodity moves: stages, events, evidence and capacity rule.",
+    "sub": "Define a commodity: its unit, origin facility, required evidence and capacity rule.",
     "tabTemplates": "Templates",
     "tabFacilityKinds": "Facility kinds",
     "kindsTitle": "Facility kinds",
@@ -64,19 +59,13 @@
     "perArea": "Per area (yield per hectare per season)",
     "facilityCapacity": "Facility capacity",
     "kgPerHaPerSeason": "Kg per ha per season",
-    "stages": "Stages",
-    "addStage": "Add stage",
-    "stageKey": "Stage key",
-    "events": "Events",
-    "maxYield": "Max yield (%)",
     "requiredEvidence": "Required evidence (comma separated)",
-    "removeStage": "Remove",
-    "atLeastOneEvent": "At least one event",
+    "requiredEvidenceHelp": "Certificate types the origin facility must hold before a lot is issued, like plot_registration.",
     "listName": "Name",
     "listCommodity": "Commodity",
     "listUnit": "Unit",
     "listOrigin": "Origin facility",
-    "listStageCount": "Stage count",
+    "listEvidence": "Evidence",
     "listUpdated": "Updated",
     "noTemplates": "No templates yet.",
     "notAllowedTitle": "You can't manage templates.",
@@ -151,25 +140,18 @@
     "notAllowedBody": "Turning lots into new lots is a processing action. Ask your organisation's admin for the transform permission.",
     "addLot": "Add lot",
     "massBalance": "Mass balance",
-    "pickStage": "Choose a stage to check the outputs against its allowed yield.",
-    "templateLine": {
-      "$template": "Template: {name}"
-    },
-    "noTemplate": "This lot has no product template, so its stages can't be listed.",
-    "noYieldShort": "No maximum yield recorded",
-    "allowedYield": {
-      "$template": "Allowed yield up to {max}%"
-    },
+    "pickStage": "Add the lots that go in to check the outputs against them.",
+    "defaultStage": "processing",
     "totalTooHigh": "Total too high",
     "alreadyAdded": "That lot is already in the inputs.",
     "tooManyRows": {
       "$template": "A transform takes up to {n} rows on each side."
     },
-    "readyBlocked": "Fill in every input, the stage and the outputs before signing.",
+    "readyBlocked": "Fill in every input and the outputs before signing.",
     "yieldLabel": "Yield",
     "newLots": "New lots",
     "overSaid": {
-      "$template": "Outputs total {out}; these inputs can yield at most {max} at this stage."
+      "$template": "Outputs total {out}; the inputs hold only {max}."
     },
     "formula": {
       "$template": "Input {into} × allowed yield {pct}% = {max} maximum output"

@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
-	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
@@ -28,7 +26,7 @@ type Handover struct {
 	PassportID   string    `json:"passport_id"`
 	FromOrg      string    `json:"from_org"`
 	ToOrg        string    `json:"to_org"`
-	Stage        string    `json:"stage"` // the template stage the lot enters
+	Stage        string    `json:"stage"` // a free label for the step the lot enters
 	Quantity     int64     `json:"quantity"`
 	Note         string    `json:"note"`
 	DataHash     string    `json:"data_hash"`
@@ -187,9 +185,6 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	if err != nil {
 		return Handover{}, err
 	}
-	if err := checkHandoverStage(ctx, tx, lot.commodity, in.Stage, passportID); err != nil {
-		return Handover{}, err
-	}
 	if err := checkReceiver(ctx, tx, in.ToOrganisationID, fromOrg); err != nil {
 		return Handover{}, err
 	}
@@ -244,22 +239,6 @@ func lockForHandover(ctx context.Context, tx pgx.Tx, passportID, fromOrg string,
 	return l, nil
 }
 
-// checkHandoverStage: the stage the lot enters must take handovers, and its
-// evidence must be on the passport.
-func checkHandoverStage(ctx context.Context, tx pgx.Tx, commodity, stage, passportID string) error {
-	_, stages, err := liveStages(ctx, tx, commodity)
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(stages, func(st template.Stage) bool {
-		return st.Key == stage && slices.Contains(st.Events, EventHandover)
-	})
-	if i < 0 {
-		return ErrHandoverStage
-	}
-	return requireEvidence(ctx, tx, stages[i], attestation.SubjectPassport, passportID)
-}
-
 // checkReceiver needs a verified organisation with a signing key, other than the sender.
 func checkReceiver(ctx context.Context, tx pgx.Tx, toOrg, fromOrg string) error {
 	var ok bool
@@ -286,7 +265,7 @@ func splitIfPart(ctx context.Context, tx pgx.Tx, l heldLot, passportID, fromOrg,
 		Stage:   template.StageSplit,
 		Inputs:  []TransformSource{{PassportID: passportID, Quantity: l.quantity}},
 		Outputs: []TransformOutput{{Quantity: l.quantity}},
-	}, now, true)
+	}, now)
 	if err != nil {
 		return "", 0, nil, err
 	}
@@ -439,7 +418,7 @@ const (
 )
 
 // ToleranceError says the weight a receiver recorded differs from what was
-// sent by more than the stage allows.
+// sent by more than a handover allows.
 type ToleranceError struct {
 	Sent, Received int64
 	Unit           string
@@ -452,29 +431,17 @@ func (e ToleranceError) Difference() float64 {
 }
 
 func (e ToleranceError) Error() string {
-	return fmt.Sprintf("received %d %s but %d %s was sent: %.1f%% off, and this stage accepts at most %.1f%%. Reject the handover, or raise a flag",
+	return fmt.Sprintf("received %d %s but %d %s was sent: %.1f%% off, and a handover accepts at most %.1f%%. Reject the handover, or raise a flag",
 		e.Received, e.Unit, e.Sent, e.Unit, e.Difference(), e.Tolerance)
 }
 
-// tolerance is the weight difference, in percent, the handover's stage accepts.
+// tolerance is the weight difference, in percent, a handover accepts, and
+// the lot's unit.
 func tolerance(ctx context.Context, tx pgx.Tx, handoverID string) (pct float64, unit string, err error) {
-	var stage, commodity string
 	err = tx.QueryRow(ctx,
-		`SELECT h.stage, p.commodity, p.unit FROM handovers h JOIN passports p ON p.id = h.passport_id
-		 WHERE h.id = $1::uuid`, handoverID).Scan(&stage, &commodity, &unit)
-	if err != nil {
-		return 0, "", err
-	}
-	_, stages, err := liveStages(ctx, tx, commodity)
-	if err != nil {
-		return 0, "", err
-	}
-	for _, st := range stages {
-		if st.Key == stage {
-			return st.Tolerance(), unit, nil
-		}
-	}
-	return template.DefaultHandoverTolerance, unit, nil // a handover from before stages
+		`SELECT p.unit FROM handovers h JOIN passports p ON p.id = h.passport_id
+		 WHERE h.id = $1::uuid`, handoverID).Scan(&unit)
+	return template.DefaultHandoverTolerance, unit, err
 }
 
 // Accept is the receiver's half. They record what they weighed; within the

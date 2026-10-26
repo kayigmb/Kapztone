@@ -23,14 +23,6 @@ test("screens", async ({ browser }) => {
         unit: "kg",
         originFacilityKind: "farm_plot",
         capacityRule: { type: "facility_capacity" },
-        stages: [
-          { key: "origin", events: ["ISSUE"] },
-          {
-            key: "washing_station",
-            events: ["HANDOVER", "TRANSFORM"],
-            maxYield: 0.2,
-          },
-        ],
       },
     }),
   );

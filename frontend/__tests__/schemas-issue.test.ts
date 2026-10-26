@@ -5,7 +5,6 @@ import {
   capacityLeft,
   issueBlock,
   issueFormSchema,
-  templateStages,
 } from "../lib/schemas/issue.ts";
 
 const facility = { capacity: 12000, capacity_used: 9500 };
@@ -50,11 +49,4 @@ test("issuing more than is left is blocked, with the numbers to say why", () => 
     capacity: 12000,
     capacityUsed: 9500,
   });
-});
-
-test("template stages come in the template's own order", () => {
-  assert.deepEqual(
-    templateStages({ stages: [{ key: "ISSUE" }, { key: "HANDOVER" }] }),
-    ["ISSUE", "HANDOVER"],
-  );
 });

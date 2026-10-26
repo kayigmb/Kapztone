@@ -57,7 +57,7 @@ const (
 const (
 	RuleCapacity         = "capacity"     // more issued than a facility may originate
 	RuleMassBalance      = "mass_balance" // a transform's output above input × max yield
-	RuleEvidence         = "evidence"     // a stage's required certificate missing
+	RuleEvidence         = "evidence"     // a template's required certificate missing
 	RuleTolerance        = "tolerance"    // received weight outside the handover tolerance
 	RuleHandoverRejected = "handover_rejected"
 )

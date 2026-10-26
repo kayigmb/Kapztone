@@ -1,4 +1,5 @@
-export const defaultTolerancePct = 1;
+/** The weight difference, in percent, every handover accepts (backend DefaultHandoverTolerance). */
+export const tolerancePct = 1;
 
 export type Weighing = {
   difference: number; // received − sent; negative = short
@@ -21,19 +22,6 @@ export function weigh(
     within: Math.abs(difference) <= (sent * tolerancePct) / 100,
   };
 }
-
-type StageLike = {
-  key: string;
-  events?: string[];
-  handoverTolerance?: number | null;
-};
-
-/** The stages a lot can be handed over into: those that allow HANDOVER. */
-export const handoverStages = <S extends StageLike>(stages: S[]) =>
-  stages.filter((s) => s.events?.includes("HANDOVER"));
-
-export const toleranceOf = (stages: StageLike[], key: string) =>
-  stages.find((s) => s.key === key)?.handoverTolerance ?? defaultTolerancePct;
 
 /** Sending less than the whole passport splits it: the rest stays with the sender. */
 export const isPartial = (quantity: number, remaining: number) =>

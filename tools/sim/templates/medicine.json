@@ -4,9 +4,10 @@
   "unit": "box",
   "originFacilityKind": "processing_plant",
   "capacityRule": { "type": "facility_capacity" },
-  "stages": [
-    { "key": "origin", "events": ["ISSUE"], "requiredEvidence": ["gmp_certificate"] },
-    { "key": "distributor", "events": ["HANDOVER"], "requiredEvidence": ["batch_release"], "handoverTolerance": 0 },
-    { "key": "pharmacy", "events": ["HANDOVER"], "handoverTolerance": 0 }
+  "requiredEvidence": ["gmp_certificate"],
+  "journey": [
+    { "key": "origin", "events": ["ISSUE"] },
+    { "key": "distributor", "events": ["HANDOVER"] },
+    { "key": "pharmacy", "events": ["HANDOVER"] }
   ]
 }

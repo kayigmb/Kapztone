@@ -74,8 +74,7 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	e, c := w.e, w.chain
 	ctx := context.Background()
 	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tolerance := 2.0
-	tplIn.Stages[1].HandoverTolerance = &tolerance
+	tolerance := template.DefaultHandoverTolerance
 	tpl := w.template(t, tplIn)
 
 	rec := w.issue(tpl, 1000)
@@ -157,7 +156,7 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 		as(w.prodSlug, "/handovers/"+fakeOrgID+"/photos/"+h.Photos[0].ID), w.prodTok, ""), http.StatusNotFound)
 	want(t, "photo id not an id", do(e.h, http.MethodGet, as(w.prodSlug, "/handovers/"+h.ID+"/photos/x"), w.prodTok, ""), http.StatusNotFound)
 
-	// ---- The receiver weighs it: outside the 2% tolerance is refused, and counted.
+	// ---- The receiver weighs it: outside the 1% tolerance is refused, and counted.
 	acceptPath := as(w.procSlug, "/handovers/"+h.ID+"/accept")
 	want(t, "accept without a weight", post(e, w.procTok, acceptPath, passport.AcceptInput{}), http.StatusBadRequest)
 	short := int64(380)
@@ -209,8 +208,8 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 		t.Fatalf("full handover: %s", rec.Body)
 	}
 
-	// ---- 1.25% off: accepted, but more than half the tolerance, so the rules raise a flag.
-	received := int64(600 - 600*125/10000 - 1) // 592: 1.33% off
+	// ---- 0.67% off: accepted, but more than half the 1% tolerance, so the rules raise a flag.
+	received := int64(596)
 	rec = post(e, w.procTok, as(w.procSlug, "/handovers/"+full.ID+"/accept"), passport.AcceptInput{ReceivedQuantity: &received})
 	want(t, "accept with a large difference", rec, http.StatusOK)
 	var source string

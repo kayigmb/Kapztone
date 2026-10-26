@@ -10,7 +10,7 @@ import {
 
 const base = { stage: "export", note: "" };
 
-test("handover: a whole-lot handover needs no quantity; a partial one does; a stage is required", () => {
+test("handover: a whole-lot handover needs no quantity; a partial one does; the stage label is optional", () => {
   assert.ok(handoverFormSchema.safeParse({ ...base, all: true }).success);
   assert.ok(
     handoverFormSchema.safeParse({ ...base, all: false, quantity: 100 })
@@ -21,8 +21,12 @@ test("handover: a whole-lot handover needs no quantity; a partial one does; a st
       .success,
     false,
   );
-  assert.equal(
+  assert.ok(
     handoverFormSchema.safeParse({ ...base, all: true, stage: "" }).success,
+  );
+  assert.equal(
+    handoverFormSchema.safeParse({ ...base, all: true, stage: "a".repeat(61) })
+      .success,
     false,
   );
 });

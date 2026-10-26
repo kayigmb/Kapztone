@@ -64,6 +64,10 @@ const (
 	HandoverTTL = 7 * 24 * time.Hour
 
 	MaxNoteLen = 1000
+	// MaxStageLen bounds the free label of a handover or transform.
+	MaxStageLen = 60
+	// DefaultTransformStage labels a transform given no label.
+	DefaultTransformStage = "processing"
 
 	// MaxTransformItems caps the inputs, and the outputs, of one transform:
 	// the whole transform must fit in one chain transaction.
@@ -83,8 +87,6 @@ var RejectReasons = []string{RejectWeightShort, RejectDamaged, RejectWrongProduc
 
 // The rules raise a flag about an action they allow but find close to a limit.
 const (
-	// RuleYieldShare: a transform's outputs at this share of the maximum yield or more.
-	RuleYieldShare = 0.98
 	// RuleFlagShare: an accepted handover whose weight differs by more than this share of the tolerance.
 	RuleFlagShare = 0.5
 )
@@ -147,8 +149,6 @@ const (
 	MsgHandoverStale     = "the passport changed since this handover was created; start a new one"
 	MsgInputNotHeld      = "your organisation does not hold every input passport"
 	MsgMixedInputs       = "all input passports must be of the same commodity and unit"
-	MsgStageInvalid      = "this commodity has no such stage that allows " + EventTransform + " with a maximum yield"
-	MsgHandoverStage     = "stage must be a stage of this commodity that allows " + EventHandover
 	MsgReasonsNeeded     = "choose at least one reason for rejecting"
 	MsgLocation          = "lat and lon must be given together: lat from -90 to 90, lon from -180 to 180"
 	MsgPhotoType         = "photos must be PNG or JPEG"
@@ -158,7 +158,6 @@ const (
 	// MsgFlagFromReject starts the reason of a flag raised with a rejection.
 	MsgFlagFromReject = "Handover rejected"
 	// Reasons of flags the rules raise.
-	MsgRuleYieldFmt     = "Rules: the outputs are %.1f%% of the most stage %s may yield"
 	MsgRuleToleranceFmt = "Rules: the weight received differs by %.2f%% from what was sent; the stage accepts %.2f%%"
 
 	MsgNotifyHandoverStarted  = "A passport is being handed over to your organisation and awaits your answer."

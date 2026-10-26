@@ -184,7 +184,7 @@ type Volume struct {
 	Commodity string `json:"commodity"`
 	Unit      string `json:"unit"`
 	Quantity  int64  `json:"quantity"` // issued at origin
-	Exported  int64  `json:"exported"` // handed over, accepted, at a stage that allows EXPORT
+	Exported  int64  `json:"exported"` // handed over and accepted with the stage label "export"
 }
 
 // Outcome is the verification share for one period: revoked lots count as
@@ -225,9 +225,8 @@ type SavedFile struct {
 // they are made from lots already counted. Every status counts, revoked
 // included: the report is what was issued.
 //
-// Exported is the quantity of completed handovers at a stage of the
-// commodity's template that allows EXPORT, by the month they were accepted,
-// gated by the sending organisation.
+// Exported is the quantity of completed handovers labelled "export" (any
+// case), by the month they were accepted, gated by the sending organisation.
 func (s Store) Volumes(ctx context.Context, gate string, start, end *time.Time) ([]Volume, error) {
 	rows, err := s.Pool.Query(ctx,
 		`WITH issued AS (
@@ -242,11 +241,9 @@ func (s Store) Volumes(ctx context.Context, gate string, start, end *time.Time) 
 		          p.commodity, p.unit, sum(h.quantity)::bigint AS quantity
 		   FROM handovers h
 		   JOIN passports p ON p.id = h.passport_id
-		   JOIN commodity_templates t ON t.id = p.template_id
 		   WHERE h.status = $4 AND NOT h.is_deleted AND `+auth.GateSQL("h.from_org", 1)+`
 		     AND ($2::timestamptz IS NULL OR h.responded_at >= $2) AND ($3::timestamptz IS NULL OR h.responded_at < $3)
-		     AND EXISTS (SELECT 1 FROM jsonb_array_elements(t.stages) st
-		                 WHERE st->>'key' = h.stage AND st->'events' ? $5)
+		     AND lower(h.stage) = lower($5)
 		   GROUP BY 1, 2, 3)
 		 SELECT month, commodity, unit, COALESCE(i.quantity, 0), COALESCE(x.quantity, 0)
 		 FROM issued i FULL JOIN exported x USING (month, commodity, unit)

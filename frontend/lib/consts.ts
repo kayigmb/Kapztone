@@ -230,20 +230,6 @@ export const subjectTypes = {
 export type SubjectType = (typeof subjectTypes)[keyof typeof subjectTypes];
 
 // Commodity templates (backend/internal/template/values.go).
-export const templateEvents = [
-  { value: "ISSUE", label: "Issue" },
-  { value: "HANDOVER", label: "Hand over" },
-  { value: "TRANSFORM", label: "Transform" },
-  { value: "EXPORT", label: "Export" },
-  { value: "IMPORT", label: "Import" },
-] as const;
-export type TemplateEvent = (typeof templateEvents)[number]["value"];
-/** The events the screens branch on. */
-export const templateEvent = {
-  issue: "ISSUE",
-  handover: "HANDOVER",
-  transform: "TRANSFORM",
-} as const;
 /** How a template's per-facility capacity is worked out. */
 export const capacityRuleTypes = {
   perArea: "yield_per_area",
@@ -514,6 +500,8 @@ export const limits = {
   codePattern: /^(\d{6})?$/,
   // A note on a passport, handover or flag (backend MaxNoteLen).
   note: 1000,
+  // The free label of a handover or transform (backend MaxStageLen).
+  stage: 60,
   // Inputs and outputs of one transform (backend MaxTransformItems).
   maxItems: 50,
   // Lists ask for one full page (the API's maximum); paging UI when a queue outgrows it.
@@ -1171,10 +1159,6 @@ export const screenCopy = {
   },
   transform: {
     ...screenCopyJson.transform,
-    templateLine: (name: string) =>
-      fill(screenCopyJson.transform.templateLine.$template, { name }),
-    allowedYield: (max: number) =>
-      fill(screenCopyJson.transform.allowedYield.$template, { max }),
     overRemaining: (max: number, unit: string) =>
       `More than the ${max.toLocaleString()} ${unit} this lot has left. Enter ${max.toLocaleString()} ${unit} or less.`,
     tooManyRows: (n: number) =>

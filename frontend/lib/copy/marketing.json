@@ -273,7 +273,7 @@
       ],
       [
         "Can we add our own commodity?",
-        "Yes. A platform admin adds a commodity template (unit, stages, yield limits, required evidence) with no change to the software."
+        "Yes. A platform admin adds a commodity template (unit, origin facility, required evidence, capacity rule) with no change to the software."
       ],
       [
         "What does a buyer see?",
