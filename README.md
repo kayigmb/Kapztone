@@ -1,6 +1,10 @@
 # ChainTrack
+Technical report [ https://drive.google.com/file/d/1vJhLzAMLBbOWfQ3nO4tFyq_0gIrbshyB/view?usp=sharing]
 
+Video Link - [https://youtu.be/ddTPQMU7mz8]
 Blockchain-backed digital product passports for transparent, tamper-evident shipments.
+
+
 
 Every lot (coffee, cocoa, minerals, medicines, any commodity) gets a passport at a verified, licensed, geolocated origin facility. The passport follows the lot through processing, transport, export and import. Each change of hands is signed by both businesses, the rules of the commodity are enforced on every step, and the record is anchored on a blockchain. Anyone can scan the passport's QR code and check its whole history back to the origin.
 
