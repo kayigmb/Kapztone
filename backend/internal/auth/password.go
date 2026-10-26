@@ -122,7 +122,7 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 	if a.Mail != nil {
 		// Sent in the background so a slow mail server doesn't make an existing
 		// account answer more slowly than an unknown email.
-		text := fmt.Sprintf(bodyFmt, link)
+		text := mailtmpl.Letter(u.Name, fmt.Sprintf(bodyFmt, link))
 		html := mailtmpl.Render(mailtmpl.Page{
 			Subject:     subject,
 			Preheader:   subject,
@@ -143,7 +143,7 @@ func (a *Auth) sendLink(ctx context.Context, u User, kind, path string, ttl time
 // passwordChanged tells the user, with a link to lock the account if it wasn't them.
 func (a *Auth) passwordChanged(ctx context.Context, u User) {
 	if _, err := a.sendLink(ctx, u, LinkLock, PathLock, LockLinkTTL, MailChangedSubject, MailChangedBody,
-		"Lock my account", "This link works once, for 7 days."); err != nil {
+		"Lock my account", "This link works once and expires in 7 days."); err != nil {
 		logx.From(ctx).Error("password changed notice failed", logx.KeyUser, u.ID, logx.KeyError, err)
 	}
 }
@@ -227,7 +227,7 @@ func (a *Auth) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		u, err := a.Store.UserByEmail(ctx, email)
 		if err == nil {
 			_, err = a.sendLink(ctx, u, LinkReset, PathReset, ResetLinkTTL, MailResetSubject, MailResetBody,
-				"Choose a new password", "This link works once, for 30 minutes. If you didn't ask for it, ignore this email.")
+				"Choose a new password", "This link works once and expires in 30 minutes.")
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logx.From(ctx).Error("reset link failed", logx.KeyError, err)
@@ -306,7 +306,7 @@ func (a *Auth) SendVerify(ctx context.Context, u User) error {
 
 func (a *Auth) sendVerify(ctx context.Context, u User) (string, error) {
 	return a.sendLink(ctx, u, LinkVerify, PathVerify, VerifyLinkTTL, MailVerifySubject, MailVerifyBody,
-		"Confirm my email", "This link works once, for 24 hours.")
+		"Confirm my email", "This link works once and expires in 24 hours.")
 }
 
 // SendVerifyTo sends the confirmation link to a just-registered email. A

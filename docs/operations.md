@@ -24,6 +24,7 @@ Every setting comes from `.env` (see `.env.example`); nothing has a default. A m
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | first platform admin | used only when no superadmin exists; password 12 to 72 characters in prod, up to 72 in dev |
 | `APP_ENV` | `dev` or `prod` | `dev` also accepts `?pslug=` to choose the acting organisation |
 | `APP_URL` | the web app's bare address, no path | e-mailed links (reset, verify, lock, invite) start with it, never with a request header; an invite puts the organisation's slug in front of the host (`https://acme.chaintrack.app`) |
+| `RATE_LIMIT` | `true` or `false`: per-address and per-account rate limits (sign-in, PIN, 2FA, public verify) | empty: on in prod, off in dev |
 | `WEB_PORT` | Host port of the web app in production, bound to 127.0.0.1 (default 3000) | `make prod` only; must match the port in the server's Caddyfile |
 | `CHAIN_RPC_URL`, `CHAIN_ID` | the chain the relayer writes to | local: `http://127.0.0.1:8545` and `31337` |
 | `CHAIN_RELAYER_KEY` | sends every transaction; relayer + operator on-chain | must hold funds on a real network; the value in `.env.example` is a public test key, local only |

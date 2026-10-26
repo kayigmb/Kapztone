@@ -71,7 +71,7 @@ browser ──▶ Caddy (TLS, prod only) ──▶ Next.js web app ──/api─
 
 ### On this machine (recommended)
 
-1. Copy `.env.example` to `.env` and fill every value. Keep `APP_ENV=dev` and `APP_URL=http://localhost:3000`. The Hardhat test keys in the example are fine here.
+1. Copy `.env.example` to `.env` and fill every value. Keep `APP_ENV=dev` and `APP_URL=http://localhost:3000`. For the chain keys use Hardhat/anvil's public test accounts #0 (admin) and #1 (relayer).
 2. `make infra` starts Postgres + PostGIS, Redis and the RustFS bucket, and runs the migrations.
 3. `make chain` starts the local chain (leave it running). In another terminal, `make deploy` and paste the 5 `*_ADDRESS` lines it prints into `.env`.
 4. `make api`, `make relayer` and `make web`, each in its own terminal: the API on :8080, the relayer, and the web app on :3000.
@@ -86,7 +86,7 @@ Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks th
 `make dev` runs the database, Redis, RustFS, migrations, a local chain with the contracts deployed (on `localhost:8545`), the API (on `localhost:8080`) and the relayer in containers; run the web app beside it with `make web`. They run from small built images (the same multi-stage Dockerfiles as production); run `make dev` again after changing Go or contract code, and the cached rebuild takes seconds. `make logs` follows them, `make down` stops them.
 
 - The containers read `.env` themselves and reach each other by name; `.env` keeps the addresses for running natively (`CHAIN_RPC_URL=http://127.0.0.1:8545`).
-- The dev chain (`contracts/Dockerfile`: Foundry's anvil, contracts compiled at build time, deployed by `contracts/chain.sh`) starts empty on every start and the deploy lands on the same addresses each time, the ones in `.env.example`. `make chain` / `make deploy` remain for running outside Docker or deploying to a testnet.
+- The dev chain (`contracts/Dockerfile`: Foundry's anvil, contracts compiled at build time, deployed by `contracts/chain.sh`) starts empty on every start and the deploy lands on the same addresses each time (printed in the chain container's log). `make chain` / `make deploy` remain for running outside Docker or deploying to a testnet.
 
 ### Resetting
 

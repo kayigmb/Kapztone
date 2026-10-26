@@ -62,3 +62,12 @@ func TestLogoPart(t *testing.T) {
 		t.Fatalf("logo part is not a PNG (err %v)", err)
 	}
 }
+
+func TestLetter(t *testing.T) {
+	if got := Letter(" Ada ", "Body.\n"); got != "Hello Ada,\n\nBody.\n\nThe ChainTrack team" {
+		t.Fatalf("letter = %q", got)
+	}
+	if got := Letter("", "Body."); !strings.HasPrefix(got, "Hello,\n\n") {
+		t.Fatalf("letter without a name = %q", got)
+	}
+}

@@ -151,16 +151,14 @@ func MsgAttemptsLeft(n int64) string {
 // Emails the account flows send.
 const (
 	MailResetSubject = "Reset your ChainTrack password"
-	MailResetBody    = "Someone asked to reset the password of your ChainTrack account.\r\n\r\n" +
-		"Choose a new password here (the link works once, for 30 minutes):\r\n%s\r\n\r\n" +
-		"If this wasn't you, ignore this email. Your password has not changed."
+	MailResetBody    = "We received a request to reset your password. Use the link below to choose a new one.\n\n%s\n\n" +
+		"If you didn't ask for this, you can ignore this email; your password stays the same."
 	MailChangedSubject = "Your ChainTrack password was changed"
-	MailChangedBody    = "The password of your ChainTrack account was just changed, and every other device was signed out.\r\n\r\n" +
-		"If this wasn't you, lock your account now (the link works once, for 7 days):\r\n%s"
-	MailVerifySubject = "Confirm your ChainTrack email"
-	MailVerifyBody    = "Welcome to ChainTrack. Confirm this is your email address to finish setting up your account.\r\n\r\n" +
-		"Confirm it here (the link works once, for 24 hours):\r\n%s\r\n\r\n" +
-		"If you didn't sign up, ignore this email."
+	MailChangedBody    = "Your password was just changed, and you were signed out on your other devices.\n\n" +
+		"If this was you, there's nothing else to do. If it wasn't, lock your account right away:\n\n%s"
+	MailVerifySubject = "Confirm your email address"
+	MailVerifyBody    = "Welcome to ChainTrack! Please confirm your email address to finish setting up your account.\n\n%s\n\n" +
+		"If you didn't create an account, you can safely ignore this email."
 )
 
 // Cache keys.

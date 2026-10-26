@@ -31,7 +31,8 @@ const (
 	EnvLogFormat          = "LOG_FORMAT" // json (default) or text
 	EnvLogLevel           = "LOG_LEVEL"  // debug, info (default), warn, error
 	EnvAppEnv             = "APP_ENV"
-	EnvAppURL             = "APP_URL" // the web app's bare address; e-mailed links start with it
+	EnvAppURL             = "APP_URL"    // the web app's bare address; e-mailed links start with it
+	EnvRateLimit          = "RATE_LIMIT" // true or false; empty: on outside dev
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
 	EnvJWTSecret          = "JWT_SECRET"
@@ -106,6 +107,7 @@ type Config struct {
 	Secrets            *secret.Box
 	SuperadminEmail    string
 	SuperadminPassword string
+	RateLimit          bool
 
 	ChainRPCURL string
 	ChainID     *big.Int
@@ -147,6 +149,14 @@ func Load() (Config, error) {
 	}
 	r.storage(&c)
 	r.site(&c)
+	switch v := strings.TrimSpace(os.Getenv(EnvRateLimit)); v {
+	case "":
+		c.RateLimit = !c.Dev
+	case "true", "false":
+		c.RateLimit = v == "true"
+	default:
+		r.invalid(v, EnvRateLimit, "must be true or false")
+	}
 	r.sessions(&c)
 	r.chain(&c)
 	c.PinataJWT = r.service(EnvPinataJWT)

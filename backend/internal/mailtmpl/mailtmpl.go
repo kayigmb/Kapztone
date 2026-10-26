@@ -43,6 +43,16 @@ type Page struct {
 	Footnote    string
 }
 
+// Letter wraps a body in a greeting by name and a sign-off; "Hello," when the
+// name is not known.
+func Letter(name, body string) string {
+	hello := "Hello,"
+	if name = strings.TrimSpace(name); name != "" {
+		hello = "Hello " + name + ","
+	}
+	return hello + "\n\n" + strings.TrimSpace(body) + "\n\nThe ChainTrack team"
+}
+
 // Split turns a plain-text body into paragraphs on blank lines.
 func Split(body string) []string {
 	var out []string

@@ -193,7 +193,7 @@ func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"invite": inv, "emailed": h.Mail != nil}
 	msg := MsgInviteLink
 	if h.Mail != nil {
-		h.mailInvite(inv, o.Name, link)
+		h.mailInvite(inv, auth.CurrentUser(r.Context()).Name, o.Name, link)
 		msg = MsgInviteSent(inv.Email)
 	}
 	if h.Dev {
@@ -222,15 +222,18 @@ func inviteInput(w http.ResponseWriter, r *http.Request) (email, role string, ok
 // mailInvite queues the invitation e-mail rather than sending it inline: a
 // slow or unreachable mail server must not slow the response. A failure is
 // logged; the admin re-invites and a new link is made.
-func (h *Handlers) mailInvite(inv Invite, orgName, link string) {
-	text := fmt.Sprintf(MsgInviteBodyFmt, orgName, inv.Role, link)
+func (h *Handlers) mailInvite(inv Invite, inviter, orgName, link string) {
+	if inviter == "" {
+		inviter = "Someone"
+	}
+	text := mailtmpl.Letter("", fmt.Sprintf(MsgInviteBodyFmt, inviter, orgName, strings.ReplaceAll(inv.Role, "_", " "), link))
 	html := mailtmpl.Render(mailtmpl.Page{
 		Subject:     InviteSubject,
 		Preheader:   "You have been invited to join " + orgName + " on ChainTrack.",
 		Paragraphs:  mailtmpl.Split(text),
 		ActionLabel: "Accept invitation",
 		ActionURL:   link,
-		Footnote:    "This link works once, for 24 hours.",
+		Footnote:    "This link works once and expires in 24 hours.",
 	})
 	send := h.Mail
 	go func() {

@@ -48,6 +48,7 @@ services:
       MAIL_FROM: ${MAIL_FROM}
       LOG_FORMAT: ${LOG_FORMAT}
       LOG_LEVEL: ${LOG_LEVEL}
+      RATE_LIMIT: ${RATE_LIMIT:-}
     # No published port: only the web app reaches the API (api:${PORT} on the
     # compose network). The API trusts X-Forwarded-For because of this.
     depends_on:

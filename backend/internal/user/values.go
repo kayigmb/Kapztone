@@ -54,7 +54,7 @@ const (
 	MsgSelfRole                   = "you cannot change your own role"
 	MsgNotMember                  = "this person does not belong to the organisation"
 	MsgNotSuspended               = "this person is not suspended"
-	MsgInviteBodyFmt              = "You have been invited to join %s on ChainTrack as %s.\n\nOpen this link within 24 hours to accept:\n%s\n"
+	MsgInviteBodyFmt              = "%s has invited you to join %s on ChainTrack as %s.\n\nAccept the invitation here:\n\n%s"
 	MsgPasswordFormat             = "password must be %d to %d characters"
 	MsgNameLength                 = "name must be 1 to 200 characters"
 	MsgEmailNotificationsRequired = "email must be true or false"

@@ -135,8 +135,11 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 		return err
 	}
 	for _, p := range batch {
-		if len(p.to) > 0 {
-			if err := m.Send(m.Addr, m.Auth, m.From, p.to, m.message(p.to, p.message)); err != nil {
+		// One message per person, greeted by name; nobody sees the others' addresses.
+		// ponytail: a failure part-way retries the whole notification, so earlier
+		// recipients may get it twice; track per recipient if that matters.
+		for i, to := range p.to {
+			if err := m.Send(m.Addr, m.Auth, m.From, []string{to}, m.message(to, p.names[i], p.message)); err != nil {
 				// Keep what was sent, back this one off (10 s, 20 s, 40 s, ...); the rest wait for the next round.
 				if _, uerr := tx.Exec(ctx,
 					`UPDATE notifications SET mail_attempts = mail_attempts + 1,
@@ -159,18 +162,20 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 
 type pendingNote struct {
 	id, message string
-	to          []string
+	to, names   []string // same order
 }
 
 // pendingMail locks the next batch with its recipients. SKIP LOCKED: two API
 // processes never pick the same notification.
 func pendingMail(ctx context.Context, tx pgx.Tx) ([]pendingNote, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT n.id::text, n.message,
-		        ARRAY(SELECT u.email::text FROM userscope s JOIN users u ON u.id = s.user_id
-		              WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
-		                AND NOT u.is_deleted AND u.status = $3 AND u.email_notifications)
+		`SELECT n.id::text, n.message, COALESCE(r.emails, '{}'), COALESCE(r.names, '{}')
 		 FROM notifications n
+		 LEFT JOIN LATERAL (
+		   SELECT array_agg(u.email::text ORDER BY u.email) AS emails, array_agg(u.name ORDER BY u.email) AS names
+		   FROM userscope s JOIN users u ON u.id = s.user_id
+		   WHERE s.organisation_id IS NOT DISTINCT FROM n.organisation_id AND NOT s.is_deleted
+		     AND NOT u.is_deleted AND u.status = $3 AND u.email_notifications) r ON true
 		 WHERE n.emailed_at IS NULL AND n.created_at > now() - make_interval(secs => $1) AND NOT n.is_deleted
 		   AND n.mail_attempts < $4 AND (n.mail_next_at IS NULL OR n.mail_next_at <= now())
 		 ORDER BY n.created_at LIMIT $2 FOR UPDATE OF n SKIP LOCKED`, mailMaxAge.Seconds(), mailBatch, auth.UserActive, mailMaxAttempts)
@@ -179,23 +184,22 @@ func pendingMail(ctx context.Context, tx pgx.Tx) ([]pendingNote, error) {
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (pendingNote, error) {
 		var p pendingNote
-		err := row.Scan(&p.id, &p.message, &p.to)
+		err := row.Scan(&p.id, &p.message, &p.to, &p.names)
 		return p, err
 	})
 }
 
-// message builds a notification e-mail: the plain-text body the app already
-// showed, plus its HTML twin. Line breaks are stripped from the body's first
-// line so nothing in a notification can add a header.
-func (m *Mailer) message(to []string, body string) []byte {
-	clean := strings.NewReplacer("\r", " ", "\n", " ").Replace
-	text := clean(body)
+// message builds one person's notification e-mail: the text the app
+// already showed, greeted by name, plus its HTML twin. The preheader is
+// stripped of line breaks.
+func (m *Mailer) message(to, name, body string) []byte {
+	text := mailtmpl.Letter(name, body+"\n\nSign in to ChainTrack to see the details.")
 	html := mailtmpl.Render(mailtmpl.Page{
 		Subject:    mailSubject,
-		Preheader:  text,
-		Paragraphs: mailtmpl.Split(body),
+		Preheader:  strings.NewReplacer("\r", " ", "\n", " ").Replace(body),
+		Paragraphs: mailtmpl.Split(text),
 	})
-	return m.compose(to, mailSubject, text, html)
+	return m.compose([]string{to}, mailSubject, text, html)
 }
 
 // compose builds a multipart e-mail: the plain-text body every client reads,

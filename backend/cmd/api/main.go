@@ -123,7 +123,7 @@ func newAuth(cfg config.Config, pg auth.PgStore, store auth.CachedStore, c *cach
 		Accounts:    pg,
 		Dev:         cfg.Dev,
 		Secrets:     cfg.Secrets,
-		Limiter:     limiter(cfg.Dev, c),
+		Limiter:     limiter(cfg.RateLimit, c),
 	}
 }
 
@@ -203,8 +203,8 @@ func serve(ctx context.Context, cfg config.Config, h http.Handler) {
 
 // limiter counts sign-in and sign-up attempts in production; development has
 // no rate limits, so testing by hand is never paused.
-func limiter(dev bool, c *cache.Cache) *auth.Limiter {
-	if dev {
+func limiter(on bool, c *cache.Cache) *auth.Limiter {
+	if !on {
 		return nil
 	}
 	return &auth.Limiter{Cache: c}
