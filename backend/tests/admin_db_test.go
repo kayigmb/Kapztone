@@ -129,6 +129,26 @@ func TestEmailVerification(t *testing.T) {
 	}
 }
 
+// EMAIL_VERIFY=false: a new account is confirmed at sign-up, and one left
+// unconfirmed from before signs in all the same.
+func TestEmailConfirmationOff(t *testing.T) {
+	e, _, _ := newEnv(t, false)
+	e.a.SkipEmailVerify = true
+	defer func() { e.a.SkipEmailVerify = false }()
+	e.register(tAcme, org.KindProducer)
+	e.exec(`UPDATE users SET email_verified_at = NULL WHERE email = $1`, e.email(tAcme))
+	want(t, "sign in unconfirmed", do(e.h, http.MethodPost, "/auth/login", "", loginBody(e.email(tAcme), testPassword)), http.StatusOK)
+
+	if link := e.a.SendVerifyTo(t.Context(), e.email(tAcme)); link != "" {
+		t.Fatalf("a link was made with confirmation off: %q", link)
+	}
+	var verified bool
+	e.pool.QueryRow(t.Context(), `SELECT is_verified FROM users WHERE email = $1`, e.email(tAcme)).Scan(&verified)
+	if !verified {
+		t.Fatal("sign-up with confirmation off left the account unconfirmed")
+	}
+}
+
 // The platform admin turns accounts, memberships and organisations off and on.
 func TestPlatformAdminActions(t *testing.T) {
 	e, _, _ := newEnv(t, false)

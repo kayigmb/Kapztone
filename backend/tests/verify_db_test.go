@@ -17,7 +17,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
@@ -88,16 +87,12 @@ func TestPublicVerification(t *testing.T) {
 	}
 
 	plot := e.approvedFacility(prodTok, prodSlug, root, facilityInput(newPlot()))
-	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec := post(e, root, "/templates", tplIn)
-	want(t, "create template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
-	// Certificates below are export permits, evidence the template asks for.
+	tpl := coffee("coffee_" + e.suffix)
+	// Certificates below are export permits.
 	want(t, "accredit", accredit(e, root, "/orgs/"+certifier.ID+"/accreditations", grant("export_permit")), http.StatusOK)
 
 	const qty = 500_000
-	rec = post(e, prodTok, as(prodSlug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: qty})
+	rec := post(e, prodTok, as(prodSlug, "/passports"), passport.IssueInput{FacilityID: plot.ID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: qty})
 	want(t, "issue", rec, http.StatusCreated)
 	origin := decodeTo[passport.Passport](t, rec)
 
@@ -106,7 +101,7 @@ func TestPublicVerification(t *testing.T) {
 
 	handOver := func(id, fromTok, fromSlug, to, toTok, toSlug string) {
 		t.Helper()
-		rec := post(e, fromTok, as(fromSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Stage: stageWashing})
+		rec := post(e, fromTok, as(fromSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: to, ToUser: e.personIn(to), Stage: stageWashing})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
 		want(t, "accept handover", post(e, toTok, as(toSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
@@ -165,9 +160,6 @@ func TestPublicVerification(t *testing.T) {
 	tamper("output inflated", verify.Failed, verify.MassBalanceBroken,
 		q(`UPDATE transforms SET max_yield_ppm = 1 WHERE id = $1::uuid`, tr.ID),
 		q(`UPDATE transforms SET max_yield_ppm = $2 WHERE id = $1::uuid`, tr.ID, tr.MaxYieldPPM))
-	tamper("capacity lowered below what was issued", verify.Failed, verify.CapacityExceeded,
-		q(`UPDATE facilities SET capacity = $2 WHERE id = $1::uuid`, plot.ID, int64(qty-1)),
-		q(`UPDATE facilities SET capacity = $2 WHERE id = $1::uuid`, plot.ID, plot.Capacity))
 	tamper("facility suspended", verify.Warning, verify.FacilitySuspended,
 		q(`UPDATE facilities SET status = $2 WHERE id = $1::uuid`, plot.ID, facility.StatusSuspended),
 		q(`UPDATE facilities SET status = $2 WHERE id = $1::uuid`, plot.ID, facility.StatusActive))
@@ -268,8 +260,7 @@ func TestPublicVerification(t *testing.T) {
 func TestVerifyFiftyAncestors(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
-	tplIn := withoutOriginEvidence(coffeeTemplate("deep_" + e.suffix))
-	tpl := w.template(t, tplIn)
+	tpl := coffee("deep_" + e.suffix)
 
 	rec := w.issue(tpl, 1000)
 	want(t, "issue", rec, http.StatusCreated)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +25,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // testChain is an in-process chain with the contracts deployed, and a relayer
@@ -272,40 +270,20 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	admin, rivalAdmin, pendingAdmin := e.login(tAcme), e.login(tRival), e.login(tStaff)
 	acmeSlug, rivalSlug, pendingSlug := e.slug(tAcme), e.slug(tRival), e.slug(tStaff)
 
-	// A facility, and a commodity in the facility's unit.
+	// A facility, and what it produces.
 	plot := e.approvedFacility(admin, acmeSlug, root, facilityInput(newPlot()))
-
-	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec := post(e, root, "/templates", tplIn)
-	want(t, "create template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
+	tpl := coffee("coffee_" + e.suffix)
+	var rec *httptest.ResponseRecorder
 
 	issue := func(token, slug string, in passport.IssueInput) *httptest.ResponseRecorder {
 		return post(e, token, as(slug, "/passports"), in)
 	}
-	good := passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 400_000}
+	good := passport.IssueInput{FacilityID: plot.ID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: 400_000}
 
 	// ---- Issue: every rule has a refused case.
 	want(t, "pending organisation issues", issue(pendingAdmin, pendingSlug, good), http.StatusForbidden)
-	want(t, "another organisation's facility", issue(rivalAdmin, rivalSlug, good), http.StatusBadRequest)
-	want(t, "zero quantity", issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID}), http.StatusBadRequest)
-	want(t, "unknown template", issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: fakeOrgID, Quantity: 1}), http.StatusBadRequest)
-
-	wrongUnit := coffeeTemplate("cocoa_" + e.suffix)
-	wrongUnit.Name, wrongUnit.Unit = "Cocoa "+e.suffix, "tonne"
-	rec = post(e, root, "/templates", wrongUnit)
-	want(t, "create second template", rec, http.StatusCreated)
-	want(t, "unit mismatch", issue(admin, acmeSlug, passport.IssueInput{
-		FacilityID: plot.ID, TemplateID: decodeTo[template.Template](t, rec).ID, Quantity: 1}), http.StatusBadRequest)
-
-	wrongKind := coffeeTemplate("gold_" + e.suffix)
-	wrongKind.Name, wrongKind.Unit, wrongKind.OriginFacilityKind = "Gold "+e.suffix, plot.CapacityUnit, facility.KindMineSite
-	wrongKind.CapacityRule = template.CapacityRule{Type: template.CapacityFacility}
-	rec = post(e, root, "/templates", wrongKind)
-	want(t, "create third template", rec, http.StatusCreated)
-	want(t, "facility kind mismatch", issue(admin, acmeSlug, passport.IssueInput{
-		FacilityID: plot.ID, TemplateID: decodeTo[template.Template](t, rec).ID, Quantity: 1}), http.StatusBadRequest)
+	want(t, "an exporter never originates", issue(rivalAdmin, rivalSlug, good), http.StatusForbidden)
+	want(t, "zero quantity", issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, Commodity: tpl.Commodity, Unit: tpl.Unit}), http.StatusBadRequest)
 
 	setStatus := func(status string) {
 		want(t, "set facility "+status, post(e, root, "/facilities/"+plot.ID+"/status", facility.StatusInput{Status: status}), http.StatusOK)
@@ -317,21 +295,14 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	rec = issue(admin, acmeSlug, good)
 	want(t, "issue", rec, http.StatusCreated)
 	p := decodeTo[passport.Passport](t, rec)
-	wantPeriod := facility.PeriodFor(plot.CapacityPeriod, now)
+	wantPeriod := int64(now.UTC().Year())
 	if p.OrganisationID != acme.ID || p.Remaining != good.Quantity || p.Status != passport.StatusActive ||
 		p.Period == nil || *p.Period != wantPeriod || p.TxHash != nil {
 		t.Fatalf("passport recorded wrongly: %+v", p)
 	}
 
-	// Capacity: the message says by how much, and the most still allowed.
-	left := plot.Capacity - good.Quantity
-	over := issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: left + 5})
-	want(t, "over capacity", over, http.StatusConflict)
-	wantMsg := passport.CapacityError{Requested: left + 5, Available: left, Unit: plot.CapacityUnit}.Error()
-	if got := errorOf(t, over); got != wantMsg || !strings.Contains(got, fmt.Sprint(left)) {
-		t.Fatalf("capacity message = %q, want %q", got, wantMsg)
-	}
-	want(t, "exactly the rest", issue(admin, acmeSlug, passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: left}), http.StatusCreated)
+	// No declared capacity: a second lot from the same plot is the producer's word.
+	want(t, "second lot", issue(admin, acmeSlug, good), http.StatusCreated)
 
 	// ---- The relayer anchors everything queued so far.
 	if n := c.drain(); n == 0 {
@@ -347,8 +318,8 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 		t.Fatalf("on-chain passport differs from the database: %+v", onChain)
 	}
 	used, _ := c.contract.Facilities.OriginatedInPeriod(opts, chain.MustID(plot.ID), big.NewInt(wantPeriod))
-	if used.Int64() != plot.Capacity {
-		t.Fatalf("on-chain capacity used = %s, want %d", used, plot.Capacity)
+	if used.Int64() != 2*good.Quantity {
+		t.Fatalf("on-chain originated = %s, want %d", used, 2*good.Quantity)
 	}
 	if verified, _ := c.contract.Orgs.IsVerified(opts, chain.MustID(rival.ID)); !verified {
 		t.Fatal("organisation is not verified on-chain")
@@ -363,7 +334,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 
 	// ---- Handover: sender's half.
 	start := func(token, slug, to string) *httptest.ResponseRecorder {
-		return post(e, token, as(slug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: to, Stage: stageWashing, Note: "Loaded at the washing station gate"})
+		return post(e, token, as(slug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: to, ToUser: e.personIn(to), Stage: stageWashing, Note: "Loaded at the washing station gate"})
 	}
 	want(t, "non-holder starts a handover", start(rivalAdmin, rivalSlug, acme.ID), http.StatusNotFound)
 	want(t, "handover to itself", start(admin, acmeSlug, acme.ID), http.StatusBadRequest)
@@ -436,7 +407,7 @@ func TestIssueAndHandoverEndToEnd(t *testing.T) {
 	// ---- Reject, cancel and expiry leave the holder unchanged.
 	back := func() passport.Handover {
 		t.Helper()
-		rec := post(e, rivalAdmin, as(rivalSlug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: acme.ID, Stage: stageWashing})
+		rec := post(e, rivalAdmin, as(rivalSlug, "/passports/"+p.ID+"/handovers"), passport.HandoverInput{ToOrganisationID: acme.ID, ToUser: e.personIn(acme.ID), Stage: stageWashing})
 		want(t, "start return handover", rec, http.StatusCreated)
 		return decodeTo[passport.Handover](t, rec)
 	}
@@ -552,47 +523,30 @@ func TestRelayerMarksRefusedItemsAndMovesOn(t *testing.T) {
 	}
 }
 
-func TestPeriodFor(t *testing.T) {
-	at := func(month time.Month) time.Time { return time.Date(2026, month, 15, 12, 0, 0, 0, time.UTC) }
-	cases := []struct {
-		period string
-		when   time.Time
-		want   int64
-	}{
-		{facility.PeriodYear, at(time.October), 2026},
-		{facility.PeriodMonth, at(time.October), 202610},
-		{facility.PeriodMonth, at(time.March), 202603},
-		{facility.PeriodSeason, at(time.June), 20261},
-		{facility.PeriodSeason, at(time.July), 20262},
-	}
-	for _, tc := range cases {
-		if got := facility.PeriodFor(tc.period, tc.when); got != tc.want {
-			t.Errorf("%s in %s = %d, want %d", tc.period, tc.when.Month(), got, tc.want)
-		}
-	}
-}
-
 func TestPassportInputValidation(t *testing.T) {
 	bad := []passport.IssueInput{
-		{TemplateID: fakeOrgID, Quantity: 1},
-		{FacilityID: fakeOrgID, Quantity: 1},
-		{FacilityID: fakeOrgID, TemplateID: fakeOrgID},
-		{FacilityID: fakeOrgID, TemplateID: fakeOrgID, Quantity: -1},
+		{Commodity: "coffee", Unit: "kg", Quantity: 1},
+		{FacilityID: fakeOrgID, Unit: "kg", Quantity: 1},
+		{FacilityID: fakeOrgID, Commodity: "coffee", Quantity: 1},
+		{FacilityID: fakeOrgID, Commodity: "coffee", Unit: strings.Repeat("k", passport.MaxUnitLen+1), Quantity: 1},
+		{FacilityID: fakeOrgID, Commodity: "9coffee", Unit: "kg", Quantity: 1},
+		{FacilityID: fakeOrgID, Commodity: "coffee", Unit: "kg"},
+		{FacilityID: fakeOrgID, Commodity: "coffee", Unit: "kg", Quantity: -1},
 	}
 	for _, in := range bad {
 		if in.Validate() == "" {
 			t.Errorf("%+v accepted", in)
 		}
 	}
-	if msg := (passport.IssueInput{FacilityID: fakeOrgID, TemplateID: fakeOrgID, Quantity: 1}).Validate(); msg != "" {
+	if msg := (&passport.IssueInput{FacilityID: fakeOrgID, Commodity: "Arabica Coffee", Unit: "kg", Quantity: 1}).Validate(); msg != "" {
 		t.Errorf("valid input rejected: %s", msg)
 	}
 
-	h := passport.HandoverInput{ToOrganisationID: fakeOrgID, Stage: " " + stageWashing + " ", Note: "  at the gate  "}
+	h := passport.HandoverInput{ToOrganisationID: fakeOrgID, ToUser: fakeOrgID, Stage: " " + stageWashing + " ", Note: "  at the gate  "}
 	if msg := h.Validate(); msg != "" || h.Note != "at the gate" || h.Stage != stageWashing {
 		t.Errorf("handover input: %q %q %q", msg, h.Note, h.Stage)
 	}
-	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID, Stage: strings.Repeat("x", passport.MaxStageLen+1)},
+	for _, in := range []passport.HandoverInput{{}, {ToOrganisationID: fakeOrgID, ToUser: fakeOrgID, Stage: strings.Repeat("x", passport.MaxStageLen+1)},
 		{ToOrganisationID: fakeOrgID, Stage: stageWashing, Note: strings.Repeat("x", passport.MaxNoteLen+1)}} {
 		if in.Validate() == "" {
 			t.Errorf("%+v accepted", in)

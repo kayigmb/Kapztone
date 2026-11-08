@@ -49,15 +49,6 @@ var Statuses = []string{StatusPending, StatusActive, StatusSuspended}
 // pending facility becomes active only by approval.
 var SettableStatuses = []string{StatusActive, StatusSuspended}
 
-// The period a facility's capacity applies to.
-const (
-	PeriodSeason = "season"
-	PeriodYear   = "year"
-	PeriodMonth  = "month"
-)
-
-var Periods = []string{PeriodSeason, PeriodYear, PeriodMonth}
-
 // GeoJSON geometry types accepted for a location: a pin or a drawn boundary.
 const (
 	GeoPoint   = "Point"
@@ -68,7 +59,6 @@ var GeoTypes = []string{GeoPoint, GeoPolygon}
 
 const (
 	MaxNameLen = 200
-	MaxUnitLen = 16
 
 	// SRID is WGS 84, the longitude/latitude system GeoJSON uses.
 	SRID = 4326

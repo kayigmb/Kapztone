@@ -223,6 +223,22 @@ func Gate(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
 	return orgID, ok
 }
 
+// Inspects reports whether the acting organisation is a verified certifier
+// or regulator: they check the whole chain, so they read every organisation's
+// passports, facilities and certificates (never write them).
+func Inspects(r *http.Request) bool {
+	o := CurrentScope(r.Context()).Organisation
+	return o != nil && o.Status == OrgVerified && slices.Contains(InspectorKinds, o.Kind)
+}
+
+// InspectGate is Gate for reading: "" (every organisation) for inspectors.
+func InspectGate(w http.ResponseWriter, r *http.Request) (orgID string, ok bool) {
+	if Inspects(r) {
+		return "", true
+	}
+	return Gate(w, r)
+}
+
 // dummyHash is compared against when the email is unknown, so a wrong email
 // takes as long as a wrong password and the two cannot be told apart.
 var dummyHash, _ = HashPassword("chaintrack-dummy-password")
@@ -259,7 +275,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Limiter.reset(ctx, LoginRate, in.Email, ip)
 	a.Limiter.reset(ctx, LoginEmailRate, in.Email)
-	if user.EmailUnverified {
+	if user.EmailUnverified && !a.SkipEmailVerify {
 		a.refuseUnverified(w, r, user, in.Email)
 		return
 	}

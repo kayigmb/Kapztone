@@ -136,7 +136,6 @@ func (m *Mailer) SendPending(ctx context.Context) error {
 	}
 	for _, p := range batch {
 		// One message per person, greeted by name; nobody sees the others' addresses.
-		// ponytail: a failure part-way retries the whole notification, so earlier
 		// recipients may get it twice; track per recipient if that matters.
 		for i, to := range p.to {
 			if err := m.Send(m.Addr, m.Auth, m.From, []string{to}, m.message(to, p.names[i], p.message)); err != nil {

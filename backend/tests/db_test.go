@@ -33,7 +33,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/stats"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
@@ -153,7 +152,7 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			    OR subject_id IN (SELECT id FROM accreditations WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)
 			    OR subject_id IN (SELECT id FROM trace_events WHERE from_org IN ` + orgs + `)
-			    OR subject_id IN (SELECT id FROM commodity_templates WHERE name LIKE $1)`,
+			    OR (kind = 'max_yield_set' AND payload->>'commodity' LIKE $1)`,
 			// Platform notifications have no organisation; theirs is the subject (organisation or flag).
 			`DELETE FROM notifications WHERE organisation_id IN ` + orgs + ` OR subject_id IN ` + orgs + `
 			    OR subject_id IN (SELECT id FROM flags WHERE organisation_id IN ` + orgs + `)`,
@@ -170,7 +169,6 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 			`DELETE FROM documents WHERE organisation_id IN ` + orgs,
 			`DELETE FROM lot_counters WHERE organisation_id IN ` + orgs,
 			`DELETE FROM facilities WHERE organisation_id IN ` + orgs,
-			`DELETE FROM commodity_templates WHERE name LIKE $1`,
 			`DELETE FROM invites WHERE organisation_id IN ` + orgs,
 			`DELETE FROM recovery_codes WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
 			`DELETE FROM password_history WHERE user_id IN (SELECT id FROM users WHERE email::text LIKE $1)`,
@@ -226,7 +224,6 @@ func newEnv(t *testing.T, useCache bool) (*env, *countingStore, *auth.CachedStor
 		Auth:        e.a,
 		Org:         e.orgs,
 		Facility:    &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
-		Template:    &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport:    e.passports,
 		Attestation: e.certificates,
 		Flag:        &flag.Handlers{Store: flag.Store{Pool: pool}, Passports: passport.Store{Pool: pool}, Auth: e.a},
@@ -263,6 +260,19 @@ func (e *env) register(name, kind string) org.Organisation {
 	// As if the emailed link was opened; email_test.go covers the link itself.
 	e.exec(`UPDATE users SET email_verified_at = now() WHERE email = $1`, e.email(name))
 	return decodeTo[org.Organisation](e.t, rec)
+}
+
+// personIn is the first person (its admin) of an organisation: whom a test
+// hands a lot to.
+func (e *env) personIn(orgID string) (userID string) {
+	e.t.Helper()
+	err := e.pool.QueryRow(context.Background(),
+		`SELECT user_id::text FROM userscope WHERE organisation_id = $1::uuid AND NOT is_deleted ORDER BY created_at LIMIT 1`,
+		orgID).Scan(&userID)
+	if err != nil {
+		e.t.Fatalf("nobody in organisation %s: %v", orgID, err)
+	}
+	return userID
 }
 
 // addUser inserts a user directly with the given role; orgID "" means platform-wide.
@@ -433,7 +443,7 @@ func TestAccessAgainstDatabase(t *testing.T) {
 	if got.Organisation == nil || got.Organisation.Slug != slug || got.Role != auth.RoleMember {
 		t.Fatalf("unexpected scope: %s", me.Body)
 	}
-	if !slices.Equal(got.Permissions, slices.Sorted(slices.Values(auth.DefaultRoles[auth.RoleMember]))) {
+	if !slices.Equal(got.Permissions, slices.Sorted(slices.Values(auth.Effective(auth.DefaultRoles[auth.RoleMember], org.KindProducer)))) {
 		t.Fatalf("member permissions = %v", got.Permissions)
 	}
 	// Another organisation's address gives no organisation and no permissions.

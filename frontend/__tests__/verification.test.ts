@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { toView, type ApiVerification } from "../lib/verification.ts";
 
@@ -60,7 +60,6 @@ const base: ApiVerification = {
     "record_intact",
     "anchored",
     "origin",
-    "capacity",
     "mass_balance",
     "certificates",
     "status",
@@ -172,10 +171,6 @@ test("failures come first, repeats are said once, never more than four", () => {
   assert.equal(
     v.checks.find((c) => c.name === "certificates")?.explanation,
     "A certificate has expired.",
-  );
-  assert.match(
-    v.checks.find((c) => c.name === "capacity")!.explanation,
-    /declared capacity/,
   );
 });
 

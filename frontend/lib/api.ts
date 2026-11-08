@@ -176,25 +176,6 @@ const page = <T extends z.ZodType>(item: T) =>
 /** One page of a list, paged, searched and sorted by the API. */
 export type Paged<T> = { data: T[]; total: number };
 
-const templateSchema = z.object({
-  id: z.string(),
-  commodity: z.string(),
-  name: z.string(),
-  unit: z.string(),
-  originFacilityKind: z.string().nullable().optional(),
-  capacityRule: z
-    .object({
-      type: z.string(),
-      kgPerHaPerSeason: z.number().nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-  requiredEvidence: z.array(z.string()).catch([]),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional(),
-});
-export type Template = z.infer<typeof templateSchema>;
-
 export const accreditationSchema = z.object({
   type: z.string(),
   valid_from: z.string(),
@@ -323,6 +304,13 @@ const handoverRow = z.object({
   passport_id: z.string(),
   from_org: z.string(),
   to_org: z.string(),
+  from_name: z.string().optional(),
+  to_name: z.string().optional(),
+  // The people: who sent it, who it went to, who answered.
+  from_user_name: z.string().nullish(),
+  to_user: z.string().nullish(),
+  to_user_name: z.string().nullish(),
+  responded_by_name: z.string().nullish(),
   stage: z.string(),
   quantity: z.number(),
   status: z.string(),
@@ -332,9 +320,6 @@ export type HandoverRow = z.infer<typeof handoverRow>;
 const facilityRow = z.object({
   id: z.string(),
   name: z.string(),
-  capacity: z.number(),
-  capacity_unit: z.string(),
-  capacity_used: z.number(),
   status: z.string(),
 });
 export type FacilityRow = z.infer<typeof facilityRow>;
@@ -384,7 +369,6 @@ export const facilitySchema = facilityRow.extend({
     .object({ file_name: z.string() })
     .passthrough()
     .nullable(),
-  capacity_period: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -399,14 +383,20 @@ const traceEvent = z.object({
   data_hash: z.string(),
   tx_hash: z.string().nullable(),
   created_at: z.string(),
+  // Who did it, who received a handover, and the organisations' names.
+  by: z.string().nullish(),
+  received_by: z.string().nullish(),
+  from_name: z.string().nullish(),
+  to_name: z.string().nullish(),
 });
 export type TraceEvent = z.infer<typeof traceEvent>;
 
 export const passportDetailSchema = passportRow.extend({
   organisation_id: z.string(),
+  holder_name: z.string().optional(),
+  issued_by_name: z.string().nullish(),
   facility_id: z.string().nullable(),
   transform_id: z.string().nullable(),
-  template_id: z.string().optional(),
   quantity: z.number(),
   data_hash: z.string(),
   handover_count: z.number().optional(),
@@ -454,6 +444,7 @@ export type HandoverDetail = z.infer<typeof handoverDetailSchema>;
 export const certificateSchema = z.object({
   id: z.string(),
   issuer_org_id: z.string(),
+  issuer_name: z.string().optional(),
   subject_type: z.string(),
   subject_id: z.string(),
   type: z.string(),
@@ -464,6 +455,9 @@ export const certificateSchema = z.object({
   content_type: z.string(),
   size_bytes: z.number(),
   ipfs_cid: z.string().nullable().optional(),
+  // Which of the issuer's facilities it was issued at, if it said.
+  issued_at_facility_id: z.string().nullable().optional(),
+  issued_at_name: z.string().nullable().optional(),
   status: z.enum(["valid", "expired", "revoked"]),
   revoke_reason: z.string().nullable().optional(),
   revoked_at: z.string().nullable().optional(),
@@ -703,7 +697,14 @@ export const endpoints = {
   acceptHandoff: (code: string) =>
     write(apiPaths.handoffAccept, nothing, send("POST", { code })),
   register: (body: object) =>
-    write(apiPaths.orgs, organisationSchema, send("POST", body)),
+    write(
+      apiPaths.orgs,
+      // email_confirmed: the platform runs with EMAIL_VERIFY=false, so no link is coming.
+      organisationSchema.extend({
+        email_confirmed: z.boolean().optional(),
+      }),
+      send("POST", body),
+    ),
 
   org: (id: string) => api(apiPaths.org(id), organisationSchema),
   orgsPage: paged(apiPaths.orgs, organisationSchema),
@@ -735,16 +736,6 @@ export const endpoints = {
       apiPaths.orgAccreditations(orgId),
       accreditationList,
       send("PUT", rows),
-    ),
-
-  /** Every evidence key some template asks for: the certificate types an issuer can be accredited for. */
-  certificateTypes: () =>
-    api(`${apiPaths.templates}${all}`, page(templateSchema)).then((p) =>
-      [
-        ...new Set(
-          p.data.flatMap((t) => t.requiredEvidence),
-        ),
-      ].sort(),
     ),
 
   /** How many rows a list holds: one row is asked for and its `total` read. */
@@ -782,10 +773,10 @@ export const endpoints = {
     api(`${apiPaths.directory}${all}`, page(directoryRow)).then(
       (p) => new Map(p.data.map((o) => [o.id, o.name])),
     ),
-  /** Verified organisations other than mine, by name. */
+  /** Verified organisations other than mine that may receive a handover (never certifiers or regulators), by name. */
   directorySearch: (search: string) =>
     api(
-      `${apiPaths.directory}?size=${panelRows * 2}&sort=name&search=${encodeURIComponent(search)}`,
+      `${apiPaths.directory}?receivers=true&size=${panelRows * 2}&sort=name&search=${encodeURIComponent(search)}`,
       page(directoryRow),
     ).then((p) => p.data),
 
@@ -840,6 +831,12 @@ export const endpoints = {
   activate: (id: string) =>
     write(apiPaths.userActivate(id), nothing, { method: "POST" }),
   orgMembers: (orgId: string) => paged(apiPaths.orgMembers(orgId), memberRow),
+  /** Who in an organisation a lot can be handed to: names and roles only. */
+  orgPeople: (orgId: string) =>
+    api(
+      apiPaths.orgPeople(orgId),
+      z.array(z.object({ id: z.string(), name: z.string(), role: z.string() })),
+    ),
   orgSuspend: (id: string, reason: string) =>
     write(apiPaths.orgSuspend(id), nothing, send("POST", { reason })),
   orgReactivate: (id: string) =>
@@ -884,10 +881,6 @@ export const endpoints = {
     name: string;
     kind: string;
     location: unknown;
-    licence_number: string;
-    capacity: number;
-    capacity_unit: string;
-    capacity_period: string;
     licence_valid_to: string;
   }) => write(apiPaths.facilities, facilitySchema, send("POST", body)),
   approveFacility: (id: string) =>
@@ -909,17 +902,6 @@ export const endpoints = {
   deleteFacility: (id: string) =>
     write(apiPaths.facility(id), nothing, { method: "DELETE" }),
 
-  templatesPage: paged(apiPaths.templates, templateSchema),
-  templatesList: () =>
-    api(`${apiPaths.templates}${all}&sort=name`, page(templateSchema)).then(
-      (p) => p.data,
-    ),
-  template: (id: string) => api(apiPaths.template(id), templateSchema),
-  createTemplate: (body: object) =>
-    write(apiPaths.templates, templateSchema, send("POST", body)),
-  updateTemplate: (id: string, body: object) =>
-    write(apiPaths.template(id), templateSchema, send("PUT", body)),
-
   passportsList: (status?: string) =>
     api(
       `${apiPaths.passports}${all}&sort=-created_at${status ? `&status=${status}` : ""}`,
@@ -933,7 +915,12 @@ export const endpoints = {
       genealogySchema,
     ),
   issuePassport: (
-    body: { facility_id: string; template_id: string; quantity: number },
+    body: {
+      facility_id: string;
+      commodity: string;
+      unit: string;
+      quantity: number;
+    },
     pin: string,
   ) => write(apiPaths.passports, passportDetailSchema, send("POST", body, pin)),
   retirePassport: (id: string, pin: string) =>
@@ -1151,6 +1138,8 @@ export type PlatformStats = z.infer<typeof platformStatsSchema>;
 
 export type HandoverStart = {
   to_org: string;
+  /** The person there it goes to: they or their admins answer it. */
+  to_user: string;
   stage: string;
   quantity: number;
   note: string;

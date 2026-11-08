@@ -109,23 +109,20 @@ export const permissions = {
   certificateRevoke: "certificate:revoke",
   flagCreate: "flag:create",
   flagResolve: "flag:resolve",
-  templateRead: "template:read",
-  templateManage: "template:manage",
   facilityRead: "facility:read",
   facilityManage: "facility:manage",
   facilitySuspend: "facility:suspend",
+  facilityKinds: "facility:kinds",
   auditRead: "audit:read",
   reportRead: "report:read",
 } as const;
 
-/** Who may open which screens: the longest matching prefix decides, and any one of its permissions lets a person in. The API checks every call again. */
+/** Who may open which screens: the longest matching prefix decides, and any one of its permissions lets a person in. The API checks every call again. Permissions come from GET /me already narrowed by the organisation's kind, so certifiers and regulators (who never trade) are kept out of /issue, /transform, /handover(s) and /facilities/new here. */
 export const routeAccess: readonly {
   prefix: string;
   anyOf: readonly string[];
 }[] = [
   { prefix: "/organisations", anyOf: [permissions.orgVerify] },
-  { prefix: "/templates", anyOf: [permissions.templateRead] },
-  { prefix: "/templates/", anyOf: [permissions.templateManage] },
   {
     prefix: "/reports",
     anyOf: [permissions.auditRead, permissions.reportRead],
@@ -135,7 +132,9 @@ export const routeAccess: readonly {
   { prefix: "/passports", anyOf: [permissions.passportRead] },
   { prefix: "/transform", anyOf: [permissions.transformCreate] },
   { prefix: "/handover", anyOf: [permissions.handoverCreate] },
-  { prefix: "/handovers", anyOf: [permissions.passportRead] },
+  { prefix: "/handovers", anyOf: [permissions.handoverCreate] },
+  // One handover stays open to anyone who reads passports (a passport's page links to it).
+  { prefix: "/handovers/", anyOf: [permissions.passportRead] },
   { prefix: "/certificates", anyOf: [permissions.passportRead] },
   { prefix: "/certificates/new", anyOf: [permissions.certificateIssue] },
   { prefix: "/facilities", anyOf: [permissions.facilityRead] },
@@ -151,10 +150,16 @@ export const superadminRole = "superadmin";
 
 /** Roles an organisation admin can give a member (POST /invites, PUT /users/{id}/role). */
 export const memberRoles = [
-  { value: "org_admin", label: "Organisation admin" },
+  { value: "org_admin", label: "Admin" },
   { value: "member", label: "Member" },
 ] as const;
 export type MemberRole = (typeof memberRoles)[number]["value"];
+/** A role as the sidebar names it. */
+export const roleLabel: Record<string, string> = Object.fromEntries(
+  memberRoles.map((r) => [r.value, r.label]),
+);
+/** Organisation kinds that inspect the chain and never trade in it: they look records up instead of listing everyone's. */
+export const inspectorKinds: readonly string[] = ["certifier", "regulator"];
 export const orgAdminRole: MemberRole = "org_admin";
 export const memberStatus = {
   active: "active",
@@ -214,13 +219,6 @@ export const facilityStatus = {
   suspended: "suspended",
 } as const;
 export type FacilityKind = string;
-/** The period a facility's declared capacity applies to. */
-export const capacityPeriods = [
-  { value: "season", label: "Season" },
-  { value: "year", label: "Year" },
-  { value: "month", label: "Month" },
-] as const;
-export type CapacityPeriod = (typeof capacityPeriods)[number]["value"];
 
 // What a certificate is attached to (POST /attestations form fields).
 export const subjectTypes = {
@@ -229,12 +227,24 @@ export const subjectTypes = {
 } as const;
 export type SubjectType = (typeof subjectTypes)[keyof typeof subjectTypes];
 
-// Commodity templates (backend/internal/template/values.go).
-/** How a template's per-facility capacity is worked out. */
-export const capacityRuleTypes = {
-  perArea: "yield_per_area",
-  facility: "facility_capacity",
-} as const;
+/** Units a producer can issue a passport in. */
+export const passportUnits = ["kg", "t", "g", "bags", "l"] as const;
+/** Certificate types the platform can accredit an issuer for (keys the API stores). */
+export const certificateTypes = [
+  "organic",
+  "fairtrade",
+  "rainforest_alliance",
+  "plot_geolocation",
+  "eudr_due_diligence",
+  "export_permit",
+  "phytosanitary",
+  "certificate_of_origin",
+  "assay_report",
+  "mining_licence",
+  "conflict_free",
+  "gmp_certificate",
+  "batch_release",
+] as const;
 
 /** Sidebar / More items. */
 /** Sidebar groups, in order. */
@@ -269,7 +279,7 @@ export const navItems = [
     href: "/handovers",
     icon: "handovers",
     group: "workspace",
-    permission: permissions.passportRead,
+    permission: permissions.handoverCreate,
     count: "incoming",
   },
   {
@@ -301,13 +311,6 @@ export const navItems = [
     group: "trust",
     permission: permissions.orgVerify,
     count: "orgsPending",
-  },
-  {
-    key: "templates",
-    href: "/templates",
-    icon: "templates",
-    group: "manage",
-    permission: permissions.templateRead,
   },
   {
     key: "reports",
@@ -356,12 +359,7 @@ export type TileKey =
   | "orgsRejected";
 /** Work lists a dashboard can show. */
 export type PanelKey =
-  | "incoming"
-  | "passports"
-  | "capacity"
-  | "certificates"
-  | "flags"
-  | "orgsPending";
+  "incoming" | "passports" | "certificates" | "flags" | "orgsPending";
 export type ActionKey =
   | "scan"
   | "issue"
@@ -371,7 +369,6 @@ export type ActionKey =
   | "reviewFlags"
   | "issueCertificate"
   | "reviewOrgs"
-  | "templates"
   | "users"
   | "reports";
 
@@ -387,24 +384,24 @@ export const dashboards = {
     tiles: ["passportsHeld", "incoming", "outgoing", "openFlags"],
     actions: ["issue", "scan", "handover", "registerFacility"],
     main: ["incoming", "passports"],
-    side: ["capacity"],
+    side: [],
   },
   certifier: {
     tiles: ["certValid", "certExpired", "certRevoked", "openFlags"],
-    actions: ["issueCertificate", "scan"],
+    actions: ["issueCertificate", "scan", "registerFacility"],
     main: ["certificates"],
     side: [],
   },
   regulator: {
-    tiles: ["openFlags", "certValid", "passportsHeld", "incoming"],
-    actions: ["scan", "issueCertificate", "reports"],
+    tiles: ["openFlags", "certValid", "certExpired", "certRevoked"],
+    actions: ["scan", "issueCertificate", "registerFacility", "reports"],
     main: ["flags"],
     side: [],
   },
   // Totals only (the overview row); each screen carries its own breakdown.
   platform: {
     tiles: [],
-    actions: ["reviewOrgs", "templates", "users", "reports"],
+    actions: ["reviewOrgs", "users", "reports"],
     main: ["orgsPending"],
     side: [],
   },
@@ -458,11 +455,6 @@ export const quickActions = [
     href: "/organisations",
     permission: permissions.orgVerify,
   },
-  {
-    key: "templates",
-    href: "/templates",
-    permission: permissions.templateRead,
-  },
   { key: "users", href: "/users", permission: permissions.userManage },
   { key: "reports", href: "/reports", permission: permissions.auditRead },
 ] as const satisfies readonly {
@@ -478,8 +470,6 @@ export const tileTones: Partial<Record<TileKey, "attention" | "alert">> = {
   orgsChanges: "attention",
   openFlags: "alert",
 };
-/** A facility's capacity meter turns amber at this share of its declared capacity. */
-export const capacityNearShare = 0.8;
 /** How many rows a dashboard list shows before its "All" link. */
 export const panelRows = 5;
 
@@ -521,11 +511,8 @@ export const routes = {
   onboarding: "/onboarding",
   workspaces: "/workspaces",
   organisations: "/organisations",
-  organisationsTab: (tab: string, id?: string) =>
-    `/organisations?tab=${tab}${id ? `&id=${id}` : ""}`,
+  organisationsTab: (tab: string) => `/organisations?tab=${tab}`,
   organisation: (id: string) => `/organisations/${id}`,
-  templates: "/templates",
-  template: (id: string) => `/templates/${id}`,
   reports: "/reports",
   passport: (id: string) => `/p/${id}`,
   passports: "/passports",
@@ -575,13 +562,12 @@ export const apiPaths = {
   org: (id: string) => `/orgs/${id}`,
   orgDocuments: (id: string) => `/orgs/${id}/documents`,
   orgMembers: (id: string) => `/orgs/${id}/members`,
+  orgPeople: (id: string) => `/orgs/${id}/people`,
   orgSuspend: (id: string) => `/orgs/${id}/suspend`,
   orgReactivate: (id: string) => `/orgs/${id}/reactivate`,
   orgReview: (id: string) => `/orgs/${id}/verify`,
   orgAccreditations: (id: string) => `/orgs/${id}/accreditations`,
   documentFile: (id: string) => `/documents/${id}/file`,
-  templates: "/templates",
-  template: (id: string) => `/templates/${id}`,
   verify: (id: string) => `/verify/${encodeURIComponent(id)}`,
   passports: "/passports",
   passport: (id: string) => `/passports/${encodeURIComponent(id)}`,
@@ -661,8 +647,6 @@ export const queryKeys = {
   org: (id: string) => ["orgs", id] as const,
   orgDocuments: (id: string) => ["orgs", id, "documents"] as const,
   orgAccreditations: (id: string) => ["orgs", id, "accreditations"] as const,
-  templates: ["templates"] as const,
-  template: (id: string) => ["templates", id] as const,
   count: (tile: string) => ["dashboard", "count", tile] as const,
   panel: (panel: string) => ["dashboard", "panel", panel] as const,
   directory: ["orgs", "directory"] as const,
@@ -747,10 +731,6 @@ export const copy = {
     to: (name: string) => fill(copyJson.dashboard.to.$template, { name }),
     stage: (stage: string) =>
       fill(copyJson.dashboard.stage.$template, { stage }),
-    capacityOf: (used: string, max: string) =>
-      fill(copyJson.dashboard.capacityOf.$template, { used, max }),
-    capacityLeft: (left: string) =>
-      fill(copyJson.dashboard.capacityLeft.$template, { left }),
     waitingDays: (d: number) =>
       d === 0 ? "Today" : d === 1 ? "1 day" : `${d} days`,
     workspaces: {
@@ -802,16 +782,6 @@ export const copy = {
   },
   issue: {
     ...copyJson.issue,
-    facilityLeft: (n: number, unit: string, period: string) =>
-      `${n.toLocaleString()} ${unit} left this ${period}`,
-    after: (left: number, unit: string, period: string) =>
-      `You have ${left.toLocaleString()} ${unit} left this ${period}. After this passport: ${Math.max(left, 0).toLocaleString()} ${unit}.`,
-    evidenceMissing: (keys: string) =>
-      fill(copyJson.issue.evidenceMissing.$template, { keys }),
-    blockedField: (limit: number, unit: string, period: string) =>
-      `More than the ${limit.toLocaleString()} ${unit} left for this facility this ${period}.`,
-    blockedNotice: (limit: number, unit: string) =>
-      `This passport can't be issued. Lower the quantity to ${limit.toLocaleString()} ${unit} or less. If the harvest really is larger, ask the regulator to review the declared capacity.`,
     createdBody: (quantity: string, facility: string) =>
       fill(copyJson.issue.createdBody.$template, { quantity, facility }),
   },
@@ -827,6 +797,7 @@ export const copy = {
       fill(copyJson.handover.photosHelp.$template, { max }),
     tooManyPhotos: (max: number) =>
       fill(copyJson.handover.tooManyPhotos.$template, { max }),
+    person: (org: string) => fill(copyJson.handover.person.$template, { org }),
     meaning: (receiver: string) =>
       fill(copyJson.handover.meaning.$template, { receiver }),
     sentBody: (quantity: string, receiver: string) =>
@@ -834,6 +805,10 @@ export const copy = {
   },
   receiver: {
     ...copyJson.receiver,
+    answeredBy: (name: string) =>
+      fill(copyJson.receiver.answeredBy.$template, { name }),
+    forSomeoneElse: (name: string) =>
+      fill(copyJson.receiver.forSomeoneElse.$template, { name }),
     rejectChips: copyJson.receiver.rejectChips as Record<RejectReason, string>,
     from: (name: string) => fill(copyJson.receiver.from.$template, { name }),
     to: (name: string) => fill(copyJson.receiver.to.$template, { name }),
@@ -918,15 +893,6 @@ export const copy = {
       `${n} ${n === 1 ? "passport" : "passports"} will be revoked, including everything made from them.`,
     fraudConfirm: (n: number) =>
       `Confirm fraud and revoke ${n} ${n === 1 ? "lot" : "lots"}`,
-  },
-  templates: {
-    ...copyJson.templates,
-    detail: {
-      ...copyJson.templates.detail,
-      title: (name: string) =>
-        fill(copyJson.templates.detail.title.$template, { name }),
-      eventChip: (events: string) => events,
-    },
   },
   reports: {
     ...copyJson.reports,
@@ -1145,13 +1111,13 @@ export const screenCopy = {
   ...screenCopyJson,
   issue: {
     ...screenCopyJson.issue,
-    afterPassport: (used: number, unit: string) =>
-      `With this passport: ${used.toLocaleString()} ${unit} issued.`,
-    evidenceCount: (have: number, total: number) =>
-      fill(screenCopyJson.issue.evidenceCount.$template, { have, total }),
   },
   passportDetail: {
     ...screenCopyJson.passportDetail,
+    by: (name: string) =>
+      fill(screenCopyJson.passportDetail.byPerson.$template, { name }),
+    sentReceived: (from: string, to: string) =>
+      fill(screenCopyJson.passportDetail.sentReceived.$template, { from, to }),
     held: (held: number, total: number, unit: string) =>
       `${held.toLocaleString()} of ${total.toLocaleString()} ${unit}`,
     edge: (stage: string, used: string) =>
@@ -1174,7 +1140,7 @@ export const confirmCopy = {
   ...confirmCopyJson,
   facilityApprove: (name: string) => ({
     title: `Approve ${name}?`,
-    body: "It goes on the ledger and can issue passports from now on, up to its declared capacity.",
+    body: "It goes on the ledger and can issue passports from now on.",
     label: "Approve facility",
   }),
   facilityReinstate: (name: string) => ({

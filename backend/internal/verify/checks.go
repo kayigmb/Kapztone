@@ -101,72 +101,56 @@ func (v *run) holderDiffers(passportID string) error {
 }
 
 // origins checks that every branch of the tree ends at a facility, and each
-// such facility: active, owned by a verified organisation, unchanged, and
-// within its capacity. It returns the facilities' ids.
+// such facility: active, owned by a verified organisation and unchanged. It
+// returns the facilities' ids.
 func (v *run) origins(nodes []passport.Passport) ([]string, error) {
-	facilityIDs, lots := v.originLots(nodes)
-	capacity := map[string]int64{}
+	facilityIDs := v.originFacilities(nodes)
 	for _, id := range facilityIDs {
-		c, err := v.origin(id)
-		if err != nil {
-			return nil, err
-		}
-		capacity[id] = c
-	}
-	for l := range lots {
-		if err := v.lotCapacity(l, capacity[l.facility]); err != nil {
+		if err := v.origin(id); err != nil {
 			return nil, err
 		}
 	}
 	return facilityIDs, nil
 }
 
-type lot struct {
-	facility string
-	period   int64
-}
-
-// originLots lists each origin facility once and every (facility, period) lot
-// issued from it. A passport with no facility must have been made from others.
-func (v *run) originLots(nodes []passport.Passport) ([]string, map[lot]bool) {
+// originFacilities lists each origin facility once. A passport with no
+// facility must have been made from others.
+func (v *run) originFacilities(nodes []passport.Passport) []string {
 	made := map[string]bool{}
 	for _, e := range v.res.Genealogy.Edges {
 		made[e.ChildID] = true
 	}
 	var facilityIDs []string
-	lots := map[lot]bool{}
 	for _, p := range nodes {
 		switch {
-		case p.FacilityID != nil && p.Period != nil:
+		case p.FacilityID != nil:
 			if !slices.Contains(facilityIDs, *p.FacilityID) {
 				facilityIDs = append(facilityIDs, *p.FacilityID)
 			}
-			lots[lot{*p.FacilityID, *p.Period}] = true
 		case !made[p.ID]:
 			v.add(Failed, CheckOrigin, OriginMissing, p.ID)
 		}
 	}
-	return facilityIDs, lots
+	return facilityIDs
 }
 
-// origin adds one origin facility to the result, checks its status and its
-// on-chain record, and returns its capacity.
-func (v *run) origin(id string) (int64, error) {
+// origin adds one origin facility to the result and checks its status and
+// its on-chain record.
+func (v *run) origin(id string) error {
 	var (
 		o                 Origin
 		location          string
 		status, orgStatus string
 		dataHash          *string
-		capacity          int64
 	)
 	err := v.h.Pool.QueryRow(v.ctx,
-		`SELECT f.id::text, f.name, f.kind, ST_AsGeoJSON(f.geom), f.status, f.capacity, f.data_hash,
+		`SELECT f.id::text, f.name, f.kind, ST_AsGeoJSON(f.geom), f.status, f.data_hash,
 		        o.id::text, o.name, o.status
 		 FROM facilities f JOIN organisations o ON o.id = f.organisation_id WHERE f.id = $1::uuid`, id,
-	).Scan(&o.Facility.ID, &o.Facility.Name, &o.Facility.Kind, &location, &status, &capacity, &dataHash,
+	).Scan(&o.Facility.ID, &o.Facility.Name, &o.Facility.Kind, &location, &status, &dataHash,
 		&o.Organisation.ID, &o.Organisation.Name, &orgStatus)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	o.Facility.Location = json.RawMessage(location)
 	v.res.Origins = append(v.res.Origins, o)
@@ -179,11 +163,11 @@ func (v *run) origin(id string) (int64, error) {
 	if orgStatus != auth.OrgVerified {
 		v.add(Warning, CheckOrigin, OwnerNotVerified, id)
 	}
-	v.facilityOnChain(id, dataHash, capacity)
-	return capacity, nil
+	v.facilityOnChain(id, dataHash)
+	return nil
 }
 
-func (v *run) facilityOnChain(id string, dataHash *string, capacity int64) {
+func (v *run) facilityOnChain(id string, dataHash *string) {
 	if v.chainDown {
 		return
 	}
@@ -192,29 +176,9 @@ func (v *run) facilityOnChain(id string, dataHash *string, capacity int64) {
 		v.absent(CheckOrigin, id, false)
 		return
 	}
-	if dataHash == nil || chain.Hex(c.DataHash) != *dataHash || c.CapacityPerPeriod.Cmp(big.NewInt(capacity)) != 0 {
+	if dataHash == nil || chain.Hex(c.DataHash) != *dataHash {
 		v.add(Failed, CheckOrigin, FacilityAltered, id)
 	}
-}
-
-func (v *run) lotCapacity(l lot, capacity int64) error {
-	var issued int64
-	err := v.h.Pool.QueryRow(v.ctx,
-		`SELECT COALESCE(sum(quantity), 0) FROM passports WHERE facility_id = $1::uuid AND period = $2 AND NOT is_deleted`,
-		l.facility, l.period).Scan(&issued)
-	if err != nil {
-		return err
-	}
-	over := issued > capacity
-	if !over && !v.chainDown {
-		// The contract refuses an issue over capacity, so this holds unless the chain itself is wrong.
-		used, err := v.h.Contracts.Facilities.OriginatedInPeriod(v.opts, chain.MustID(l.facility), big.NewInt(l.period))
-		over = v.onChain(err) && used.Cmp(big.NewInt(capacity)) > 0
-	}
-	if over {
-		v.add(Failed, CheckCapacity, CapacityExceeded, l.facility)
-	}
-	return nil
 }
 
 // massBalance rechecks every transform in the tree against the yield it

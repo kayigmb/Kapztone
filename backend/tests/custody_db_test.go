@@ -19,8 +19,8 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/flag"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
+	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Two tiny pictures: enough for the content check, which reads the first bytes.
@@ -73,16 +73,16 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	w := newPassportWorld(t)
 	e, c := w.e, w.chain
 	ctx := context.Background()
-	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tolerance := template.DefaultHandoverTolerance
-	tpl := w.template(t, tplIn)
+	tplIn := coffee("coffee_" + e.suffix)
+	tolerance := passport.DefaultHandoverTolerance
+	tpl := tplIn
 
 	rec := w.issue(tpl, 1000)
 	want(t, "issue", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
 	start := as(w.prodSlug, "/passports/"+lot.ID+"/handovers")
 	fields := map[string]string{
-		passport.FieldToOrg: w.processor.ID, passport.FieldStage: stageWashing, passport.FieldQuantity: "400",
+		passport.FieldToOrg: w.processor.ID, passport.FieldToUser: e.personIn(w.processor.ID), passport.FieldStage: stageWashing, passport.FieldQuantity: "400",
 		passport.FieldNote: "at the gate", passport.FieldLat: "-1.95", passport.FieldLon: "30.06",
 	}
 
@@ -93,13 +93,13 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	}
 	want(t, "too many photos", handoverForm(e, w.prodTok, start, fields, tooMany...), http.StatusBadRequest)
 	want(t, "a photo that is a PDF", handoverForm(e, w.prodTok, start, fields, pdfBytes), http.StatusBadRequest)
-	bad := map[string]string{passport.FieldToOrg: w.processor.ID, passport.FieldStage: stageWashing, passport.FieldQuantity: "lots"}
+	bad := map[string]string{passport.FieldToOrg: w.processor.ID, passport.FieldToUser: e.personIn(w.processor.ID), passport.FieldStage: stageWashing, passport.FieldQuantity: "lots"}
 	want(t, "quantity in words", handoverForm(e, w.prodTok, start, bad), http.StatusBadRequest)
-	bad = map[string]string{passport.FieldToOrg: w.processor.ID, passport.FieldStage: stageWashing, passport.FieldLat: "-1.95"}
+	bad = map[string]string{passport.FieldToOrg: w.processor.ID, passport.FieldToUser: e.personIn(w.processor.ID), passport.FieldStage: stageWashing, passport.FieldLat: "-1.95"}
 	want(t, "lat without lon", handoverForm(e, w.prodTok, start, bad), http.StatusBadRequest)
 	more := int64(1001)
 	want(t, "more than the lot holds", post(e, w.prodTok, start,
-		passport.HandoverInput{ToOrg: w.processor.ID, Stage: stageWashing, Quantity: &more}), http.StatusConflict)
+		passport.HandoverInput{ToOrg: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing, Quantity: &more}), http.StatusConflict)
 
 	// ---- Part of the lot, with two photos and where it happened.
 	rec = handoverForm(e, w.prodTok, start, fields, photoA, photoB)
@@ -119,8 +119,7 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	want(t, "unknown box", do(e.h, http.MethodGet, as(w.procSlug, "/handovers?box=inbox"), w.procTok, ""), http.StatusBadRequest)
 
 	if h.Quantity != 400 || h.ChildPassportID == nil || *h.ChildPassportID == lot.ID || h.PassportID != *h.ChildPassportID ||
-		h.SplitFrom == nil || *h.SplitFrom != lot.ID || h.Location == nil || h.Location.Lat != -1.95 || len(h.Photos) != 2 ||
-		h.TemplateVersion == nil || *h.TemplateVersion != 1 {
+		h.SplitFrom == nil || *h.SplitFrom != lot.ID || h.Location == nil || h.Location.Lat != -1.95 || len(h.Photos) != 2 {
 		t.Fatalf("partial handover: %s", rec.Body)
 	}
 	shas := []string{}
@@ -151,7 +150,9 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 			t.Fatal("downloaded photo differs from the upload")
 		}
 	}
-	want(t, "outsider downloads a photo", do(e.h, http.MethodGet, as(w.certSlug, photoPath), w.certTok, ""), http.StatusNotFound)
+	want(t, "an inspector downloads a photo", do(e.h, http.MethodGet, as(w.certSlug, photoPath), w.certTok, ""), http.StatusOK)
+	e.verifiedOrg("outsider", org.KindExporter, w.root)
+	want(t, "outsider downloads a photo", do(e.h, http.MethodGet, as(e.slug("outsider"), photoPath), e.login("outsider"), ""), http.StatusNotFound)
 	want(t, "photo of another handover", do(e.h, http.MethodGet,
 		as(w.prodSlug, "/handovers/"+fakeOrgID+"/photos/"+h.Photos[0].ID), w.prodTok, ""), http.StatusNotFound)
 	want(t, "photo id not an id", do(e.h, http.MethodGet, as(w.prodSlug, "/handovers/"+h.ID+"/photos/x"), w.prodTok, ""), http.StatusNotFound)
@@ -196,12 +197,12 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 	if err != nil || onChild.Remaining.Int64() != 400 || onChild.Holder != chain.MustID(w.processor.ID) {
 		t.Fatalf("on-chain handed part: %+v %v", onChild, err)
 	}
-	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(template.StageSplit)); got.Int64() != chain.YieldScale {
+	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(passport.StageSplit)); got.Int64() != chain.YieldScale {
 		t.Fatalf("on-chain split yield = %s", got)
 	}
 
 	// ---- The whole of what is left: no split, as before.
-	rec = post(e, w.prodTok, start, passport.HandoverInput{ToOrg: w.processor.ID, Stage: stageWashing})
+	rec = post(e, w.prodTok, start, passport.HandoverInput{ToOrg: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing})
 	want(t, "full handover", rec, http.StatusCreated)
 	full := decodeTo[passport.Handover](t, rec)
 	if full.Quantity != 600 || full.ChildPassportID != nil || full.SplitFrom != nil || full.PassportID != lot.ID || len(full.Photos) != 0 {
@@ -220,7 +221,7 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 
 	// ---- Reject: from the declared reasons, and with also_flag a flag in the same transaction.
 	back := post(e, w.procTok, as(w.procSlug, "/passports/"+child+"/handovers"),
-		passport.HandoverInput{ToOrg: w.producer.ID, Stage: stageWashing})
+		passport.HandoverInput{ToOrg: w.producer.ID, ToUser: e.personIn(w.producer.ID), Stage: stageWashing})
 	want(t, "hand back", back, http.StatusCreated)
 	r := "/handovers/" + decodeTo[passport.Handover](t, back).ID + "/reject"
 	for what, in := range map[string]passport.RejectInput{
@@ -258,12 +259,12 @@ func TestPartialHandoverToleranceAndPhotos(t *testing.T) {
 func TestRejectedReceiverLosesSight(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
-	tpl := w.template(t, withoutOriginEvidence(coffeeTemplate("coffee_"+e.suffix)))
+	tpl := coffee("coffee_" + e.suffix)
 	rec := w.issue(tpl, 1000)
 	want(t, "issue", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
 
-	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, Stage: stageWashing})
+	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing})
 	want(t, "handover", rec, http.StatusCreated)
 	h := decodeTo[passport.Handover](t, rec)
 	view := func() int { return do(e.h, http.MethodGet, as(w.procSlug, "/passports/"+lot.ID), w.procTok, "").Code }

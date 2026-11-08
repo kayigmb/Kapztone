@@ -32,7 +32,6 @@ tags:
   - name: auth
   - name: organisations
   - name: facilities
-  - name: templates
   - name: passports
   - name: handovers
   - name: certificates
@@ -306,14 +305,23 @@ paths:
   /orgs/directory:
     get:
       tags: [organisations]
-      summary: Verified organisations to hand a lot to (name, kind, slug)
+      summary: Verified organisations (name, kind, slug), to name parties or pick a handover receiver
       x-permission: org:search
       parameters:
+        - { name: receivers, in: query, schema: { type: boolean }, description: "true: only kinds that may receive a handover (no certifiers or regulators)" }
         - $ref: "#/components/parameters/search"
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/size"
       responses:
         "200": { $ref: "#/components/responses/Page" }
+  /orgs/{id}/people:
+    get:
+      tags: [organisations]
+      summary: "Who in a verified trading organisation a lot can be handed to: id, name, role"
+      x-permission: handover:create
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Object" }
   /orgs/{id}:
     get:
       tags: [organisations]
@@ -431,7 +439,7 @@ paths:
   /facilities:
     post:
       tags: [facilities]
-      summary: Register a facility (pending until the platform approves it)
+      summary: Register a facility (pending until the platform or a regulator approves it)
       x-permission: facility:manage
       requestBody:
         required: true
@@ -522,14 +530,14 @@ paths:
   /facility-kinds:
     get:
       tags: [facilities]
-      summary: List active facility kinds available to registration and templates
+      summary: List active facility kinds available to registration
       x-permission: facility:read
       responses:
         "200": { $ref: "#/components/responses/FacilityKinds" }
     post:
       tags: [facilities]
       summary: Add a curated facility kind
-      x-permission: template:manage
+      x-permission: facility:kinds
       requestBody:
         required: true
         content:
@@ -543,14 +551,14 @@ paths:
     get:
       tags: [facilities]
       summary: List active and deactivated kinds for platform curation
-      x-permission: template:manage
+      x-permission: facility:kinds
       responses:
         "200": { $ref: "#/components/responses/FacilityKinds" }
   /facility-kinds/{key}:
     put:
       tags: [facilities]
       summary: Rename, describe or deactivate a kind
-      x-permission: template:manage
+      x-permission: facility:kinds
       parameters:
         - { name: key, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" } }
       requestBody:
@@ -565,7 +573,7 @@ paths:
     delete:
       tags: [facilities]
       summary: Delete an unused facility kind
-      x-permission: template:manage
+      x-permission: facility:kinds
       parameters:
         - { name: key, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" } }
       responses:
@@ -573,72 +581,12 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
 
-  # ---- Templates ----
-
-  /templates:
-    post:
-      tags: [templates]
-      summary: Create a commodity template (live at once)
-      x-permission: template:manage
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/Template" }
-      responses:
-        "201": { $ref: "#/components/responses/Object" }
-        "400": { $ref: "#/components/responses/Error" }
-    get:
-      tags: [templates]
-      x-permission: template:read
-      parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/size"
-        - $ref: "#/components/parameters/search"
-        - $ref: "#/components/parameters/sort"
-      responses:
-        "200": { $ref: "#/components/responses/Page" }
-  /templates/{id}:
-    get:
-      tags: [templates]
-      x-permission: template:read
-      parameters: [{ $ref: "#/components/parameters/id" }]
-      responses:
-        "200": { $ref: "#/components/responses/Object" }
-    put:
-      tags: [templates]
-      summary: Save a draft of the next version
-      x-permission: template:manage
-      parameters: [{ $ref: "#/components/parameters/id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/Template" }
-      responses:
-        "200": { $ref: "#/components/responses/Object" }
-    delete:
-      tags: [templates]
-      x-permission: template:manage
-      parameters: [{ $ref: "#/components/parameters/id" }]
-      responses:
-        "200": { $ref: "#/components/responses/Object" }
-  /templates/{id}/publish:
-    post:
-      tags: [templates]
-      summary: Make the draft the live version
-      x-permission: template:manage
-      parameters: [{ $ref: "#/components/parameters/id" }]
-      responses:
-        "200": { $ref: "#/components/responses/Object" }
-        "409": { description: No draft }
-
   # ---- Passports ----
 
   /passports:
     post:
       tags: [passports]
-      summary: Issue an origin passport (capacity and evidence checked)
+      summary: Issue an origin passport for what a facility produced
       x-permission: passport:issue
       parameters: [{ $ref: "#/components/parameters/pin" }]
       requestBody:
@@ -648,7 +596,7 @@ paths:
             schema: { $ref: "#/components/schemas/Issue" }
       responses:
         "201": { $ref: "#/components/responses/Object" }
-        "409": { description: "Over capacity, facility not active, or evidence missing" }
+        "409": { description: "Facility pending, suspended or its licence expired" }
     get:
       tags: [passports]
       x-permission: passport:read
@@ -813,19 +761,21 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [subject_type, subject_id, type, valid_from, valid_to, file]
+              required: [subject_type, subject_id, type, valid_from, valid_to]
               properties:
                 subject_type: { type: string, enum: [passport, facility] }
                 subject_id: { type: string, format: uuid }
-                type: { type: string, description: An evidence key a template asks for }
+                type: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$", description: A certificate type key }
                 valid_from: { type: string, format: date }
                 valid_to: { type: string, format: date }
-                file: { type: string, format: binary }
+                issued_at_facility_id: { type: string, format: uuid, description: "Optional: the issuer's own facility it was issued at" }
+                file: { type: string, format: binary, description: "Optional signed document; left out, ChainTrack generates the certificate PDF" }
       responses:
         "201": { $ref: "#/components/responses/Object" }
         "403": { description: Not accredited for this type }
     get:
       tags: [certificates]
+      summary: "The organisation's certificates; certifiers and regulators reach other organisations' with ?search= or ?subject_id="
       x-permission: passport:read
       parameters:
         - { name: subject_id, in: query, schema: { type: string, format: uuid } }
@@ -1343,10 +1293,10 @@ components:
         valid_to: { type: string, format: date }
     Facility:
       type: object
-      required: [name, kind, location, licence_number, licence_valid_to, capacity, capacity_unit, capacity_period]
+      required: [name, kind, location, licence_valid_to]
       properties:
         name: { type: string, maxLength: 200 }
-        kind: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$", description: Active curated facility kind }
+        kind: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$", description: "An active curated kind, or the business's own key (an office, a lab)" }
         location:
           type: object
           description: GeoJSON Point or Polygon, [longitude, latitude]
@@ -1354,11 +1304,8 @@ components:
           properties:
             type: { type: string, enum: [Point, Polygon] }
             coordinates: {}
-        licence_number: { type: string }
+        licence_number: { type: string, description: Optional; the uploaded licence document is the proof }
         licence_valid_to: { type: string, format: date }
-        capacity: { type: integer, minimum: 1 }
-        capacity_unit: { type: string, maxLength: 16 }
-        capacity_period: { type: string, enum: [season, year, month] }
     FacilityKindInput:
       type: object
       required: [key, label]
@@ -1381,45 +1328,20 @@ components:
         label: { type: string }
         sub: { type: string }
         active: { type: boolean }
-    Template:
-      type: object
-      required: [commodity, name, unit, capacityRule, stages]
-      properties:
-        commodity: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" }
-        name: { type: string }
-        unit: { type: string }
-        originFacilityKind: { type: string }
-        capacityRule:
-          type: object
-          properties:
-            type: { type: string, enum: [yield_per_area, facility_capacity] }
-            kgPerHaPerSeason: { type: number }
-        stages:
-          type: array
-          items: { $ref: "#/components/schemas/Stage" }
-    Stage:
-      type: object
-      required: [key, events]
-      properties:
-        key: { type: string, pattern: "^[a-z][a-z0-9_]{0,49}$" }
-        events:
-          type: array
-          items: { type: string, enum: [ISSUE, HANDOVER, TRANSFORM, EXPORT, IMPORT] }
-        maxYield: { type: number, exclusiveMinimum: 0, description: "A fraction: outputs ≤ inputs × maxYield (0.2 = 20%)" }
-        requiredEvidence: { type: array, items: { type: string } }
-        handoverTolerance: { type: number, description: Percent the received weight may differ }
     Issue:
       type: object
-      required: [facility_id, template_id, quantity]
+      required: [facility_id, commodity, unit, quantity]
       properties:
         facility_id: { type: string, format: uuid }
-        template_id: { type: string, format: uuid }
+        commodity: { type: string, description: "What was produced; tidied to a key (Green Coffee → green_coffee)" }
+        unit: { type: string, maxLength: 16 }
         quantity: { type: integer, minimum: 1 }
     Handover:
       type: object
-      required: [to_org, stage]
+      required: [to_org, to_user, stage]
       properties:
         to_org: { type: string, format: uuid }
+        to_user: { type: string, format: uuid, description: "The person there it is sent to (GET /orgs/{id}/people); they or their admins answer it" }
         stage: { type: string }
         quantity: { type: integer, description: Unset means all that remains }
         note: { type: string, maxLength: 2000 }
@@ -1540,7 +1462,7 @@ components:
       type: object
       required: [rule, count]
       properties:
-        rule: { type: string, enum: [capacity, mass_balance, evidence, tolerance, handover_rejected] }
+        rule: { type: string, enum: [mass_balance, tolerance, handover_rejected] }
         count: { type: integer }
     Outcome:
       type: object

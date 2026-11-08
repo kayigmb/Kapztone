@@ -55,14 +55,15 @@ const (
 
 // Rules whose refusals are counted (rule_events.rule), declared once.
 const (
-	RuleCapacity         = "capacity"     // more issued than a facility may originate
 	RuleMassBalance      = "mass_balance" // a transform's output above input × max yield
-	RuleEvidence         = "evidence"     // a template's required certificate missing
 	RuleTolerance        = "tolerance"    // received weight outside the handover tolerance
 	RuleHandoverRejected = "handover_rejected"
 )
 
-var Rules = []string{RuleCapacity, RuleMassBalance, RuleEvidence, RuleTolerance, RuleHandoverRejected}
+var Rules = []string{RuleMassBalance, RuleTolerance, RuleHandoverRejected}
+
+// stageExport is the handover stage that counts as an export.
+const stageExport = "EXPORT"
 
 // handoverRejected is the passport package's rejected handover status. Not
 // imported: passport records rule events here, so audit cannot import it.

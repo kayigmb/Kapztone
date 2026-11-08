@@ -149,10 +149,12 @@ type Auth struct {
 	AppURL string
 	// Mail sends one email now; nil when e-mail is off (links are then only logged in dev).
 	Mail    func(to, subject, text, html string) error
-	Dev     bool             // accept ?pslug= in place of the frontend subdomain
-	Secrets *secret.Box      // seals 2FA secrets
-	Limiter *Limiter         // nil disables rate limiting
-	Now     func() time.Time // the clock; nil means time.Now (tests set it)
+	Dev     bool        // accept ?pslug= in place of the frontend subdomain
+	Secrets *secret.Box // seals 2FA secrets
+	Limiter *Limiter    // nil disables rate limiting
+	// SkipEmailVerify (EMAIL_VERIFY=false): accounts count as confirmed; no link is sent or needed.
+	SkipEmailVerify bool
+	Now             func() time.Time // the clock; nil means time.Now (tests set it)
 }
 
 func (a *Auth) now() time.Time {

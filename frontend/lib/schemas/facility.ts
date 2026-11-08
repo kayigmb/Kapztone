@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { copy, limits } from "../consts.ts";
+import { certificateFileSchema } from "./certificate.ts";
 
 const v = copy.validation;
 
@@ -20,8 +21,6 @@ const location = z.union(
   { message: v.facilityLocation },
 );
 
-const periods = ["season", "year", "month"] as const;
-
 export const facilityFormSchema = z.object({
   name: z
     .string()
@@ -33,29 +32,16 @@ export const facilityFormSchema = z.object({
     .trim()
     .min(1, v.facilityKind)
     .regex(/^[a-z][a-z0-9_]{0,49}$/, v.facilityKind),
-  licence_number: z
-    .string()
-    .trim()
-    .min(1, v.licence)
-    .max(limits.name, v.tooLong(limits.name)),
-  capacity: z.coerce
-    .number({ message: v.capacity })
-    .int(v.capacity)
-    .positive(v.capacity),
-  capacity_unit: z
-    .string()
-    .trim()
-    .min(1, v.capacityUnit)
-    .max(16, v.tooLong(16)),
-  capacity_period: z.enum(periods, { message: v.capacityPeriod }),
   licence_valid_to: z
     .string()
     .trim()
     .min(1, v.date)
     .refine((d) => d > new Date().toISOString().slice(0, 10), v.licenceExpired),
   location,
+  // The licence document is the proof (no licence number): PDF, PNG or JPEG.
+  licence: certificateFileSchema,
 });
 
 export type FacilityForm = z.infer<typeof facilityFormSchema>;
-/** What the form holds before zod coerces it (numbers typed as text). */
+/** What the form holds before zod parses it. */
 export type FacilityFormInput = z.input<typeof facilityFormSchema>;

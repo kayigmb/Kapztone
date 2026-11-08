@@ -20,7 +20,6 @@ const LogoCID = "logo"
 var logoPNG []byte
 
 // LogoPart is the logo as a MIME body: base64 in lines of 76 (RFC 2045).
-// ponytail: encoded once at start-up and reused by every message.
 var LogoPart = func() string {
 	enc := base64.StdEncoding.EncodeToString(logoPNG)
 	var b strings.Builder

@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
 import type { Fact } from "@/components/chaintrack/passport-card";
 import { SigningPanel } from "@/components/chaintrack/signing";
-import { TextField } from "@/components/chaintrack/text-field";
+import { besideField, TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { endpoints, problemOf, type PassportDetail } from "@/lib/api";
@@ -277,7 +277,7 @@ export function Transform() {
             <form
               onSubmit={addForm.handleSubmit((val) => add.mutate(val.code))}
               noValidate
-              className="flex flex-wrap items-end gap-2"
+              className="flex flex-wrap items-start gap-2"
             >
               <TextField
                 label={s.codeLabel}
@@ -295,6 +295,7 @@ export function Transform() {
                 variant="secondary"
                 disabled={atCap}
                 loading={add.isPending}
+                className={besideField}
               >
                 <Plus aria-hidden />
                 {local.addLot}
@@ -331,7 +332,7 @@ export function Transform() {
               {outputs.fields.map((field, i) => {
                 const id = `out-${field.id}`;
                 return (
-                  <li key={field.id} className="flex items-end gap-2">
+                  <li key={field.id} className="flex items-start gap-2">
                     <QuantityField
                       id={id}
                       label={t.output(i + 1)}
@@ -346,6 +347,7 @@ export function Transform() {
                     <Button
                       variant="ghost"
                       aria-label={t.remove}
+                      className={besideField}
                       onClick={() => outputs.remove(i)}
                     >
                       <Trash2 aria-hidden />

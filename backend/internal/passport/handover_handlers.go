@@ -29,7 +29,7 @@ func (h *Handlers) StartHandover(w http.ResponseWriter, r *http.Request) {
 	}
 	var in HandoverInput
 	photos, ok := h.readBody(w, r, &in, func(get func(string) string) (err error) {
-		in.ToOrg, in.Stage, in.Note = get(FieldToOrg), get(FieldStage), get(FieldNote)
+		in.ToOrg, in.ToUser, in.Stage, in.Note = get(FieldToOrg), get(FieldToUser), get(FieldStage), get(FieldNote)
 		if in.Quantity, err = optional(get(FieldQuantity), parseInt); err != nil {
 			return err
 		}
@@ -242,6 +242,11 @@ func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
+	if err := h.Store.MayRespond(r.Context(), id, userID, receivingAdmin(r)); err != nil {
+		h.dropPhotos(r, photos)
+		respond(w, http.StatusOK, "", "accept handover", nil, err)
+		return
+	}
 	out, err := h.Store.Accept(r.Context(), id, orgID, userID, in, photos, h.RaiseFlag)
 	if err != nil {
 		h.dropPhotos(r, photos)
@@ -261,8 +266,17 @@ func (h *Handlers) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.answer(w, r, MsgHandoverRejected, "reject handover", true, func(id, orgID, userID string) (Handover, error) {
+		if err := h.Store.MayRespond(r.Context(), id, userID, receivingAdmin(r)); err != nil {
+			return Handover{}, err
+		}
 		return h.Store.Reject(r.Context(), id, orgID, userID, in, h.RaiseFlag)
 	})
+}
+
+// receivingAdmin: the caller may answer any handover to their organisation.
+func receivingAdmin(r *http.Request) bool {
+	role := auth.CurrentScope(r.Context()).Role
+	return role == auth.RoleOrgAdmin || role == auth.RoleSuperadmin
 }
 
 // Cancel is the sender withdrawing a handover nobody has answered yet.

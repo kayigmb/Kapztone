@@ -14,7 +14,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/facility"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 const routeDocuments = "/orgs/{id}/documents"
@@ -136,11 +135,7 @@ func TestVolumeReport(t *testing.T) {
 		return e.approvedFacility(token, slug, root, facilityInput(newPlot()))
 	}
 	plot, rivalPlot := facilityOf(admin, e.slug(tAcme)), facilityOf(rivalAdmin, e.slug(tRival))
-	tplIn := coffeeTemplate("coffee_" + e.suffix)
-	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec := post(e, root, "/templates", tplIn)
-	want(t, "template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
+	tpl := coffee("coffee_" + e.suffix)
 
 	// Origin passports written directly: the report reads rows, not the issue rules.
 	var issuer string
@@ -148,10 +143,10 @@ func TestVolumeReport(t *testing.T) {
 	n := 0
 	lot := func(orgID, facilityID string, qty int64, at string) {
 		n++
-		e.exec(`INSERT INTO passports (organisation_id, facility_id, template_id, commodity, unit, quantity, remaining,
+		e.exec(`INSERT INTO passports (organisation_id, facility_id, commodity, unit, quantity, remaining,
 		                               period, status, data_hash, issued_by, code, created_at)
-		        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $6, 0, 'active', '0x', $7::uuid, $8, $9::timestamptz)`,
-			orgID, facilityID, tpl.ID, tpl.Commodity, tpl.Unit, qty, issuer, "T-"+e.suffix+"-"+string(rune('A'+n)), at)
+		        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5, 0, 'active', '0x', $6::uuid, $7, $8::timestamptz)`,
+			orgID, facilityID, tpl.Commodity, tpl.Unit, qty, issuer, "T-"+e.suffix+"-"+string(rune('A'+n)), at)
 	}
 	lot(acme.ID, plot.ID, 100, "2026-03-02T10:00:00Z")
 	lot(acme.ID, plot.ID, 50, "2026-03-30T10:00:00Z")
@@ -159,7 +154,7 @@ func TestVolumeReport(t *testing.T) {
 	lot(rival.ID, rivalPlot.ID, 1000, "2026-03-05T10:00:00Z")
 
 	type report struct{ Data []audit.Volume }
-	rec = do(e.h, http.MethodGet, as(e.slug(tAcme), "/reports/volume?start_date=2026-03-01&end_date=2026-04-30"), admin, "")
+	rec := do(e.h, http.MethodGet, as(e.slug(tAcme), "/reports/volume?start_date=2026-03-01&end_date=2026-04-30"), admin, "")
 	want(t, "volume", rec, http.StatusOK)
 	got := decodeTo[report](t, rec).Data
 	wantRows := []audit.Volume{

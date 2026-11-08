@@ -2,6 +2,7 @@
 Technical report [ https://drive.google.com/file/d/1vJhLzAMLBbOWfQ3nO4tFyq_0gIrbshyB/view?usp=sharing]
 
 Video Link - [https://youtu.be/ddTPQMU7mz8]
+
 Blockchain-backed digital product passports for transparent, tamper-evident shipments.
 
 
@@ -10,10 +11,10 @@ Every lot (coffee, cocoa, minerals, medicines, any commodity) gets a passport at
 
 ## What it does
 
-- **Passports at the origin.** A passport can only be issued from an approved facility, within the facility's declared capacity for the period, and with any evidence the commodity's first stage requires.
+- **Passports at the origin.** A producer issues a passport from one of its own approved, licensed facilities, naming what was produced (commodity, unit, quantity). The passport is the record of what the facility produced.
 - **Custody handovers signed by both sides.** The sender signs the handover (EIP-712 typed data) and the receiver accepts or rejects it after weighing the goods. A handover can carry photos, a seal number, a checklist and a location. Part of a lot can be handed over, which splits it into its own passport.
 - **Transforms with mass balance.** Processing turns input passports into output passports. Outputs may never exceed inputs; the contract checks the same rule.
-- **Commodity templates.** The platform defines each product (commodity, unit, origin facility kind, capacity). Lots then move freely: any holder hands over to any verified business, with an optional label for the move.
+- **Any product.** No product has to be set up first: the producer names the commodity when issuing. Lots then move freely: any holder hands over to any verified trading business, with an optional label for the move.
 - **Certificates.** Accredited certifiers and regulators attach certificates to facilities and passports. The file's hash goes on-chain; a copy can go to IPFS. Certificates can be revoked.
 - **Rules and flags.** The API flags actions it allows but finds close to a limit, such as a yield of 98% or more of the maximum, or a weight near the tolerance. Anyone in the chain can raise a flag, and a regulator's admin clears or upholds it. A revoked passport revokes everything made from it.
 - **Public verification.** `/p/<code>` shows the lot's journey, origins, certificates and a verdict (verified, warning, failed). The verdict comes from re-checking the database against the chain, the stored files and the mass balance.
@@ -23,12 +24,46 @@ Every lot (coffee, cocoa, minerals, medicines, any commodity) gets a passport at
 
 Organisations register, upload KYB documents and are verified by the platform. Their kinds are:
 
-- **Producer**, processor, transporter, exporter and importer: hold and move lots.
-- **Certifier**: issues certificates for the types it is accredited for.
-- **Regulator**: reviews and resolves flags, and can also be accredited to certify.
-- **Platform admin** (superadmin): approves organisations and facilities, publishes templates and runs reports.
+- **Producer**: registers its own facilities and issues passports from them; also hands over and transforms.
+- **Processor, transporter, exporter, importer**: hold and move lots (transporters do not transform or retire).
+- **Certifier**: issues certificates for the types it is accredited for, optionally naming which of its own facilities (office, lab) it was issued at. It looks another organisation's lot up by its code or QR, and finds another's certificates by search, rather than listing them all.
+- **Regulator**: everything a certifier does, plus resolving the flags the platform assigns to it.
+- **Platform admin** (superadmin): approves organisations and facilities, accredits issuers, assigns flags to regulators, curates facility kinds and runs reports.
 
 Each organisation works on its own subdomain (`acme.chaintrack.app`). Inside an organisation, users have roles; an org admin invites colleagues. Sign-in supports two-factor codes, and signing an action on the chain needs a separate signing PIN.
+
+### Who may do what
+
+A person's permissions are their role's permissions narrowed by their organisation's kind (`effective = role ∩ kind`, `backend/internal/auth/permissions.go`: `DefaultRoles`, `KindPermissions`, `Effective`). The people who check the chain never trade in it. Route guards and `GET /me` both use the effective set, so the sidebar and buttons follow it.
+
+**Layer 1: what each kind of organisation may do**
+
+| Permission | producer | processor | transporter | exporter / importer | certifier | regulator |
+|---|---|---|---|---|---|---|
+| org:read, org:manage, document:read, user:manage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| org:search (directory; `?receivers=true` lists trading kinds only) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| facility:read (own facilities; one linked from a passport opens by id) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| facility:manage (register own facilities) | ✅ | | | | ✅ | ✅ |
+| passport:issue | ✅ | | | | | |
+| passport:read (certifiers and regulators open another organisation's lot by its code or QR) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| passport:retire | ✅ | ✅ | | ✅ | | |
+| handover:create, handover:accept | ✅ | ✅ | ✅ | ✅ | | |
+| transform:create | ✅ | ✅ | | ✅ | | |
+| certificate:issue, certificate:revoke | | | | | ✅ | ✅ |
+| flag:create | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| flag:resolve (flags raised by it or assigned to its people) | | | | | | ✅ |
+| audit:read, report:read | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| org:verify, audit:verify, facility:kinds, facility:suspend (approve, suspend, reinstate facilities) | platform superadmin only | | | | | |
+
+A handover's receiver must be a trading kind: one sent to a certifier or regulator is refused. Certificates still need an on-chain accreditation for their type.
+
+**Layer 2: what each role may do inside its organisation**
+
+| Role | Permissions (before the kind narrows them) |
+|---|---|
+| org_admin | everything an organisation may hold: the table above, including user:manage, org:manage, certificate:revoke, facility:manage and flag:resolve |
+| member | day-to-day work: passport:issue/read/retire, handover:create/accept, transform:create, certificate:issue, flag:create, facility:read, org:search, report:read |
+| superadmin | every permission on the platform address; at an organisation's address, what that organisation's admin may do |
 
 ## Architecture
 
@@ -53,7 +88,7 @@ browser ──▶ Caddy (TLS, prod only) ──▶ Next.js web app ──/api─
 | Path | What is there |
 | --- | --- |
 | `backend/cmd/api`, `backend/cmd/relayer` | The two Go programs |
-| `backend/internal/` | One package per area: `auth` (sessions, roles, 2FA, rate limits), `org`, `user`, `facility`, `template`, `passport` (issue, handovers, transforms, rules), `attestation` (certificates), `flag`, `verify`, `audit`, `notify`, `stats`, and the shared `chain`, `config`, `httpx`, `listq`, `logx`, `upload`, `cache`, `secret`, `dbx`, `mailtmpl`, `server` |
+| `backend/internal/` | One package per area: `auth` (sessions, roles, 2FA, rate limits), `org`, `user`, `facility`, `passport` (issue, handovers, transforms, rules), `attestation` (certificates), `flag`, `verify`, `audit`, `notify`, `stats`, and the shared `chain`, `config`, `httpx`, `listq`, `logx`, `upload`, `cache`, `secret`, `dbx`, `mailtmpl`, `server` |
 | `backend/internal/chain/bindings/` | Generated Go bindings for the contracts (see below) |
 | `backend/db/migrations/` | SQL migrations |
 | `backend/api/openapi.yaml` | The API contract; a test fails if a route is missing from it |
@@ -118,9 +153,12 @@ Dev mode differs from prod: no rate limits or lockouts, `?pslug=<slug>` picks th
 ## Checks
 
 - `go vet ./...` and `CGO_ENABLED=0 go test ./...` in `backend/`. For the DB suite run `make test-db`; stop the relayer first, because it shares the dev database.
-- `pnpm lint`, `pnpm build`, `node --test "__tests__/**/*.test.ts"` and `pnpm audit --prod` in `frontend/`.
+- `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm audit --prod` in `frontend/`.
 - `pnpm test` in `contracts/`, and `make slither`.
 - `make e2e` covers the happy path plus the custody side paths: reject, cancel, certificate issue and revoke, and a flag cleared by a regulator.
+- Latest e2e run (2026-11-09, Chromium): **5 passed**, 0 failed, 1 skipped (the screenshot spec, which runs only with `SCREENS=1`).
+
+  ![Playwright report: 5 passed, 0 failed, 1 skipped](docs/img/playwright-report.png)
 - Screenshots: `SCREENS=1 pnpm exec playwright test e2e/screens.spec.ts` in `frontend/`, with the stack running. The images land in `frontend/screens/`.
 - `make sim ARGS="-lots 5 -fraud 1"` for a quick evaluation run (see `tools/README.md`).
 

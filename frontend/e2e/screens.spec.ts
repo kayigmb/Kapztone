@@ -15,17 +15,6 @@ test("screens", async ({ browser }) => {
     process.env.SUPERADMIN_EMAIL!,
     process.env.SUPERADMIN_PASSWORD!,
   );
-  const template = await ok(
-    await admin.request.post("/api/templates", {
-      data: {
-        commodity: `e2e_screens_${run}`,
-        name: `E2E screens ${run}`,
-        unit: "kg",
-        originFacilityKind: "farm_plot",
-        capacityRule: { type: "facility_capacity" },
-      },
-    }),
-  );
   const farm = await business(
     browser,
     admin,
@@ -38,10 +27,6 @@ test("screens", async ({ browser }) => {
         name: `Screens plot ${run}`,
         kind: "farm_plot",
         location: { type: "Point", coordinates: [29 + Math.random(), -1.9] },
-        licence_number: `LIC-${run}`,
-        capacity: 100_000,
-        capacity_unit: "kg",
-        capacity_period: "season",
         licence_valid_to: "2030-12-31",
       },
     }),
@@ -51,7 +36,8 @@ test("screens", async ({ browser }) => {
     await farm.context.request.post("/api/passports", {
       data: {
         facility_id: facility.id,
-        template_id: template.id,
+        commodity: `e2e_screens_${run}`,
+        unit: "kg",
         quantity: 500,
       },
       headers: { "x-signing-pin": pin },

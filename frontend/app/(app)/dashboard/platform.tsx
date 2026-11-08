@@ -63,7 +63,7 @@ const topOrgColumns: ListColumn<TopOrg>[] = [
     <RowAction
       label={t.topOrgs.open}
       icon={Eye}
-      href={routes.organisationsTab("approved", o.id)}
+      href={routes.organisation(o.id)}
     />
   )),
 ];

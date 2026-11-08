@@ -13,7 +13,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 )
 
@@ -95,14 +94,8 @@ func lotForFlags(t *testing.T, e *env, root string) flag.Flag {
 	slug := e.slug(tAcme)
 	plot := e.approvedFacility(acme, slug, root, facilityInput(newPlot()))
 
-	tplIn := coffeeTemplate("coffee_" + e.suffix)
-	tplIn.Name, tplIn.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	tplIn.RequiredEvidence = nil // evidence rules are not what this test is about
-	rec := post(e, root, "/templates", tplIn)
-	want(t, "create template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
-
-	rec = post(e, acme, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1000})
+	tpl := coffee("coffee_" + e.suffix)
+	rec := post(e, acme, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: 1000})
 	want(t, "issue", rec, http.StatusCreated)
 	p := decodeTo[passport.Passport](t, rec)
 
@@ -111,7 +104,9 @@ func lotForFlags(t *testing.T, e *env, root string) flag.Flag {
 	return decodeTo[flag.Flag](t, rec)
 }
 
-func TestRegulatorResolvesEveryFlag(t *testing.T) {
+// A regulator looks into the flags the platform assigns to it, and only its
+// admin resolves them.
+func TestRegulatorResolvesAssignedFlags(t *testing.T) {
 	e, _, cached := newEnv(t, true)
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
 	root := e.login(tRoot)
@@ -136,8 +131,14 @@ func TestRegulatorResolvesEveryFlag(t *testing.T) {
 		}
 		return false
 	}
+	if has(list(reg, regSlug)) {
+		t.Fatal("regulator sees a flag before it is assigned one")
+	}
+	var regAdmin string
+	e.pool.QueryRow(context.Background(), `SELECT id::text FROM users WHERE email = $1`, e.email("reg")).Scan(&regAdmin)
+	want(t, "platform assigns", do(e.h, http.MethodPut, "/flags/"+f.ID+"/assignee", root, `{"user_id":"`+regAdmin+`"}`), http.StatusOK)
 	if !has(list(reg, regSlug)) {
-		t.Fatal("regulator does not see another organisation's flag")
+		t.Fatal("regulator does not see the flag assigned to it")
 	}
 	if has(list(rival, rivalSlug)) {
 		t.Fatal("an exporter sees another organisation's flag")
@@ -164,12 +165,10 @@ func TestRegulatorResolvesEveryFlag(t *testing.T) {
 		t.Fatalf("flag status = %s", got.Status)
 	}
 
-	// A regulator that is not (or no longer) verified is an ordinary organisation.
+	// A regulator that is not (or no longer) verified resolves nothing.
 	e.setOrgStatus(decodeTo[meResponse](t, do(e.h, http.MethodGet, as(regSlug, "/me"), reg, "")).Organisation.ID, org.StatusRejected)
 	cached.InvalidateOrg(context.Background(), regSlug)
-	if has(list(reg, regSlug)) {
-		t.Fatal("an unverified regulator still sees every flag")
-	}
+	want(t, "unverified regulator resolves", do(e.h, http.MethodPost, path, reg, resolve), http.StatusForbidden)
 }
 
 func TestSigningPIN(t *testing.T) {
@@ -180,6 +179,9 @@ func TestSigningPIN(t *testing.T) {
 	e.verifiedOrg("reg", org.KindRegulator, root)
 	f := lotForFlags(t, e, root)
 	reg, regSlug := e.login("reg"), e.slug("reg")
+	var regAdmin string
+	e.pool.QueryRow(context.Background(), `SELECT id::text FROM users WHERE email = $1`, e.email("reg")).Scan(&regAdmin)
+	want(t, "platform assigns", do(e.h, http.MethodPut, "/flags/"+f.ID+"/assignee", root, `{"user_id":"`+regAdmin+`"}`), http.StatusOK)
 	// Limits on only now: sign-ups above share one test address across runs.
 	e.a.Limiter = &auth.Limiter{Cache: cached.Cache}
 	resolve := `{"outcome":"` + flag.StatusCleared + `","note":"ok"}`

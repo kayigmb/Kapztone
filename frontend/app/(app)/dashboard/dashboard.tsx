@@ -11,7 +11,6 @@ import {
   Clock,
   FileText,
   Flag,
-  Layers,
   MapPin,
   OctagonX,
   Package,
@@ -28,7 +27,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
 import { LoadingWithLogo } from "@/components/chaintrack/page-state";
 import { ListCard } from "@/components/chaintrack/list-card";
 import { ScanButton } from "@/components/chaintrack/scan-button";
@@ -79,7 +77,6 @@ const actionIcon: Record<ActionKey, LucideIcon> = {
   reviewFlags: Flag,
   issueCertificate: Stamp,
   reviewOrgs: ClipboardCheck,
-  templates: Layers,
   users: Users,
   reports: ChartColumn,
 };
@@ -331,23 +328,6 @@ function Panel({
           )}
         />
       );
-    case "capacity":
-      return (
-        <QueryPanel
-          panel={panel}
-          fn={endpoints.facilities}
-          render={(f) => (
-            <li key={f.id} className="px-5 py-4">
-              <CapacityMeter
-                title={f.name}
-                used={f.capacity_used}
-                max={f.capacity}
-                unit={f.capacity_unit}
-              />
-            </li>
-          )}
-        />
-      );
     case "certificates":
       return (
         <QueryPanel
@@ -395,7 +375,7 @@ function Panel({
               className="flex min-h-14 flex-wrap items-center justify-between gap-2 px-5 py-3"
             >
               <Link
-                href={routes.organisationsTab("organisations", o.id)}
+                href={routes.organisation(o.id)}
                 className="text-sm font-semibold text-primary"
               >
                 {o.name}

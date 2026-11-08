@@ -4,57 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/kayigmb/chaintrack/backend/internal/attestation"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 )
 
-// liveTemplate returns the id of the commodity's live template.
-func liveTemplate(ctx context.Context, tx pgx.Tx, commodity string) (templateID string, err error) {
-	err = tx.QueryRow(ctx,
-		`SELECT id::text FROM commodity_templates WHERE commodity = $1 AND NOT is_deleted`, commodity,
-	).Scan(&templateID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrTemplateNotFound
+// queueSplitYield queues the split stage's yield of 1 for a commodity the
+// first time it is seen. The contract refuses a transform at a stage whose
+// yield it has not been told, and every transform runs at the split stage.
+func queueSplitYield(ctx context.Context, tx pgx.Tx, commodity string) error {
+	// Two first issues of one commodity at once would both queue it; the
+	// second is harmless (it sets the same yield again).
+	var queued bool
+	err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM chain_outbox WHERE kind = $1
+		                AND payload->>'commodity' = $2 AND payload->>'stage' = $3)`,
+		chain.KindMaxYieldSet, commodity, StageSplit).Scan(&queued)
+	if err != nil || queued {
+		return err
 	}
-	return templateID, err
-}
-
-// requireEvidence refuses an issue unless every piece of evidence the
-// template asks for is a valid certificate on the origin facility: issued
-// under that evidence key, not revoked, and inside its validity window now.
-func requireEvidence(ctx context.Context, tx pgx.Tx, required []string, facilityID string) error {
-	if len(required) == 0 {
-		return nil
-	}
-	rows, err := tx.Query(ctx,
-		`SELECT DISTINCT type FROM attestations
-		 WHERE subject_type = $1 AND subject_id = $2::uuid AND type = ANY($3) AND status = $4
-		   AND valid_from <= now() AND valid_to >= now() AND NOT is_deleted`,
-		attestation.SubjectFacility, facilityID, required, attestation.StatusValid)
+	id, err := newID(ctx, tx) // the outbox wants an id; a yield has none of its own
 	if err != nil {
 		return err
 	}
-	have, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return err
-	}
-	var missing []string
-	for _, key := range required {
-		if !slices.Contains(have, key) {
-			missing = append(missing, key)
-		}
-	}
-	if len(missing) > 0 {
-		return EvidenceError{Missing: missing}
-	}
-	return nil
+	return chain.Enqueue(ctx, tx, chain.KindMaxYieldSet, id,
+		chain.MaxYieldSet{Commodity: commodity, Stage: StageSplit, PartsPerMillion: chain.YieldScale})
 }
 
 // noOpenHandover refuses while a handover of the passport awaits its receiver.

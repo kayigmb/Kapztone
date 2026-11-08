@@ -17,7 +17,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/secret"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
@@ -100,7 +99,7 @@ func noPing(context.Context) error { return nil }
 func deps(ping func(context.Context) error, a *auth.Auth) server.Deps {
 	return server.Deps{
 		Ping: ping, Auth: a,
-		Org: &org.Handlers{}, Facility: &facility.Handlers{}, Template: &template.Handlers{},
+		Org: &org.Handlers{}, Facility: &facility.Handlers{},
 		Passport: &passport.Handlers{}, Attestation: &attestation.Handlers{}, Flag: &flag.Handlers{},
 		Notify: &notify.Handlers{}, Verify: &verify.Handlers{},
 	}

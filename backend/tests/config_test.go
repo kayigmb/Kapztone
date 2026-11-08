@@ -89,6 +89,19 @@ func TestConfigReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
+// EMAIL_VERIFY is on unless set to false.
+func TestConfigEmailVerify(t *testing.T) {
+	for value, want := range map[string]bool{"": true, "true": true, "false": false} {
+		env := fullEnv()
+		env[config.EnvEmailVerify] = value
+		setEnv(t, env)
+		c, err := config.Load()
+		if err != nil || c.EmailVerify != want {
+			t.Fatalf("EMAIL_VERIFY=%q: verify = %v, err = %v", value, c.EmailVerify, err)
+		}
+	}
+}
+
 func TestConfigRejectsInvalidValues(t *testing.T) {
 	cases := []struct{ name, key, value string }{
 		{"lifetime with a unit", config.EnvJWTTTL, "90m"},
@@ -109,6 +122,7 @@ func TestConfigRejectsInvalidValues(t *testing.T) {
 		{"app url with a path", config.EnvAppURL, "https://chaintrack.test/app"},
 		{"app url with a query", config.EnvAppURL, "https://chaintrack.test?x=1"},
 		{"app url without a scheme", config.EnvAppURL, "chaintrack.test"},
+		{"email confirmation in words", config.EnvEmailVerify, "never"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

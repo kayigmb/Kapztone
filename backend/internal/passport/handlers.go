@@ -45,10 +45,8 @@ var errorStatus = map[error]struct {
 }{
 	ErrNotFound:          {http.StatusNotFound, httpx.MsgNotFound},
 	ErrFacilityNotFound:  {http.StatusBadRequest, MsgFacilityNotFound},
-	ErrTemplateNotFound:  {http.StatusBadRequest, MsgTemplateNotFound},
-	ErrKindMismatch:      {http.StatusBadRequest, MsgKindMismatch},
-	ErrUnitMismatch:      {http.StatusBadRequest, MsgUnitMismatch},
 	ErrReceiverInvalid:   {http.StatusBadRequest, MsgReceiverInvalid},
+	ErrNotRecipient:      {http.StatusForbidden, MsgNotRecipient},
 	ErrFacilitySuspended: {http.StatusConflict, MsgFacilitySuspended},
 	ErrFacilityPending:   {http.StatusConflict, MsgFacilityPending},
 	ErrLicenceExpired:    {http.StatusConflict, MsgLicenceExpired},
@@ -79,12 +77,10 @@ func respond(w http.ResponseWriter, status int, message, what string, v any, err
 	}
 	// Refusals that carry numbers: their message says how far off the request was.
 	var (
-		capacity     CapacityError
 		insufficient InsufficientError
 		yield        YieldError
-		evidence     EvidenceError
 	)
-	if errors.As(err, &capacity) || errors.As(err, &insufficient) || errors.As(err, &yield) || errors.As(err, &evidence) {
+	if errors.As(err, &insufficient) || errors.As(err, &yield) {
 		httpx.Error(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -101,18 +97,12 @@ func respond(w http.ResponseWriter, status int, message, what string, v any, err
 // blocked report counts.
 func ruleOf(err error) string {
 	var (
-		capacity CapacityError
-		yield    YieldError
-		evidence EvidenceError
-		off      ToleranceError
+		yield YieldError
+		off   ToleranceError
 	)
 	switch {
-	case errors.As(err, &capacity):
-		return audit.RuleCapacity
 	case errors.As(err, &yield):
 		return audit.RuleMassBalance
-	case errors.As(err, &evidence):
-		return audit.RuleEvidence
 	case errors.As(err, &off):
 		return audit.RuleTolerance
 	}
@@ -177,6 +167,8 @@ func statusFilter(w http.ResponseWriter, r *http.Request, allowed []string) (str
 	return status, true
 }
 
+// List shows the organisation's own passports (inspectors find another's by
+// its lot code, GET /passports/{code}).
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	gate, ok := auth.Gate(w, r)
 	if !ok {
@@ -190,13 +182,16 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, err := h.Store.Find(r.Context(), q, gate, status)
+	// The platform looking at one organisation (?organisation_id=) also sees
+	// the lots it offered or was offered, whatever came of the handover.
+	involved := auth.CurrentScope(r.Context()).Platform && gate != ""
+	page, err := h.Store.Find(r.Context(), q, gate, status, involved)
 	respond(w, http.StatusOK, "", "list passports", page, err)
 }
 
 // target reads the gate and the {id} a request is about.
 func target(w http.ResponseWriter, r *http.Request) (id, gate string, ok bool) {
-	if gate, ok = auth.Gate(w, r); !ok {
+	if gate, ok = auth.InspectGate(w, r); !ok {
 		return "", "", false
 	}
 	id, ok = httpx.URLID(w, r)
@@ -205,7 +200,7 @@ func target(w http.ResponseWriter, r *http.Request) (id, gate string, ok bool) {
 
 // Get takes the passport's id or its lot code.
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	gate, ok := auth.Gate(w, r)
+	gate, ok := auth.InspectGate(w, r)
 	if !ok {
 		return
 	}

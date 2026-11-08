@@ -23,7 +23,7 @@ type Handlers struct {
 
 // target reads the gate and the {id} of the facility a request is about.
 func target(w http.ResponseWriter, r *http.Request) (id, gate string, ok bool) {
-	if gate, ok = auth.Gate(w, r); !ok {
+	if gate, ok = auth.InspectGate(w, r); !ok {
 		return "", "", false
 	}
 	id, ok = httpx.URLID(w, r)
@@ -91,6 +91,7 @@ func (h *Handlers) unknownKind(ctx context.Context) string {
 	return MsgUnknownKind(kinds)
 }
 
+// List shows the organisation's own facilities (the platform's: every one).
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	gate, ok := auth.Gate(w, r)
 	if !ok {

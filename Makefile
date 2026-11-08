@@ -65,7 +65,7 @@ logs:
 
 test:
 	cd backend && go vet ./... && go test ./...
-	cd frontend && pnpm lint && pnpm build && node --test "__tests__/**/*.test.ts"
+	cd frontend && pnpm lint && pnpm build && pnpm test
 	cd contracts && pnpm test
 
 # Backend tests against the real Postgres and Redis from `make infra`, with

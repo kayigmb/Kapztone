@@ -9,6 +9,7 @@ import {
   CircleCheck,
   Clock,
   Coffee,
+  Download,
   ExternalLink,
   Flag as FlagIcon,
   Gem,
@@ -24,6 +25,7 @@ import {
 import { useState } from "react";
 
 import { CertificateTile } from "@/components/chaintrack/certificate-tile";
+import { QrImage, useQr } from "@/components/chaintrack/qr-image";
 import { JourneyTimeline } from "@/components/chaintrack/journey-timeline";
 import { Notice } from "@/components/chaintrack/notice";
 import { DataWidget } from "@/components/chaintrack/data-widget";
@@ -55,6 +57,7 @@ import {
   copy,
   flagStatus,
   passportStatus,
+  permissions,
   queryKeys,
   routes,
   screenCopy,
@@ -194,6 +197,7 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
   useRecordTitle(p.code);
   const holder = me.organisation?.id === p.organisation_id;
   const [retiring, setRetiring] = useState(false);
+  const [showingQr, setShowingQr] = useState(false);
 
   const directory = useQuery({
     queryKey: queryKeys.directory,
@@ -246,14 +250,27 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
     kind: e.kind,
     title: t.eventKinds[e.kind] ?? humanize(e.kind.toLowerCase()),
     date: formatDateTime(e.created_at),
-    parties: { from: e.from_org ?? undefined, to: e.to_org ?? undefined },
+    parties: {
+      from: e.from_org ? (e.from_name ?? orgName(e.from_org)) : undefined,
+      to: e.to_org ? (e.to_name ?? orgName(e.to_org)) : undefined,
+    },
+    people:
+      e.kind === "HANDOVER"
+        ? local.sentReceived(e.by ?? "—", e.received_by ?? local.awaiting)
+        : e.by
+          ? local.by(e.by)
+          : undefined,
     quantity: formatQuantity(e.quantity, p.unit),
     signedByBoth: e.kind === "HANDOVER",
     state: eventState(e.kind, i === events.length - 1),
   }));
 
+  const may = (perm: string) => me.permissions.includes(perm);
   const canRetire =
-    holder && p.status === passportStatus.active && p.remaining > 0;
+    holder &&
+    may(permissions.passportRetire) &&
+    p.status === passportStatus.active &&
+    p.remaining > 0;
   const status = statusLook[p.status] ?? statusLook.active;
   const facts: Fact[] = [
     {
@@ -269,7 +286,14 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
         </Status>
       ),
     },
-    { label: t.facts.holder, value: orgName(p.organisation_id), wide: true },
+    {
+      label: t.facts.holder,
+      value: p.holder_name ?? orgName(p.organisation_id),
+      wide: true,
+    },
+    ...(p.issued_by_name
+      ? [{ label: local.issuedBy, value: p.issued_by_name }]
+      : []),
     ...(p.facility_id
       ? [
           {
@@ -318,7 +342,7 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
                 <Notice kind="warning">{copy.handover.openFlag}</Notice>
               )}
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-                {!openFlag && (
+                {!openFlag && may(permissions.handoverCreate) && (
                   <Link
                     href={routes.handover(p.id)}
                     className={cn(
@@ -355,6 +379,16 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
           ) : (
             <Notice kind="info">{t.notHolder}</Notice>
           )}
+          {/* Anyone who can open the lot can show its QR, to label or check it. */}
+          <Button variant="secondary" onClick={() => setShowingQr(true)}>
+            <QrCode aria-hidden />
+            {local.qrButton}
+          </Button>
+          <QrDialog
+            code={p.code}
+            open={showingQr}
+            onOpenChange={setShowingQr}
+          />
         </div>
       </div>
 
@@ -435,9 +469,6 @@ function Detail({ passport: p }: { passport: PassportDetail }) {
             rows={[
               { label: local.technical.fingerprint, value: p.data_hash },
               { label: local.technical.sealed, value: p.tx_hash ?? null },
-              ...(p.template_id
-                ? [{ label: local.technical.template, value: p.template_id }]
-                : []),
               ...(p.facility_id
                 ? [{ label: local.technical.facility, value: p.facility_id }]
                 : []),
@@ -508,6 +539,46 @@ function RetireDialog({
         <div>
           <DialogClose render={<Button variant="secondary" />}>
             {local.cancel}
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The lot's QR code: it opens the public verification page, as the printed label does. */
+function QrDialog({
+  code,
+  open,
+  onOpenChange,
+}: {
+  code: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const url = `${window.location.origin}${routes.passport(code)}`;
+  const png = useQr(url, 256).data;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-full sm:max-w-100 justify-items-center gap-4 rounded-lg border border-border bg-surface p-6 text-center shadow-overlay"
+      >
+        <DialogTitle className="text-xl font-semibold">
+          {local.qrTitle}
+        </DialogTitle>
+        <p className="text-sm text-ink-muted">{local.qrBody}</p>
+        <QrImage text={url} size={256} />
+        <p className="code break-all">{code}</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {png && (
+            <a href={png} download={`${code}.png`} className={buttonVariants()}>
+              <Download aria-hidden />
+              {local.qrDownload}
+            </a>
+          )}
+          <DialogClose render={<Button variant="secondary" />}>
+            {local.close}
           </DialogClose>
         </div>
       </DialogContent>

@@ -23,9 +23,12 @@ export const certificateFormSchema = z
     }),
     subject_id: z.string().trim().min(1, v.subjectId),
     type: z.string().trim().min(1, v.certType),
+    // Optional: which of the issuer's own facilities it was issued at.
+    issued_at_facility_id: z.string().optional(),
     valid_from: date,
     valid_to: date,
-    file: certificateFileSchema,
+    // Optional: left out, ChainTrack writes the certificate PDF.
+    file: certificateFileSchema.optional(),
   })
   .refine((f) => f.valid_to > f.valid_from, {
     path: ["valid_to"],
@@ -48,12 +51,13 @@ export type RevokeForm = z.infer<typeof revokeFormSchema>;
 /** What travels with the file (POST /attestations is multipart). */
 export function certificateBody(
   form: Omit<CertificateForm, "file">,
-  file: File,
+  file: File | undefined,
   organisationId: string,
 ): FormData {
   const body = new FormData();
   body.set("issuer_org_id", organisationId);
-  for (const [key, value] of Object.entries(form)) body.set(key, String(value));
-  body.set("file", file);
+  for (const [key, value] of Object.entries(form))
+    if (value !== undefined && value !== "") body.set(key, String(value));
+  if (file) body.set("file", file);
   return body;
 }

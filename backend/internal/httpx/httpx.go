@@ -64,6 +64,14 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // IsUUID guards ids taken from URLs before they reach a uuid cast in SQL.
 func IsUUID(s string) bool { return uuidPattern.MatchString(s) }
 
+// Keys (a commodity, a certificate type) are lowercase identifiers such as
+// "coffee" or "organic_cert".
+var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
+
+const KeyRule = "lowercase letters, digits and underscores, starting with a letter"
+
+func ValidKey(s string) bool { return keyPattern.MatchString(s) }
+
 // ParseTime accepts a date (2026-01-31) or an RFC 3339 timestamp.
 func ParseTime(s string) (time.Time, bool) {
 	for _, layout := range []string{time.DateOnly, time.RFC3339} {

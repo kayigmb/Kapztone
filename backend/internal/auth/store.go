@@ -68,6 +68,7 @@ func (s PgStore) Scope(ctx context.Context, userID, slug string) (Scope, error) 
 	}
 	if oID != nil {
 		sc.Organisation = &Organisation{ID: *oID, Name: *oName, Slug: *oSlug, Kind: *oKind, Status: *oStatus}
+		sc.Permissions = Effective(sc.Permissions, *oKind)
 	}
 	if sc.Platform && sc.Role == RoleSuperadmin && slug != "" {
 		return s.superadminIn(ctx, sc, slug)
@@ -98,7 +99,7 @@ func (s PgStore) superadminIn(ctx context.Context, platform Scope, slug string) 
 	if err != nil {
 		return Scope{}, err
 	}
-	return Scope{Organisation: &o, Role: RoleSuperadmin, Permissions: perms}, nil
+	return Scope{Organisation: &o, Role: RoleSuperadmin, Permissions: Effective(perms, o.Kind)}, nil
 }
 
 func (s PgStore) SetTOTP(ctx context.Context, userID, sealedSecret string, enabled bool) error {

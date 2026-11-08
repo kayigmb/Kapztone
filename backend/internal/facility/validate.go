@@ -15,9 +15,6 @@ type Input struct {
 	Kind           string          `json:"kind"`
 	Location       json.RawMessage `json:"location"` // GeoJSON geometry
 	LicenceNumber  string          `json:"licence_number"`
-	Capacity       int64           `json:"capacity"`
-	CapacityUnit   string          `json:"capacity_unit"`
-	CapacityPeriod string          `json:"capacity_period"`
 	LicenceValidTo string          `json:"licence_valid_to"` // 2027-12-31
 }
 
@@ -27,21 +24,14 @@ func (in *Input) Validate() string {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Kind = strings.TrimSpace(in.Kind)
 	in.LicenceNumber = strings.TrimSpace(in.LicenceNumber)
-	in.CapacityUnit = strings.TrimSpace(in.CapacityUnit)
 
 	switch {
 	case in.Name == "" || len(in.Name) > MaxNameLen:
 		return fmt.Sprintf("name is required, up to %d characters", MaxNameLen)
 	case !keyPattern.MatchString(in.Kind):
 		return MsgBadKind
-	case in.LicenceNumber == "" || len(in.LicenceNumber) > MaxNameLen:
-		return fmt.Sprintf("licence_number is required, up to %d characters", MaxNameLen)
-	case in.Capacity <= 0:
-		return "capacity must be a whole number above 0"
-	case in.CapacityUnit == "" || len(in.CapacityUnit) > MaxUnitLen:
-		return fmt.Sprintf("capacity_unit is required, up to %d characters", MaxUnitLen)
-	case !slices.Contains(Periods, in.CapacityPeriod):
-		return "capacity_period must be one of: " + strings.Join(Periods, ", ")
+	case len(in.LicenceNumber) > MaxNameLen: // optional: the licence document is the proof
+		return fmt.Sprintf("licence_number may be up to %d characters", MaxNameLen)
 	}
 	if _, err := time.Parse(DateLayout, strings.TrimSpace(in.LicenceValidTo)); err != nil {
 		return MsgLicenceDate

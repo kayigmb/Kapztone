@@ -316,7 +316,10 @@ func (a *Auth) sendVerify(ctx context.Context, u User) (string, error) {
 func (a *Auth) SendVerifyTo(ctx context.Context, email string) (devLink string) {
 	u, err := a.Store.UserByEmail(ctx, email)
 	var link string
-	if err == nil {
+	switch {
+	case err == nil && a.SkipEmailVerify:
+		err = a.Accounts.MarkVerified(ctx, u.ID) // confirmation is off: the account is ready
+	case err == nil:
 		link, err = a.sendVerify(ctx, u)
 	}
 	if err != nil {

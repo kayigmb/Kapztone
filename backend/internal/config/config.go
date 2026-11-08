@@ -31,8 +31,9 @@ const (
 	EnvLogFormat          = "LOG_FORMAT" // json (default) or text
 	EnvLogLevel           = "LOG_LEVEL"  // debug, info (default), warn, error
 	EnvAppEnv             = "APP_ENV"
-	EnvAppURL             = "APP_URL"    // the web app's bare address; e-mailed links start with it
-	EnvRateLimit          = "RATE_LIMIT" // true or false; empty: on outside dev
+	EnvAppURL             = "APP_URL"      // the web app's bare address; e-mailed links start with it
+	EnvRateLimit          = "RATE_LIMIT"   // true or false; empty: on outside dev
+	EnvEmailVerify        = "EMAIL_VERIFY" // true or false; empty: on. false: no confirmation link needed
 	EnvDatabaseURL        = "DATABASE_URL"
 	EnvRedisURL           = "REDIS_URL"
 	EnvJWTSecret          = "JWT_SECRET"
@@ -108,6 +109,7 @@ type Config struct {
 	SuperadminEmail    string
 	SuperadminPassword string
 	RateLimit          bool
+	EmailVerify        bool // new accounts must open the confirmation link before signing in
 
 	ChainRPCURL string
 	ChainID     *big.Int
@@ -156,6 +158,12 @@ func Load() (Config, error) {
 		c.RateLimit = v == "true"
 	default:
 		r.invalid(v, EnvRateLimit, "must be true or false")
+	}
+	switch v := strings.TrimSpace(os.Getenv(EnvEmailVerify)); v {
+	case "", "true", "false":
+		c.EmailVerify = v != "false"
+	default:
+		r.invalid(v, EnvEmailVerify, "must be true or false")
 	}
 	r.sessions(&c)
 	r.chain(&c)

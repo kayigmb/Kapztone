@@ -6,28 +6,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Undo2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { useRecordTitle } from "@/components/chaintrack/record-title";
-import { ChoiceCards } from "@/components/chaintrack/choice-cards";
 import { MapView } from "@/components/chaintrack/map";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { FieldNote } from "@/components/chaintrack/field-note";
+import { FileDrop } from "@/components/chaintrack/file-drop";
 import { Notice } from "@/components/chaintrack/notice";
+import { SelectInput } from "@/components/chaintrack/select-input";
 import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { endpoints, problemOf } from "@/lib/api";
-import { capacityPeriods, copy, queryKeys, routes, upload } from "@/lib/consts";
+import { copy, queryKeys, routes, upload } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import type { PlaceSuggestion } from "@/lib/geocode";
 import { centreOf, toGeometry, type DrawMode, type LonLat } from "@/lib/geo";
@@ -39,10 +33,10 @@ import {
 import { cn } from "@/lib/utils";
 
 const t = copy.facilities.new;
-const periodItems = capacityPeriods.map((p) => ({
-  value: p.value,
-  label: p.label,
-}));
+/** The select's choice for a type of one's own. */
+const other = "other";
+/** A typed type as the API keys it: "Inspection office" → inspection_office. */
+const toKey = (s: string) => s.trim().toLowerCase().split(/\s+/).join("_");
 
 export function Register() {
   useRecordTitle(t.title);
@@ -58,12 +52,21 @@ export function Register() {
   const [mapFocus, setMapFocus] = useState<LonLat>();
   const [mode, setMode] = useState<DrawMode>("pin");
   const [points, setPoints] = useState<LonLat[]>([]);
-  const [licence, setLicence] = useState<File>();
+  // The type select: a curated kind, or "other" with the business's own typed in.
+  const [kindChoice, setKindChoice] = useState("");
+  const [ownKind, setOwnKind] = useState("");
+  const pickKind = (choice: string, typed = ownKind) => {
+    setKindChoice(choice);
+    setOwnKind(typed);
+    setValue("kind", choice === other ? toKey(typed) : choice, {
+      shouldValidate: true,
+    });
+  };
   const {
     register,
-    control,
     handleSubmit,
     setValue,
+    control,
     formState: { errors },
   } = useForm<FacilityFormInput, unknown, FacilityForm>({
     ...liveValidation,
@@ -71,12 +74,10 @@ export function Register() {
     defaultValues: {
       name: "",
       kind: "",
-      licence_number: "",
       licence_valid_to: "",
-      capacity_unit: "kg",
-      capacity_period: "season",
     },
   });
+  const licence = useWatch({ control, name: "licence" });
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -108,18 +109,13 @@ export function Register() {
       const f = await endpoints.createFacility({
         name: v.name,
         kind: v.kind,
-        licence_number: v.licence_number,
         licence_valid_to: v.licence_valid_to,
-        capacity: v.capacity,
-        capacity_unit: v.capacity_unit,
-        capacity_period: v.capacity_period,
         location: v.location,
       });
       // Two calls (the API takes the licence as its own upload); a failed upload leaves the facility without one.
-      if (licence)
-        await endpoints
-          .uploadLicence(f.data.id, licence)
-          .catch(() => toast.error(t.licenceFailed));
+      await endpoints
+        .uploadLicence(f.data.id, v.licence)
+        .catch(() => toast.error(t.licenceFailed));
       return f;
     },
     onSuccess: () => {
@@ -321,95 +317,52 @@ export function Register() {
             />
             <DataWidget query={kinds}>
               {(rows) => (
-                <ChoiceCards
-                  legend={t.kind}
-                  options={rows.map((kind) => ({
-                    value: kind.key,
-                    label: kind.label,
-                    sub: kind.sub,
-                  }))}
-                  error={errors.kind?.message}
-                  {...register("kind")}
-                />
+                <div className="grid gap-1.5">
+                  <span className="text-sm font-semibold">{t.kind}</span>
+                  <SelectInput
+                    label={t.kind}
+                    placeholder={t.kindPlaceholder}
+                    value={kindChoice}
+                    onChange={(v) => pickKind(v)}
+                    invalid={!!errors.kind && kindChoice !== other}
+                    options={[
+                      ...rows.map((k) => ({ value: k.key, label: k.label })),
+                      { value: other, label: t.kindOther },
+                    ]}
+                  />
+                  {kindChoice !== other && (
+                    <FieldNote error={errors.kind?.message} />
+                  )}
+                </div>
               )}
             </DataWidget>
-            <TextField
-              label={t.licence}
-              help={t.licenceHelp}
-              error={errors.licence_number?.message}
-              mono
-              autoComplete="off"
-              {...register("licence_number")}
-            />
+            {kindChoice === other && (
+              <TextField
+                label={t.kindOwn}
+                help={t.kindOwnHelp}
+                error={errors.kind?.message}
+                value={ownKind}
+                maxLength={50}
+                onChange={(e) => pickKind(other, e.target.value)}
+              />
+            )}
             <TextField
               label={t.licenceValid}
               type="date"
               error={errors.licence_valid_to?.message}
               {...register("licence_valid_to")}
             />
-            <label className="grid gap-1.5">
-              <span className="text-sm font-semibold">{t.licenceDoc}</span>
-              <span className="text-small text-ink-muted">
-                {t.licenceDocHelp}
-              </span>
-              <input
-                type="file"
-                accept={upload.types.join(",")}
-                className="min-h-tap text-sm"
-                onChange={(e) => setLicence(e.target.files?.[0])}
-              />
-            </label>
-          </section>
-
-          <section className="grid min-w-0 gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
-            <h2 className="text-title">{t.steps[2]}</h2>
-            <TextField
-              label={t.capacity}
-              help={t.capacityHelp}
-              error={errors.capacity?.message}
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={1}
-              mono
-              {...register("capacity")}
+            <FileDrop
+              label={t.licenceDoc}
+              help={t.licenceDocHelp}
+              prompt={t.licenceDrop}
+              accept={upload.types.join(",")}
+              file={licence}
+              onFile={(f) =>
+                setValue("licence", f as File, { shouldValidate: true })
+              }
+              error={errors.licence?.message}
             />
-            <TextField
-              label={t.unit}
-              help={t.unitHelp}
-              error={errors.capacity_unit?.message}
-              mono
-              {...register("capacity_unit")}
-            />
-            <div className="grid gap-1.5">
-              <span className="text-sm font-semibold">{t.period}</span>
-              <Controller
-                control={control}
-                name="capacity_period"
-                render={({ field }) => (
-                  <Select
-                    items={periodItems}
-                    value={field.value}
-                    onValueChange={(v) => field.onChange(v)}
-                  >
-                    <SelectTrigger
-                      aria-label={t.period}
-                      className="min-h-tap w-full rounded-md border-border-strong bg-surface text-base"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {periodItems.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FieldNote error={errors.capacity_period?.message} />
-            </div>
           </section>
         </div>
 

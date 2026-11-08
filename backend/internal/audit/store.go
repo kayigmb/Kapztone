@@ -13,7 +13,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Entry is one audit row.
@@ -247,7 +246,7 @@ func (s Store) Volumes(ctx context.Context, gate string, start, end *time.Time) 
 		   GROUP BY 1, 2, 3)
 		 SELECT month, commodity, unit, COALESCE(i.quantity, 0), COALESCE(x.quantity, 0)
 		 FROM issued i FULL JOIN exported x USING (month, commodity, unit)
-		 ORDER BY 1, 2, 3`, gate, start, end, handoverCompleted, template.EventExport)
+		 ORDER BY 1, 2, 3`, gate, start, end, handoverCompleted, stageExport)
 	if err != nil {
 		return nil, err
 	}

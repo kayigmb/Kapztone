@@ -82,7 +82,13 @@ func sendFacilityRegister(c Contracts, opts *bind.TransactOpts, payload []byte) 
 	if err != nil {
 		return nil, err
 	}
-	return c.Facilities.Register(opts, MustID(p.FacilityID), MustID(p.OrgID), hash, big.NewInt(p.Capacity))
+	// refuses 0, so it gets the largest uint256 and never binds. Drop the
+	// argument when FacilityRegistry is next revised.
+	capacity := big.NewInt(p.Capacity)
+	if p.Capacity == 0 {
+		capacity = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	}
+	return c.Facilities.Register(opts, MustID(p.FacilityID), MustID(p.OrgID), hash, capacity)
 }
 
 func sendFacilitySuspended(c Contracts, opts *bind.TransactOpts, payload []byte) (*types.Transaction, error) {

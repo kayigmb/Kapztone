@@ -12,7 +12,6 @@ import {
   FileText,
   Flag,
   House,
-  Layers,
   MapPin,
   PackagePlus,
   PanelLeftClose,
@@ -55,6 +54,7 @@ import {
   queryKeys,
   routes,
   sidebarStorageKey,
+  roleLabel,
   superadminRole,
   type TileKey,
 } from "@/lib/consts";
@@ -75,7 +75,6 @@ const icons: Record<string, LucideIcon> = {
   transform: RefreshCcw,
   certificates: FileText,
   flags: Flag,
-  templates: Layers,
   reports: ChartColumn,
   scan: QrCode,
   registerFacility: MapPin,
@@ -190,7 +189,7 @@ export function AppShell({
             {orgName}
           </span>
           <span className="truncate text-xs text-sidebar-label">
-            {humanize(me.role)}
+            {roleLabel[me.role] ?? humanize(me.role)}
           </span>
           {me.organisation && <OrgStatusChip status={me.organisation.status} />}
         </div>

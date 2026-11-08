@@ -77,8 +77,7 @@ func (e *env) approvedFacility(token, slug, root string, in facility.Input) faci
 func facilityInput(location string) facility.Input {
 	return facility.Input{
 		Name: "North plot", Kind: facility.KindFarmPlot, Location: json.RawMessage(location),
-		LicenceNumber: "LIC-001", Capacity: 1_200_000, CapacityUnit: "g", CapacityPeriod: facility.PeriodSeason,
-		LicenceValidTo: "2036-12-31",
+		LicenceNumber: "LIC-001", LicenceValidTo: "2036-12-31",
 	}
 }
 
@@ -98,12 +97,6 @@ func TestFacilityValidate(t *testing.T) {
 	cases := map[string]func(*facility.Input){
 		"empty name":         func(in *facility.Input) { in.Name = " " },
 		"malformed kind key": func(in *facility.Input) { in.Kind = "Castle Kind" },
-		"no licence":         func(in *facility.Input) { in.LicenceNumber = "" },
-		"zero capacity":      func(in *facility.Input) { in.Capacity = 0 },
-		"negative capacity":  func(in *facility.Input) { in.Capacity = -5 },
-		"no unit":            func(in *facility.Input) { in.CapacityUnit = "" },
-		"long unit":          func(in *facility.Input) { in.CapacityUnit = strings.Repeat("k", facility.MaxUnitLen+1) },
-		"unknown period":     func(in *facility.Input) { in.CapacityPeriod = "decade" },
 		"no location":        func(in *facility.Input) { in.Location = nil },
 		"unsupported shape": func(in *facility.Input) {
 			in.Location = json.RawMessage(`{"type":"LineString","coordinates":[[30,-2],[31,-2]]}`)
@@ -169,12 +162,6 @@ func TestFacilityKindsManaged(t *testing.T) {
 	want(t, "create facility with custom kind", facRec, http.StatusCreated)
 	_ = decodeTo[facility.Facility](t, facRec)
 
-	tpl := coffeeTemplate("tea_" + e.suffix)
-	tpl.OriginFacilityKind = kindKey
-	body, _ := json.Marshal(tpl)
-	tplRec := do(e.h, http.MethodPost, "/templates", root, string(body))
-	want(t, "create template with custom origin kind", tplRec, http.StatusCreated)
-
 	updated := do(e.h, http.MethodPut, "/facility-kinds/"+kindKey, root,
 		`{"label":"Tea farm","sub":"Leaf production","active":false}`)
 	want(t, "deactivate kind", updated, http.StatusOK)
@@ -209,12 +196,14 @@ func TestFacilityKindsManaged(t *testing.T) {
 	in.Name += " 2"
 	facRec = post(e, member, as(slug, "/facilities"), in)
 	want(t, "inactive kind refused for new facility", facRec, http.StatusBadRequest)
-	tpl.Commodity += "_draft"
-	body, _ = json.Marshal(tpl)
-	tplRec = do(e.h, http.MethodPost, "/templates", root, string(body))
-	want(t, "inactive kind refused for new template", tplRec, http.StatusBadRequest)
-	if !strings.Contains(tplRec.Body.String(), "originFacilityKind") {
-		t.Fatalf("inactive-kind template error = %s", tplRec.Body)
+
+	// A kind of the business's own, and no licence number (the document is the proof).
+	own := facilityInput(newPlot())
+	own.Kind, own.LicenceNumber = "inspection_office_"+e.suffix[len(e.suffix)-6:], ""
+	facRec = post(e, member, as(slug, "/facilities"), own)
+	want(t, "own kind without a licence number", facRec, http.StatusCreated)
+	if f := decodeTo[facility.Facility](t, facRec); f.Kind != own.Kind || f.LicenceNumber != "" {
+		t.Fatalf("own-kind facility: %s", facRec.Body)
 	}
 
 	want(t, "used kind cannot be deleted", do(e.h, http.MethodDelete, "/facility-kinds/"+kindKey, root, ""), http.StatusConflict)
@@ -245,7 +234,7 @@ func TestFacilityFlow(t *testing.T) {
 	// No cache: organisation status is set directly in the database here.
 	e, _, _ := newEnv(t, false)
 	acme := e.register(tAcme, org.KindProducer)
-	rival := e.register(tRival, org.KindExporter)
+	rival := e.register(tRival, org.KindProducer)
 	e.addUser(tStaff, auth.RoleMember, acme.ID)
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
 	admin, rivalAdmin, staff, root := e.login(tAcme), e.login(tRival), e.login(tStaff), e.login(tRoot)

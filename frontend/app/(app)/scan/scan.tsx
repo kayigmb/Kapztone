@@ -22,7 +22,7 @@ import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip, verdictIcon } from "@/components/chaintrack/status";
 import { verdictTone } from "@/components/chaintrack/tone";
 import { TechnicalDetails } from "@/components/chaintrack/technical-details";
-import { TextField } from "@/components/chaintrack/text-field";
+import { besideField, TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +31,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { endpoints } from "@/lib/api";
+import { endpoints, useMe } from "@/lib/api";
+import { inspects } from "@/lib/dashboard";
 import {
   copy,
   queryKeys,
@@ -222,7 +223,7 @@ function TypedLot({ onCheck }: { onCheck: (ref: string) => void }) {
       className="grid gap-2"
     >
       <p className="text-small text-ink-subtle">{t.orType}</p>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <TextField
           label={s.codeLabel}
           help={s.codeHint}
@@ -233,7 +234,7 @@ function TypedLot({ onCheck }: { onCheck: (ref: string) => void }) {
           autoCapitalize="characters"
           {...register("code")}
         />
-        <Button type="submit" variant="secondary">
+        <Button type="submit" variant="secondary" className={besideField}>
           <Search aria-hidden />
           {local.check}
         </Button>
@@ -255,6 +256,7 @@ function Empty() {
 }
 
 function Result({ lotRef, onAgain }: { lotRef: string; onAgain: () => void }) {
+  const me = useMe().data!;
   const q = useQuery({
     queryKey: queryKeys.verify(lotRef),
     queryFn: () => endpoints.verify(lotRef),
@@ -282,6 +284,8 @@ function Result({ lotRef, onAgain }: { lotRef: string; onAgain: () => void }) {
   }
 
   const p = q.data.passport;
+  // Certifiers and regulators check a lot on its public page; holders open the full record.
+  const inspector = inspects(me);
   const holder =
     q.data.organisations.find((o) => o.id === p.organisation_id)?.name ??
     v.unknownOrg;
@@ -325,13 +329,17 @@ function Result({ lotRef, onAgain }: { lotRef: string; onAgain: () => void }) {
       />
 
       <div className="flex flex-wrap gap-2">
-        <Link href={routes.passportDetail(p.id)} className={buttonVariants()}>
-          {local.openRecord}
-          <ArrowRight aria-hidden />
-        </Link>
+        {!inspector && (
+          <Link href={routes.passportDetail(p.id)} className={buttonVariants()}>
+            {local.openRecord}
+            <ArrowRight aria-hidden />
+          </Link>
+        )}
         <Link
           href={routes.passport(p.id)}
-          className={buttonVariants({ variant: "secondary" })}
+          className={buttonVariants({
+            variant: inspector ? "primary" : "secondary",
+          })}
         >
           {copy.passportView.actions.publicPage}
           <ExternalLink aria-hidden />

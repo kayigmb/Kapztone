@@ -155,7 +155,7 @@ func (h *Handlers) Volume(w http.ResponseWriter, r *http.Request) {
 }
 
 // Blocked counts the actions each rule refused between start_date and end_date
-// (both optional): capacity, mass balance, evidence, tolerance, and rejected handovers.
+// (both optional): mass balance, tolerance, and rejected handovers.
 func (h *Handlers) Blocked(w http.ResponseWriter, r *http.Request) {
 	g, ok := auth.Gate(w, r)
 	if !ok {

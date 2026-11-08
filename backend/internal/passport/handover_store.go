@@ -17,24 +17,32 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
 type Handover struct {
-	ID           string    `json:"id"`
-	PassportID   string    `json:"passport_id"`
-	FromOrg      string    `json:"from_org"`
-	ToOrg        string    `json:"to_org"`
-	Stage        string    `json:"stage"` // a free label for the step the lot enters
-	Quantity     int64     `json:"quantity"`
-	Note         string    `json:"note"`
-	DataHash     string    `json:"data_hash"`
-	Deadline     time.Time `json:"deadline"`
-	Status       string    `json:"status"`
-	SignedByFrom bool      `json:"signed_by_sender"`
-	SignedByTo   bool      `json:"signed_by_receiver"`
-	RejectReason *string   `json:"reject_reason"` // the receiver's note
+	ID         string `json:"id"`
+	PassportID string `json:"passport_id"`
+	FromOrg    string `json:"from_org"`
+	ToOrg      string `json:"to_org"`
+	// The parties' names, so a list can say who without looking each up.
+	FromName string `json:"from_name"`
+	ToName   string `json:"to_name"`
+	// The people: who sent it, who it was sent to (nil on older handovers:
+	// anyone there could answer) and who answered.
+	FromUserName    *string   `json:"from_user_name"`
+	ToUser          *string   `json:"to_user"`
+	ToUserName      *string   `json:"to_user_name"`
+	RespondedByName *string   `json:"responded_by_name"`
+	Stage           string    `json:"stage"` // a free label for the step the lot enters
+	Quantity        int64     `json:"quantity"`
+	Note            string    `json:"note"`
+	DataHash        string    `json:"data_hash"`
+	Deadline        time.Time `json:"deadline"`
+	Status          string    `json:"status"`
+	SignedByFrom    bool      `json:"signed_by_sender"`
+	SignedByTo      bool      `json:"signed_by_receiver"`
+	RejectReason    *string   `json:"reject_reason"` // the receiver's note
 	// RejectReasons are why the receiver refused, from RejectReasons.
 	RejectReasons []string   `json:"reject_reasons"`
 	RespondedAt   *time.Time `json:"responded_at"`
@@ -54,8 +62,6 @@ type Handover struct {
 	ReceivedQuantity *int64    `json:"received_quantity"`
 	ReceiverLocation *Location `json:"receiver_location"`
 	Photos           []Photo   `json:"photos"`
-	// TemplateVersion is the version of the commodity's template it was judged by.
-	TemplateVersion *int `json:"template_version"`
 }
 
 // Photo is a picture taken at a handover by its sender or its receiver.
@@ -79,7 +85,8 @@ func scanHandover(row pgx.CollectableRow) (Handover, error) {
 	err := row.Scan(&h.ID, &h.PassportID, &h.FromOrg, &h.ToOrg, &h.Stage, &h.Quantity, &h.Note, &h.DataHash,
 		&h.Deadline, &h.Status, &h.SignedByFrom, &h.SignedByTo, &h.RejectReason, &h.RejectReasons, &h.RespondedAt,
 		&h.TxHash, &h.AnchoredAt, &h.CreatedAt, &h.UpdatedAt, &h.SplitFrom, &lat, &lon, &h.ReceivedQuantity,
-		&receiverLat, &receiverLon, &h.TemplateVersion, &h.SealNumber, &checklistJSON)
+		&receiverLat, &receiverLon, &h.SealNumber, &checklistJSON, &h.FromName, &h.ToName,
+		&h.FromUserName, &h.ToUser, &h.ToUserName, &h.RespondedByName)
 	if len(checklistJSON) > 0 {
 		_ = json.Unmarshal(checklistJSON, &h.Checklist)
 	}
@@ -185,7 +192,7 @@ func (s Store) StartHandover(ctx context.Context, passportID, fromOrg, userID st
 	if err != nil {
 		return Handover{}, err
 	}
-	if err := checkReceiver(ctx, tx, in.ToOrganisationID, fromOrg); err != nil {
+	if err := checkReceiver(ctx, tx, in.ToOrganisationID, in.ToUser, fromOrg); err != nil {
 		return Handover{}, err
 	}
 	handed, nonce, splitFrom, err := splitIfPart(ctx, tx, lot, passportID, fromOrg, userID, now)
@@ -239,13 +246,40 @@ func lockForHandover(ctx context.Context, tx pgx.Tx, passportID, fromOrg string,
 	return l, nil
 }
 
-// checkReceiver needs a verified organisation with a signing key, other than the sender.
-func checkReceiver(ctx context.Context, tx pgx.Tx, toOrg, fromOrg string) error {
+// MayRespond lets the person a handover was sent to answer it, or an admin of
+// the receiving organisation (admin). Older handovers name nobody: anyone
+// there may. An unknown id is left for the answer itself to report.
+func (s Store) MayRespond(ctx context.Context, id, userID string, admin bool) error {
+	if admin {
+		return nil
+	}
+	var ok bool
+	err := s.Pool.QueryRow(ctx,
+		`SELECT to_user IS NULL OR to_user = $2::uuid FROM handovers WHERE id = $1::uuid AND NOT is_deleted`,
+		id, userID).Scan(&ok)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
+	case err != nil:
+		return err
+	case !ok:
+		return ErrNotRecipient
+	}
+	return nil
+}
+
+// checkReceiver needs a verified trading organisation with a signing key,
+// other than the sender, and an active person of it to send to.
+// Certifiers and regulators never take goods.
+func checkReceiver(ctx context.Context, tx pgx.Tx, toOrg, toUser, fromOrg string) error {
 	var ok bool
 	err := tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM organisations WHERE id = $1::uuid AND status = $2
-		                AND signing_address IS NOT NULL AND NOT is_deleted)`,
-		toOrg, auth.OrgVerified).Scan(&ok)
+		                AND kind = ANY($3) AND signing_address IS NOT NULL AND NOT is_deleted)
+		    AND EXISTS (SELECT 1 FROM userscope us JOIN users u ON u.id = us.user_id
+		                WHERE us.user_id = $4::uuid AND us.organisation_id = $1::uuid AND NOT us.is_deleted
+		                  AND u.status = $5 AND NOT u.is_deleted)`,
+		toOrg, auth.OrgVerified, auth.TradingKinds, toUser, auth.UserActive).Scan(&ok)
 	if err != nil {
 		return err
 	}
@@ -262,7 +296,7 @@ func splitIfPart(ctx context.Context, tx pgx.Tx, l heldLot, passportID, fromOrg,
 		return passportID, l.count, nil, nil
 	}
 	t, err := transformTx(ctx, tx, fromOrg, userID, TransformInput{
-		Stage:   template.StageSplit,
+		Stage:   StageSplit,
 		Inputs:  []TransformSource{{PassportID: passportID, Quantity: l.quantity}},
 		Outputs: []TransformOutput{{Quantity: l.quantity}},
 	}, now)
@@ -295,11 +329,14 @@ func (s Store) insertHandover(ctx context.Context, tx pgx.Tx, sh sentHandover, i
 	}
 	h, err := oneHandover(tx.Query(ctx,
 		`INSERT INTO handovers AS h (id, passport_id, from_org, to_org, quantity, note, data_hash, nonce,
-		                             deadline, sig_from, status, created_by, stage, split_from, lat, lon, seal_number, checklist)
-		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14, $15::uuid, $16, $17, NULLIF($18,''), $19::jsonb)
+		                             deadline, sig_from, status, created_by, stage, split_from, lat, lon, seal_number, checklist,
+		                             to_user)
+		 VALUES ($3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $10, $11, $12, $1, $13::uuid, $14, $15::uuid, $16, $17, NULLIF($18,''), $19::jsonb,
+		         $20::uuid)
 		 RETURNING `+handoverColumns(1, 2),
 		HandoverAwaiting, HandoverExpired, id, sh.handed, sh.fromOrg, in.ToOrganisationID, sh.quantity, in.Note,
-		dataHash, sh.nonce, sh.deadline, sigFrom, sh.userID, in.Stage, sh.splitFrom, in.Lat, in.Lon, in.SealNumber, string(checklistJSON)))
+		dataHash, sh.nonce, sh.deadline, sigFrom, sh.userID, in.Stage, sh.splitFrom, in.Lat, in.Lon, in.SealNumber, string(checklistJSON),
+		in.ToUser))
 	if err != nil {
 		return Handover{}, err
 	}
@@ -441,7 +478,7 @@ func tolerance(ctx context.Context, tx pgx.Tx, handoverID string) (pct float64, 
 	err = tx.QueryRow(ctx,
 		`SELECT p.unit FROM handovers h JOIN passports p ON p.id = h.passport_id
 		 WHERE h.id = $1::uuid`, handoverID).Scan(&unit)
-	return template.DefaultHandoverTolerance, unit, err
+	return DefaultHandoverTolerance, unit, err
 }
 
 // Accept is the receiver's half. They record what they weighed; within the

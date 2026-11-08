@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { navGroups, permissions } from "../lib/consts.ts";
 import {
@@ -16,14 +16,58 @@ const producer = {
   organisation: { kind: "producer" },
   permissions: ["passport:issue"],
 };
-// The person reviewing organisations also runs templates, users and the audit reports.
+// The person reviewing organisations also runs users and the audit reports.
 const admin = {
   organisation: null,
   permissions: [
     permissions.orgVerify,
-    permissions.templateRead,
     permissions.userManage,
     permissions.auditRead,
+  ],
+};
+
+// What GET /me gives an organisation's admin: its kind's permissions (backend KindPermissions ∩ org_admin).
+const everyKind = [
+  "org:read",
+  "org:manage",
+  "org:search",
+  "document:read",
+  "user:manage",
+  "passport:read",
+  "flag:create",
+  "facility:read",
+  "audit:read",
+  "report:read",
+];
+const regulator = {
+  organisation: { kind: "regulator" },
+  permissions: [
+    ...everyKind,
+    "certificate:issue",
+    "certificate:revoke",
+    "flag:resolve",
+    "facility:manage",
+  ],
+};
+const certifier = {
+  organisation: { kind: "certifier" },
+  permissions: [
+    ...everyKind,
+    "certificate:issue",
+    "certificate:revoke",
+    "facility:manage",
+  ],
+};
+const producerAdmin = {
+  organisation: { kind: "producer" },
+  permissions: [
+    ...everyKind,
+    "facility:manage",
+    "passport:issue",
+    "passport:retire",
+    "transform:create",
+    "handover:create",
+    "handover:accept",
   ],
 };
 
@@ -42,7 +86,7 @@ test("each kind of organisation gets its dashboard; the platform admin gets the 
     dashboardFor({ organisation: null, permissions: [] }),
     undefined,
   ); // signed in, acting for nobody
-  assert.deepEqual(layoutFor(producer)?.side, ["capacity"]);
+  assert.deepEqual(layoutFor(producer)?.side, []);
 });
 
 test("nav and actions need their permission", () => {
@@ -54,11 +98,11 @@ test("nav and actions need their permission", () => {
     navFor({ ...producer, permissions: [permissions.passportRead] }).map(
       (n) => n.key,
     ),
-    ["home", "passports", "handovers", "certificates", "profile"],
+    ["home", "passports", "certificates", "profile"],
   );
   assert.deepEqual(
     navFor(admin).map((n) => n.key),
-    ["home", "organisations", "templates", "reports", "users", "profile"],
+    ["home", "organisations", "reports", "users", "profile"],
   );
   const orgAdmin = {
     organisation: { kind: "producer" },
@@ -75,8 +119,68 @@ test("nav and actions need their permission", () => {
   );
   assert.deepEqual(
     actionsFor(admin).map((a) => a.key),
-    ["reviewOrgs", "templates", "users", "reports"],
+    ["reviewOrgs", "users", "reports"],
   );
+});
+
+test("the kind decides: inspectors never see the trading screens, traders never certify", () => {
+  assert.deepEqual(
+    navFor(regulator).map((n) => n.key),
+    [
+      "home",
+      "facilities",
+      "passports",
+      "certificates",
+      "flags",
+      "reports",
+      "users",
+      "profile",
+    ],
+  );
+  assert.deepEqual(
+    navFor(certifier).map((n) => n.key),
+    navFor(regulator).map((n) => n.key),
+  );
+  // Inspectors look a lot up (code or QR) instead of listing everyone's.
+  const passportsOf = (v: typeof regulator) =>
+    navFor(v).find((n) => n.key === "passports")?.href;
+  assert.equal(passportsOf(regulator), "/scan");
+  assert.equal(passportsOf(producerAdmin), "/passports");
+  assert.deepEqual(
+    navFor(producerAdmin).map((n) => n.key),
+    [
+      "home",
+      "facilities",
+      "passports",
+      "handovers",
+      "transform",
+      "certificates",
+      "flags",
+      "reports",
+      "users",
+      "profile",
+    ],
+  );
+  assert.deepEqual(
+    actionsFor(regulator).map((a) => a.key),
+    ["scan", "issueCertificate", "registerFacility", "reports"],
+  );
+  assert.deepEqual(
+    actionsFor(producerAdmin).map((a) => a.key),
+    ["issue", "scan", "handover", "registerFacility"],
+  );
+  for (const path of ["/issue", "/transform", "/handover", "/handovers"])
+    assert.equal(canOpen(path, regulator), false, path);
+  // Inspectors register their own sites, to issue certificates at.
+  assert.equal(canOpen("/facilities/new", regulator), true);
+  // A handover or facility stays readable from a passport's page.
+  assert.equal(canOpen("/handovers/h1", regulator), true);
+  assert.equal(canOpen("/facilities", regulator), true);
+  assert.equal(canOpen("/certificates/new", regulator), true);
+  assert.equal(canOpen("/certificates/new", producerAdmin), false);
+  // Templates are gone for everyone, the platform included.
+  const all = { organisation: null, permissions: Object.values(permissions) };
+  assert.ok(!navFor(all).some((n) => (n.key as string) === "templates"));
 });
 
 test("a member on the bare address only picks a workspace", () => {
@@ -115,11 +219,16 @@ test("screens open only to the permissions they need; the longest prefix decides
   assert.equal(canOpen("/organisations/o1", admin), true);
   assert.equal(canOpen("/organisations", producer), false);
   assert.equal(canOpen("/reports", producer), false);
-  assert.equal(canOpen("/templates", admin), true);
-  assert.equal(canOpen("/templates/t1", admin), false); // editing needs template:manage
   assert.equal(canOpen("/issue", producer), true);
   assert.equal(canOpen("/handover", producer), false);
-  assert.equal(canOpen("/handovers", { permissions: ["passport:read"] }), true);
+  assert.equal(
+    canOpen("/handovers", { permissions: ["passport:read"] }),
+    false,
+  );
+  assert.equal(
+    canOpen("/handovers", { permissions: ["handover:create"] }),
+    true,
+  );
   assert.equal(canOpen("/dashboard", producer), true);
   assert.equal(canOpen("/profile", { permissions: [] }), true);
 });

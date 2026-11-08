@@ -16,20 +16,17 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
 
-// stageWashing is the coffee template's washing station: it takes handovers
-// and transforms, and asks for no evidence.
+// stageWashing labels a handover or transform at a washing station.
 const stageWashing = "washing_station"
 
-// withoutOriginEvidence drops the evidence the template asks for, for tests
-// about something else (TestRequiredEvidence covers evidence).
-func withoutOriginEvidence(in template.Input) template.Input {
-	in.RequiredEvidence = nil
-	return in
-}
+// product is what a lot is issued as: the producer names both.
+type product struct{ Commodity, Unit string }
+
+// coffee is a product in grams under a commodity name unique to the test.
+func coffee(commodity string) product { return product{Commodity: commodity, Unit: "g"} }
 
 // passportWorld is a producer with a plot, a processor and a certifier, all verified.
 type passportWorld struct {
@@ -58,41 +55,9 @@ func newPassportWorld(t *testing.T) passportWorld {
 	return w
 }
 
-func (w passportWorld) template(t *testing.T, in template.Input) template.Template {
-	t.Helper()
-	in.Name, in.Unit = in.Commodity, w.plot.CapacityUnit
-	rec := post(w.e, w.root, "/templates", in)
-	want(t, "create template", rec, http.StatusCreated)
-	return decodeTo[template.Template](t, rec)
-}
-
-func (w passportWorld) issue(tpl template.Template, quantity int64) *httptest.ResponseRecorder {
+func (w passportWorld) issue(tpl product, quantity int64) *httptest.ResponseRecorder {
 	return post(w.e, w.prodTok, as(w.prodSlug, "/passports"),
-		passport.IssueInput{FacilityID: w.plot.ID, TemplateID: tpl.ID, Quantity: quantity})
-}
-
-// Evidence a template asks for must be a valid certificate on the origin
-// facility before a passport is issued; a revoked one does not count.
-func TestRequiredEvidence(t *testing.T) {
-	w := newPassportWorld(t)
-	e := w.e
-	tpl := w.template(t, coffeeTemplate("coffee_"+e.suffix)) // plot_geolocation
-	want(t, "accredit", accredit(e, w.root, "/orgs/"+w.certifier.ID+"/accreditations", grant("plot_geolocation")), http.StatusOK)
-
-	missing := func(what string) {
-		t.Helper()
-		rec := w.issue(tpl, 1000)
-		want(t, what, rec, http.StatusConflict)
-		if msg := errorOf(t, rec); !strings.Contains(msg, "plot_geolocation") {
-			t.Fatalf("%s: %q does not name plot_geolocation", what, msg)
-		}
-	}
-	missing("issue without facility evidence")
-	cert := w.certify(t, attestation.SubjectFacility, w.plot.ID, "plot_geolocation")
-	want(t, "issue with evidence", w.issue(tpl, 1000), http.StatusCreated)
-	want(t, "revoke", post(e, w.certTok, as(w.certSlug, "/attestations/"+cert.ID+"/revoke"),
-		attestation.RevokeInput{Reason: "issued in error"}), http.StatusOK)
-	missing("issue with a revoked certificate")
+		passport.IssueInput{FacilityID: w.plot.ID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: quantity})
 }
 
 // certify has the certifier attach a certificate of certType to a subject.
@@ -105,13 +70,12 @@ func (w passportWorld) certify(t *testing.T, subjectType, subjectID, certType st
 	return decodeTo[attestation.Attestation](t, rec)
 }
 
-// Lot codes count per organisation per year and work wherever an id does;
-// a facility reports the capacity it used this period; a retired passport
-// can do nothing more and is anchored.
-func TestLotCodesCapacityAndRetire(t *testing.T) {
+// Lot codes count per organisation per year and work wherever an id does; a
+// retired passport can do nothing more and is anchored.
+func TestLotCodesAndRetire(t *testing.T) {
 	w := newPassportWorld(t)
 	e, c := w.e, w.chain
-	tpl := w.template(t, withoutOriginEvidence(coffeeTemplate("coffee_"+e.suffix)))
+	tpl := coffee("coffee_" + e.suffix)
 
 	var lots []passport.Passport
 	for _, q := range []int64{300_000, 200_000} {
@@ -139,14 +103,8 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 		t.Fatalf("verify by code found %s", res.Passport.ID)
 	}
 
-	// Capacity used this period, on one facility and in the list.
-	rec = do(e.h, http.MethodGet, as(w.prodSlug, "/facilities/"+w.plot.ID), w.prodTok, "")
-	want(t, "get facility", rec, http.StatusOK)
-	if f := decodeTo[facility.Facility](t, rec); f.CapacityUsed != 500_000 {
-		t.Fatalf("capacity used = %d, want 500000", f.CapacityUsed)
-	}
 	rec = do(e.h, http.MethodGet, as(w.prodSlug, "/facilities"), w.prodTok, "")
-	if pg := decodeTo[listq.Page[facility.Facility]](t, rec); len(pg.Data) != 1 || pg.Data[0].CapacityUsed != 500_000 {
+	if pg := decodeTo[listq.Page[facility.Facility]](t, rec); len(pg.Data) != 1 {
 		t.Fatalf("facility list: %+v", pg.Data)
 	}
 	byKind := func(kind string) int {
@@ -163,7 +121,7 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 	handover := func(id string) {
 		t.Helper()
 		rec := post(e, w.prodTok, as(w.prodSlug, "/passports/"+id+"/handovers"),
-			passport.HandoverInput{ToOrganisationID: w.processor.ID, Stage: stageWashing})
+			passport.HandoverInput{ToOrganisationID: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
 		if h.Stage != stageWashing {
@@ -196,14 +154,14 @@ func TestLotCodesCapacityAndRetire(t *testing.T) {
 	}
 	want(t, "retire again", retire(w.procTok, w.procSlug, green.ID), http.StatusConflict)
 	want(t, "hand over a retired lot", post(e, w.procTok, as(w.procSlug, "/passports/"+green.ID+"/handovers"),
-		passport.HandoverInput{ToOrganisationID: w.producer.ID, Stage: stageWashing}), http.StatusConflict)
+		passport.HandoverInput{ToOrganisationID: w.producer.ID, ToUser: e.personIn(w.producer.ID), Stage: stageWashing}), http.StatusConflict)
 	want(t, "transform a retired lot", post(e, w.procTok, as(w.procSlug, "/transforms"), passport.TransformInput{Stage: stageWashing,
 		Inputs:  []passport.TransformSource{{PassportID: green.ID, Quantity: 1}},
 		Outputs: []passport.TransformOutput{{Quantity: 1}}}), http.StatusConflict)
 
 	// A passport with a handover awaiting its receiver cannot be retired.
 	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lots[1].ID+"/handovers"),
-		passport.HandoverInput{ToOrganisationID: w.processor.ID, Stage: stageWashing})
+		passport.HandoverInput{ToOrganisationID: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing})
 	want(t, "start handover", rec, http.StatusCreated)
 	want(t, "retire with a handover open", retire(w.prodTok, w.prodSlug, lots[1].ID), http.StatusConflict)
 
@@ -236,7 +194,7 @@ const chainStatusRetired = 3
 func TestFreestyleMoves(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
-	tpl := w.template(t, coffeeTemplate("coffee_"+e.suffix)) // its stages ask for certificates; none are given
+	tpl := coffee("coffee_" + e.suffix) // its stages ask for certificates; none are given
 	rec := w.issue(tpl, 1000)
 	want(t, "issue without evidence", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
@@ -245,7 +203,7 @@ func TestFreestyleMoves(t *testing.T) {
 	var held passport.Handover
 	for _, stage := range []string{"", "transport"} {
 		rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"),
-			passport.HandoverInput{ToOrganisationID: w.processor.ID, Stage: stage, Quantity: &part})
+			passport.HandoverInput{ToOrganisationID: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stage, Quantity: &part})
 		want(t, "handover labelled "+stage, rec, http.StatusCreated)
 		held = decodeTo[passport.Handover](t, rec)
 		want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+held.ID+"/accept"), received(held)), http.StatusOK)
@@ -268,7 +226,7 @@ func TestFreestyleMoves(t *testing.T) {
 func TestSigningPINOnSigningActions(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
-	tpl := w.template(t, withoutOriginEvidence(coffeeTemplate("coffee_"+e.suffix)))
+	tpl := coffee("coffee_" + e.suffix)
 	rec := w.issue(tpl, 1000)
 	want(t, "issue with the PIN", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
@@ -278,8 +236,8 @@ func TestSigningPINOnSigningActions(t *testing.T) {
 		req.Header.Set(auth.HeaderSigningPIN, pin)
 		return send(e.h, req, w.prodTok)
 	}
-	issueBody := fmt.Sprintf(`{"facility_id":%q,"template_id":%q,"quantity":1}`, w.plot.ID, tpl.ID)
-	handoverBody := fmt.Sprintf(`{"to_organisation_id":%q,"stage":%q}`, w.processor.ID, stageWashing)
+	issueBody := fmt.Sprintf(`{"facility_id":%q,"commodity":%q,"unit":%q,"quantity":1}`, w.plot.ID, tpl.Commodity, tpl.Unit)
+	handoverBody := fmt.Sprintf(`{"to_organisation_id":%q,"to_user":%q,"stage":%q}`, w.processor.ID, e.personIn(w.processor.ID), stageWashing)
 	signing := []struct{ what, method, path, body string }{
 		{"issue", http.MethodPost, "/passports", issueBody},
 		{"handover", http.MethodPost, "/passports/" + lot.ID + "/handovers", handoverBody},

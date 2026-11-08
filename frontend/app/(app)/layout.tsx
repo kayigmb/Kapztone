@@ -2,7 +2,7 @@
 
 import { Lock, WifiOff } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { AppShell } from "@/components/chaintrack/app-shell";
@@ -29,6 +29,12 @@ export default function Layout({ children }: LayoutProps<"/">) {
     me.data?.address_slug && !me.data.organisation
       ? me.data.address_slug
       : undefined;
+  // A screen this person may not open (say /issue for a regulator): back to the dashboard.
+  const router = useRouter();
+  const blocked = !!me.data && !elsewhere && !canOpen(pathname, me.data);
+  useEffect(() => {
+    if (blocked) router.replace(routes.home);
+  }, [blocked, router]);
   const leaving = useRef(false);
   useEffect(() => {
     if (!elsewhere || leaving.current) return;

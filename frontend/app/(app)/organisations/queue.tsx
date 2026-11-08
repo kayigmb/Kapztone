@@ -3,12 +3,16 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { BadgeCheck, Building2, CircleX, Clock, FileText } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { parseAsString, parseAsStringLiteral } from "nuqs";
+import { parseAsStringLiteral } from "nuqs";
 import { useState } from "react";
 
 import { DataWidget } from "@/components/chaintrack/data-widget";
-import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
+import { ListBar } from "@/components/chaintrack/list-controls";
+import {
+  column,
+  ListTable,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { PageStats } from "@/components/chaintrack/page-stats";
 import { Notice } from "@/components/chaintrack/notice";
@@ -16,10 +20,11 @@ import { KeyValue } from "@/components/chaintrack/passport-card";
 import { OrgStatusChip } from "@/components/chaintrack/status";
 import { buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   documentFileURL,
   endpoints,
+  problemOf,
   usePaged,
   type OrgDocument,
   type Organisation,
@@ -37,7 +42,6 @@ import {
   type AdminTab,
 } from "@/lib/consts";
 import { useListParams } from "@/lib/list-params";
-import { cn } from "@/lib/utils";
 import { formatDate, formatDateTime, humanize } from "@/lib/verification";
 import { AccreditationForm } from "./accreditation-form";
 import { ReviewForm } from "./review-form";
@@ -51,7 +55,6 @@ const filtersOf = (x: (typeof adminTabs)[number]) => ({
 const tabValues = adminTabs.map((x) => x.value);
 const listFilters = {
   tab: parseAsStringLiteral(tabValues).withDefault(tabValues[0]),
-  id: parseAsString,
 };
 export const kindLabel = (kind: string) =>
   orgKinds.find((k) => k.value === kind)?.label ?? humanize(kind);
@@ -61,7 +64,6 @@ const daysSince = (iso: string) =>
 export function Queue() {
   const state = useListParams("created_at", listFilters); // oldest first: longest waiting on top
   const tab = adminTabs.find((x) => x.value === state.filters.tab)!;
-  const selectedId = state.filters.id;
 
   const list = usePaged([...queryKeys.orgs, tab.value], endpoints.orgsPage, {
     ...state.query(filtersOf(tab)),
@@ -79,16 +81,35 @@ export function Queue() {
         }),
     })),
   });
-  const picked = useQuery({
-    queryKey: [...queryKeys.orgs, "one", selectedId],
-    queryFn: () => endpoints.org(selectedId!),
-    enabled: !!selectedId,
-  });
 
   const waiting =
     counts[adminTabs.findIndex((x) => x.value === "organisations")].data;
   const oldest = waiting?.data[0];
-  const selected = picked.data;
+  // A row opens the organisation's own page: its documents, review and accreditation.
+  const c = t.recordColumns;
+  const columns: ListColumn<Organisation>[] = [
+    column("name", c.name, (o) => (
+      <Link
+        href={routes.organisation(o.id)}
+        className="font-semibold hover:underline"
+      >
+        {o.name}
+      </Link>
+    )),
+    column("kind", c.kind, (o) => kindLabel(o.kind)),
+    column("created_at", t.facts.submitted, (o) => formatDate(o.created_at), {
+      sortable: true,
+    }),
+    column("status", c.status, (o) =>
+      o.status === orgStatus.pending ? (
+        <span className="text-small text-ink-muted">
+          {t.age(daysSince(o.created_at))}
+        </span>
+      ) : (
+        <OrgStatusChip status={o.status} />
+      ),
+    ),
+  ];
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
@@ -130,9 +151,7 @@ export function Queue() {
 
       <Tabs
         value={tab.value}
-        onValueChange={(v) =>
-          state.setFilters({ tab: v as AdminTab, id: null })
-        }
+        onValueChange={(v) => state.setFilters({ tab: v as AdminTab })}
       >
         <TabsList className="h-auto w-full flex-wrap justify-start lg:w-fit">
           {adminTabs.map((x) => (
@@ -150,99 +169,22 @@ export function Queue() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <ListBar className="mt-4" list={state} sorts={listSorts.waiting} />
-
-        {adminTabs.map((x) => (
-          <TabsContent key={x.value} value={x.value} className="mt-4">
-            <DataWidget query={list} retryLabel={copy.errors.tryAgain}>
-              {(page) => (
-                <div className="grid gap-4 lg:grid-cols-[--spacing(95)_1fr] lg:gap-6">
-                  <div className="grid content-start gap-3">
-                    <OrgList
-                      tab={x.value}
-                      orgs={page.data}
-                      selectedId={selectedId}
-                    />
-                    <ListPager list={state} total={page.total} />
-                  </div>
-                  {selected ? (
-                    <OrgDetail key={selected.id} org={selected} />
-                  ) : (
-                    <p className="hidden rounded-lg border border-dashed border-border-strong p-6 text-ink-muted lg:block">
-                      {t.selectOne}
-                    </p>
-                  )}
-                </div>
-              )}
-            </DataWidget>
-          </TabsContent>
-        ))}
+        <div className="mt-4">
+          <ListTable
+            label={t.queueLabel(t.tabs[tab.value])}
+            columns={columns}
+            rows={list.data?.data ?? []}
+            total={list.data?.total ?? 0}
+            list={state}
+            rowKey={(o) => o.id}
+            loading={list.isPending}
+            error={list.isError ? problemOf(list.error) : undefined}
+            empty={list.isPending ? copy.loading : t.empty[tab.value]}
+            toolbar={<ListBar list={state} sorts={listSorts.waiting} />}
+          />
+        </div>
       </Tabs>
     </main>
-  );
-}
-
-function OrgList({
-  tab,
-  orgs,
-  selectedId,
-}: {
-  tab: AdminTab;
-  orgs: Organisation[];
-  selectedId: string | null;
-}) {
-  const params = useSearchParams();
-  const hrefOf = (id: string) => {
-    // keeps the page, search and sort
-    const next = new URLSearchParams(params);
-    next.set("tab", tab);
-    next.set("id", id);
-    return `${routes.organisations}?${next}`;
-  };
-  if (orgs.length === 0)
-    return (
-      <p className="rounded-lg border border-border bg-surface p-4 text-ink-muted">
-        {t.empty[tab]}
-      </p>
-    );
-  return (
-    <ul
-      aria-label={t.queueLabel(t.tabs[tab])}
-      className="grid content-start divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-card"
-    >
-      {orgs.map((o) => (
-        <li key={o.id}>
-          <Link
-            href={hrefOf(o.id)}
-            scroll={false}
-            aria-current={o.id === selectedId ? "true" : undefined}
-            className={cn(
-              "grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 hover:bg-surface-sunken",
-              o.id === selectedId && "bg-primary-soft/60 shadow-selected",
-            )}
-          >
-            <span className="grid size-9 place-items-center rounded-md bg-primary-soft text-primary">
-              <Building2 className="size-4" aria-hidden />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                {o.name}
-              </span>
-              <span className="block text-xs text-ink-muted">
-                {kindLabel(o.kind)} · {formatDate(o.created_at)}
-              </span>
-            </span>
-            {o.status === orgStatus.pending ? (
-              <span className="text-small text-ink-muted">
-                {t.age(daysSince(o.created_at))}
-              </span>
-            ) : (
-              <OrgStatusChip status={o.status} />
-            )}
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 

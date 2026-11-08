@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { copy } from "../lib/consts";
-import { business, ok, origin, run, sign, signedIn } from "./helpers";
+import { business, ok, origin, run, sign, signedIn, tinyPDF } from "./helpers";
 
 const commodity = `e2e_coffee_${run}`;
 
@@ -16,17 +16,6 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   );
   const admin = await signedIn(browser, adminEmail!, adminPassword!);
 
-  const template = await ok(
-    await admin.request.post("/api/templates", {
-      data: {
-        commodity,
-        name: `E2E coffee ${run}`,
-        unit: "kg",
-        originFacilityKind: "farm_plot",
-        capacityRule: { type: "facility_capacity" },
-      },
-    }),
-  );
   const farm = await business(browser, admin, "producer", `E2E Farm ${run}`);
   const wash = await business(
     browser,
@@ -45,10 +34,15 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
     .getByRole("region", { name: f.mapLabel })
     .click({ position: { x: spot(), y: spot() } });
   await p.getByLabel(f.name).fill(plot);
-  await p.getByText("Farm plot", { exact: true }).click();
-  await p.getByLabel(f.licence).fill(`LIC-${run}`);
+  await p.getByRole("combobox", { name: f.kind }).click();
+  await p.getByRole("option", { name: "Farm plot" }).click();
   await p.getByLabel(f.licenceValid).fill("2030-12-31");
-  await p.getByLabel(f.capacity).fill("5000");
+  // The licence document, as the drop zone's file input takes it.
+  await p.locator('input[type="file"]').setInputFiles({
+    name: "licence.pdf",
+    mimeType: "application/pdf",
+    buffer: tinyPDF,
+  });
   await p.getByRole("button", { name: f.save }).click();
   await expect(p).toHaveURL(/\/facilities$/);
   await expect(p.getByText(plot, { exact: true })).toBeVisible();
@@ -61,11 +55,9 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
 
   const i = copy.issue;
   await p.goto("/issue");
-  // The pickers are paged by the API: search for this run's template and plot.
-  const searches = p.getByRole("searchbox", { name: copy.list.search });
-  await searches.nth(0).fill(template.name);
-  await searches.nth(1).fill(plot);
-  await p.getByText(template.name, { exact: true }).click();
+  // The producer names what it produced; the facility picker is paged by the API, so search for this run's plot.
+  await p.getByLabel(i.commodity).fill(commodity);
+  await p.getByRole("searchbox", { name: copy.list.search }).fill(plot);
   await p.getByText(plot, { exact: true }).click();
   await p.getByRole("button", { name: "Continue" }).click();
   await p.getByLabel(new RegExp(`^${i.quantity}`)).fill("1000");
@@ -81,12 +73,20 @@ test("coffee: farm plot → issue → handover → accept → transform → publ
   await p.getByRole("button", { name: h.next }).click();
   await p.getByLabel(h.receiverSearch).fill(wash.name);
   await p.getByRole("radio", { name: new RegExp(wash.name) }).click();
+  // Then the person there: the washing station's manager.
+  await p.getByRole("combobox", { name: h.person(wash.name) }).click();
+  await p
+    .getByRole("option", { name: new RegExp(`${wash.name} manager`) })
+    .click();
   await p.getByRole("button", { name: h.review }).click();
   await sign(p, h.sign);
   await expect(p.getByRole("heading", { name: h.sentTitle })).toBeVisible();
   const handoverURL = await p
     .getByRole("link", { name: copy.receiver.open })
     .getAttribute("href");
+  // "Hand over another lot" starts a fresh form on the same page.
+  await p.getByRole("button", { name: h.another }).click();
+  await expect(p.getByRole("heading", { name: h.pickTitle })).toBeVisible();
 
   const w = await wash.context.newPage();
   const r = copy.receiver;

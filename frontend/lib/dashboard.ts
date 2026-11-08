@@ -1,5 +1,7 @@
 import {
+  inspectorKinds,
   routeAccess,
+  routes,
   dashboardOfKind,
   dashboards,
   navItems,
@@ -23,13 +25,24 @@ export const hasWorkspace = (v: Viewer) => dashboardFor(v) !== undefined;
 
 const pickerNav: readonly string[] = ["workspaces", "profile"];
 
+/** Certifiers and regulators look records up rather than list everyone's. */
+export const inspects = (v: Viewer) =>
+  !!v.organisation && inspectorKinds.includes(v.organisation.kind);
+
 export const navFor = (v: Viewer) => {
   const picking = !hasWorkspace(v);
-  return navItems.filter(
-    (item) =>
-      allowed(v, item) &&
-      (picking ? pickerNav.includes(item.key) : item.key !== "workspaces"),
-  );
+  return navItems
+    .filter(
+      (item) =>
+        allowed(v, item) &&
+        (picking ? pickerNav.includes(item.key) : item.key !== "workspaces"),
+    )
+    .map((item) =>
+      // Their Passports is the lookup: type a lot code or scan its QR.
+      item.key === "passports" && inspects(v)
+        ? { ...item, href: routes.scan }
+        : item,
+    );
 };
 
 /** The dashboard's quick actions, in its own order, keeping only the ones this person may use. */

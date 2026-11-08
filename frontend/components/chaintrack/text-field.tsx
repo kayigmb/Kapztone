@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils";
 import { FieldNote } from "./field-note";
 
 /** One labelled input with its help or its error. */
+/** A button beside a TextField in a top-aligned row: dropped by the label's height (text-sm line + gap-1.5) so it lines up with the input, whatever note grows under the field. */
+export const besideField = "mt-[1.625rem]";
+/** The same, for rows that stack below md. */
+export const besideFieldMd = "md:mt-[1.625rem]";
+
 export function TextField({
   label,
   help,

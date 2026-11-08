@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,7 +30,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
@@ -56,8 +54,10 @@ func (e *env) certify(token, slug string, fields map[string]string, content []by
 	for k, v := range fields {
 		mw.WriteField(k, v)
 	}
-	fw, _ := mw.CreateFormFile(upload.FormFile, "certificate.pdf")
-	fw.Write(content)
+	if content != nil { // nil: no document, ChainTrack writes one
+		fw, _ := mw.CreateFormFile(upload.FormFile, "certificate.pdf")
+		fw.Write(content)
+	}
 	mw.Close()
 	req := httptest.NewRequest(http.MethodPost, as(slug, "/attestations"), &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
@@ -81,24 +81,23 @@ func errorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 
 // TestCommodityChainsEndToEnd is the Sprint 3 goal: a coffee chain and a
 // mineral chain run through the API from origin to revocation, with every
-// step anchored on the chain. The two differ only in their template.
+// step anchored on the chain. The two differ only in their origin.
 func TestCommodityChainsEndToEnd(t *testing.T) {
 	cases := []struct {
 		name         string
 		facilityKind string
-		rule         template.CapacityRule
 	}{
-		{"coffee", facility.KindFarmPlot, template.CapacityRule{Type: template.CapacityYieldPerArea, KgPerHaPerSeason: 1200}},
-		{"mineral", facility.KindMineSite, template.CapacityRule{Type: template.CapacityFacility}},
+		{"coffee", facility.KindFarmPlot},
+		{"mineral", facility.KindMineSite},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			runChain(t, tc.name, tc.facilityKind, tc.rule)
+			runChain(t, tc.name, tc.facilityKind)
 		})
 	}
 }
 
-func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRule) {
+func runChain(t *testing.T, name, facilityKind string) {
 	e, _, _ := newEnv(t, false)
 	c := e.newChain()
 	ctx := context.Background()
@@ -138,28 +137,23 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		return p.Status, p.Remaining.Int64()
 	}
 
-	// ---- Origin: a facility, a template, two passports.
+	// ---- Origin: a facility and two passports.
 	fIn := facilityInput(newPlot())
 	fIn.Kind = facilityKind
 	site := e.approvedFacility(prodTok, prodSlug, root, fIn)
 
-	tplIn := template.Input{
-		Commodity: name + "_" + e.suffix, Name: name + " " + e.suffix, Unit: site.CapacityUnit,
-		OriginFacilityKind: facilityKind, CapacityRule: rule,
-	}
-	rec := post(e, root, "/templates", tplIn)
-	want(t, "create template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
+	tpl := coffee(name + "_" + e.suffix)
+	var rec *httptest.ResponseRecorder
 
 	issue := func(quantity int64) passport.Passport {
 		t.Helper()
-		rec := post(e, prodTok, as(prodSlug, "/passports"), passport.IssueInput{FacilityID: site.ID, TemplateID: tpl.ID, Quantity: quantity})
+		rec := post(e, prodTok, as(prodSlug, "/passports"), passport.IssueInput{FacilityID: site.ID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: quantity})
 		want(t, "issue", rec, http.StatusCreated)
 		return decodeTo[passport.Passport](t, rec)
 	}
 	handOver := func(id string) {
 		t.Helper()
-		rec := post(e, prodTok, as(prodSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: processor.ID, Stage: stageProcess})
+		rec := post(e, prodTok, as(prodSlug, "/passports/"+id+"/handovers"), passport.HandoverInput{ToOrganisationID: processor.ID, ToUser: e.personIn(processor.ID), Stage: stageProcess})
 		want(t, "start handover", rec, http.StatusCreated)
 		h := decodeTo[passport.Handover](t, rec)
 		want(t, "accept handover", post(e, procTok, as(procSlug, "/handovers/"+h.ID+"/accept"), received(h)), http.StatusOK)
@@ -196,14 +190,14 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	overdrawn := transform(procTok, procSlug, passport.TransformInput{
 		Stage: stageProcess, Inputs: []passport.TransformSource{src(a.ID, qtyA+1)}, Outputs: outs(1)})
 	want(t, "more than the input holds", overdrawn, http.StatusConflict)
-	if got, wantMsg := errorOf(t, overdrawn), (passport.InsufficientError{PassportID: a.ID, Requested: qtyA + 1, Remaining: qtyA, Unit: site.CapacityUnit}).Error(); got != wantMsg {
+	if got, wantMsg := errorOf(t, overdrawn), (passport.InsufficientError{PassportID: a.ID, Requested: qtyA + 1, Remaining: qtyA, Unit: tpl.Unit}).Error(); got != wantMsg {
 		t.Fatalf("overdrawn message = %q, want %q", got, wantMsg)
 	}
 
 	// Mass balance: one unit over what the inputs can yield is refused, and the message says the limit.
 	breach := transform(procTok, procSlug, passport.TransformInput{Stage: stageProcess, Inputs: inputs, Outputs: outs(maxOut-small, small+1)})
 	want(t, "mass balance breach", breach, http.StatusConflict)
-	if got, wantMsg := errorOf(t, breach), (passport.YieldError{Outputs: maxOut + 1, Max: maxOut, Unit: site.CapacityUnit}).Error(); got != wantMsg {
+	if got, wantMsg := errorOf(t, breach), (passport.YieldError{Outputs: maxOut + 1, Max: maxOut, Unit: tpl.Unit}).Error(); got != wantMsg {
 		t.Fatalf("yield message = %q, want %q", got, wantMsg)
 	}
 	if got := passportOf(a.ID); got.Remaining != qtyA || got.Status != passport.StatusActive {
@@ -243,7 +237,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 
 	// ---- The chain agrees with all of it.
 	c.drain()
-	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(template.StageSplit)); got.Int64() != chain.YieldScale {
+	if got, _ := c.contract.Passports.MaxYield(opts, chain.Key(tpl.Commodity), chain.Key(passport.StageSplit)); got.Int64() != chain.YieldScale {
 		t.Fatalf("on-chain split yield = %s, want %d", got, chain.YieldScale)
 	}
 	if status, _ := onChain(a.ID); status != chainConsumed {
@@ -300,7 +294,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 		t.Fatalf("descendants of an origin passport: %v", ids(down))
 	}
 	want(t, "bad direction", get(procTok, procSlug, "/passports/"+a.ID+"/genealogy?"+passport.ParamDirection+"=sideways"), http.StatusBadRequest)
-	want(t, "genealogy of a passport out of view", get(certTok, certSlug, "/passports/"+a.ID+"/genealogy"), http.StatusNotFound)
+	want(t, "an inspector follows any genealogy", get(certTok, certSlug, "/passports/"+a.ID+"/genealogy"), http.StatusOK)
 
 	// ---- Certificates: only an accredited organisation issues them.
 	want(t, "issue before accreditation", e.certify(certTok, certSlug, certificateFields(attestation.SubjectPassport, g1.ID), pdfBytes), http.StatusForbidden)
@@ -311,11 +305,10 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "an organisation accredits itself", accredit(e, certTok, as(certSlug, accPath), grant("export_permit")), http.StatusForbidden)
 	want(t, "accredit a producer", accredit(e, root, "/orgs/"+producer.ID+"/accreditations", grant("export_permit")), http.StatusConflict)
 	for what, grants := range map[string][]org.AccreditationInput{
-		"type no template asks for": {grant("moon_rock_" + e.suffix)},
-		"type not a key":            {grant("Export Permit")},
-		"type twice":                {grant("export_permit"), grant("export_permit")},
-		"ends before starts":        {window("export_permit", "2030-01-01", "2029-01-01")},
-		"date in words":             {window("export_permit", "today", "2030-01-01")},
+		"type not a key":     {grant("Export Permit")},
+		"type twice":         {grant("export_permit"), grant("export_permit")},
+		"ends before starts": {window("export_permit", "2030-01-01", "2029-01-01")},
+		"date in words":      {window("export_permit", "today", "2030-01-01")},
 	} {
 		want(t, what, accredit(e, root, accPath, grants...), http.StatusBadRequest)
 	}
@@ -478,7 +471,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	revoke := func(token, slug, reason string) *httptest.ResponseRecorder {
 		return post(e, token, as(slug, "/attestations/"+cert.ID+"/revoke"), attestation.RevokeInput{Reason: reason})
 	}
-	want(t, "revoke another issuer's certificate", revoke(procTok, procSlug, "not ours"), http.StatusNotFound)
+	want(t, "a processor revokes a certificate", revoke(procTok, procSlug, "not ours"), http.StatusForbidden)
 	want(t, "revoke without a reason", revoke(certTok, certSlug, " "), http.StatusBadRequest)
 	rec = revoke(certTok, certSlug, "Issued in error")
 	want(t, "revoke", rec, http.StatusOK)
@@ -574,7 +567,7 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "transform a revoked passport", transform(procTok, procSlug, passport.TransformInput{
 		Stage: stageSort, Inputs: []passport.TransformSource{src(g2.ID, 1)}, Outputs: outs(1)}), http.StatusConflict)
 	want(t, "hand over a revoked passport", post(e, procTok, as(procSlug, "/passports/"+g2.ID+"/handovers"),
-		passport.HandoverInput{ToOrganisationID: producer.ID, Stage: stageProcess}), http.StatusConflict)
+		passport.HandoverInput{ToOrganisationID: producer.ID, ToUser: e.personIn(producer.ID), Stage: stageProcess}), http.StatusConflict)
 
 	c.drain()
 	for _, id := range family {
@@ -758,73 +751,36 @@ func runChain(t *testing.T, name, facilityKind string, rule template.CapacityRul
 	want(t, "turn e-mail on", do(e.h, http.MethodPut, as(procSlug, "/me/notifications"), procTok, `{"email":true}`), http.StatusOK)
 }
 
-// A template's commodity and unit are copied onto its passports, so they are
-// frozen once passports exist; the rest can still change, and every saved
-// change queues the commodity's split yield for the chain once.
-func TestTemplateInUse(t *testing.T) {
+// A producer names what it produced when issuing: the commodity is tidied
+// into a key, a bad one is refused, and the commodity's split yield is
+// queued for the chain once, however many lots follow.
+func TestIssueNamesTheProduct(t *testing.T) {
 	e, _, _ := newEnv(t, false)
 	e.addUser(tRoot, auth.RoleSuperadmin, "")
 	root := e.login(tRoot)
 	e.verifiedOrg(tAcme, org.KindProducer, root)
 	admin, slug := e.login(tAcme), e.slug(tAcme)
-
 	plot := e.approvedFacility(admin, slug, root, facilityInput(newPlot()))
 
-	in := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	in.Name, in.Unit = "Coffee "+e.suffix, plot.CapacityUnit
-	rec := post(e, root, "/templates", in)
-	want(t, "create template", rec, http.StatusCreated)
-	tpl := decodeTo[template.Template](t, rec)
-	put := func(in template.Input) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(in)
-		return do(e.h, http.MethodPut, "/templates/"+tpl.ID, root, string(body))
+	issue := func(commodity, unit string) *httptest.ResponseRecorder {
+		return post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, Commodity: commodity, Unit: unit, Quantity: 5})
 	}
+	commodity := "green_coffee_" + e.suffix
+	rec := issue("  Green Coffee "+e.suffix+" ", "kg")
+	want(t, "issue", rec, http.StatusCreated)
+	if p := decodeTo[passport.Passport](t, rec); p.Commodity != commodity || p.Unit != "kg" {
+		t.Fatalf("issued as %q in %q, want %q in kg", p.Commodity, p.Unit, commodity)
+	}
+	want(t, "again", issue(commodity, "kg"), http.StatusCreated)
+	want(t, "commodity that is not a key", issue("9 coffee!", "kg"), http.StatusBadRequest)
+	want(t, "no unit", issue(commodity, ""), http.StatusBadRequest)
 
-	publish := func() template.Template {
-		t.Helper()
-		rec := post(e, root, "/templates/"+tpl.ID+"/publish", nil)
-		want(t, "publish", rec, http.StatusOK)
-		return decodeTo[template.Template](t, rec)
-	}
-	if tpl.Version != 1 || tpl.Draft != nil {
-		t.Fatalf("new template: version %d, draft %v", tpl.Version, tpl.Draft)
-	}
-	want(t, "publish without a draft", post(e, root, "/templates/"+tpl.ID+"/publish", nil), http.StatusConflict)
-	want(t, "member publishes", post(e, admin, as(slug, "/templates/"+tpl.ID+"/publish"), nil), http.StatusForbidden)
-
-	// Not in use yet: the unit may change. An edit waits as a draft until published.
-	changed := in
-	changed.Unit = "kg"
-	rec = put(changed)
-	want(t, "change unit before use", rec, http.StatusOK)
-	if got := decodeTo[template.Template](t, rec); got.Unit != in.Unit || got.Draft == nil || got.Draft.Unit != "kg" || got.Version != 1 {
-		t.Fatalf("saved draft: %s", rec.Body)
-	}
-	if got := publish(); got.Unit != "kg" || got.Draft != nil || got.Version != 2 {
-		t.Fatalf("published: %+v", got)
-	}
-	want(t, "change it back", put(in), http.StatusOK)
-	publish()
-
-	want(t, "issue", post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1}), http.StatusCreated)
-	want(t, "change unit once in use", put(changed), http.StatusConflict)
-	renamed := in
-	renamed.Commodity = "tea_" + e.suffix
-	want(t, "change commodity once in use", put(renamed), http.StatusConflict)
-
-	stricter := in
-	stricter.RequiredEvidence = []string{"plot_geolocation"}
-	want(t, "change the evidence once in use", put(stricter), http.StatusOK)
-	// Issuing still works by the published version while the draft waits.
-	want(t, "issue with a draft waiting", post(e, admin, as(slug, "/passports"), passport.IssueInput{FacilityID: plot.ID, TemplateID: tpl.ID, Quantity: 1}), http.StatusCreated)
-	if got := publish(); got.Version != 4 || !slices.Equal(got.RequiredEvidence, stricter.RequiredEvidence) {
-		t.Fatalf("published the stricter evidence: %+v", got)
-	}
-
-	// The create queued the split stage's yield of 1; publishes do not repeat it.
-	statuses, _ := e.outbox(tpl.ID)
-	if len(statuses) != 1 {
-		t.Fatalf("queued %d yields for the template, want 1", len(statuses))
+	var yields int
+	e.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM chain_outbox WHERE kind = $1 AND payload->>'commodity' = $2`,
+		chain.KindMaxYieldSet, commodity).Scan(&yields)
+	if yields != 1 {
+		t.Fatalf("queued %d split yields for %s, want 1", yields, commodity)
 	}
 }
 

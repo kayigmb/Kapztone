@@ -13,7 +13,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/chain"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/notify"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 var (
@@ -98,19 +97,17 @@ func (in *TransformInput) Validate() string {
 
 // Transform is the record of one transform.
 type Transform struct {
-	ID             string `json:"id"`
-	OrganisationID string `json:"organisation_id"`
-	Commodity      string `json:"commodity"`
-	Stage          string `json:"stage"`
-	MaxYieldPPM    int64  `json:"max_yield_ppm"` // the rule as applied, in parts per million
-	DataHash       string `json:"data_hash"`
-	// TemplateVersion is the version of the commodity's template it was judged by.
-	TemplateVersion *int       `json:"template_version"`
-	TxHash          *string    `json:"tx_hash"`
-	AnchoredAt      *time.Time `json:"anchored_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	Inputs          []Used     `json:"inputs"`
-	Outputs         []Passport `json:"outputs"`
+	ID             string     `json:"id"`
+	OrganisationID string     `json:"organisation_id"`
+	Commodity      string     `json:"commodity"`
+	Stage          string     `json:"stage"`
+	MaxYieldPPM    int64      `json:"max_yield_ppm"` // the rule as applied, in parts per million
+	DataHash       string     `json:"data_hash"`
+	TxHash         *string    `json:"tx_hash"`
+	AnchoredAt     *time.Time `json:"anchored_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	Inputs         []Used     `json:"inputs"`
+	Outputs        []Passport `json:"outputs"`
 }
 
 // Used is one input of a transform. It is also what the data hash covers.
@@ -141,7 +138,7 @@ type outputRecord struct {
 	ID             string `json:"id"`
 	OrganisationID string `json:"organisation_id"`
 	TransformID    string `json:"transform_id"`
-	TemplateID     string `json:"template_id"`
+	TemplateID     string `json:"template_id,omitempty"` // older passports only
 	Commodity      string `json:"commodity"`
 	Unit           string `json:"unit"`
 	Quantity       int64  `json:"quantity"`
@@ -191,15 +188,15 @@ func transformTx(ctx context.Context, tx pgx.Tx, orgID, userID string, in Transf
 
 // transformJob carries one transform from its checks to its rows.
 type transformJob struct {
-	tx                          pgx.Tx
-	orgID, userID               string
-	in                          TransformInput
-	now                         time.Time
-	commodity, unit, templateID string
-	ppm                         int64
-	used                        []Used
-	id, dataHash                string
-	queued                      []chain.TransformOutput
+	tx              pgx.Tx
+	orgID, userID   string
+	in              TransformInput
+	now             time.Time
+	commodity, unit string
+	ppm             int64
+	used            []Used
+	id, dataHash    string
+	queued          []chain.TransformOutput
 }
 
 type heldInput struct {
@@ -257,15 +254,11 @@ func (j *transformJob) checkInputs(locked map[string]heldInput) (totalIn int64, 
 }
 
 // rule: whatever the label, a transform keeps at most what went in (the
-// platform's split yield of 1). A template published before splits existed
-// gets that yield queued now, ahead of this transform.
+// platform's split yield of 1). A commodity issued before its yield was
+// queued gets it queued now, ahead of this transform.
 func (j *transformJob) rule(ctx context.Context) error {
-	var err error
-	if j.templateID, err = liveTemplate(ctx, j.tx, j.commodity); err != nil {
-		return err
-	}
 	j.ppm = chain.YieldScale
-	return template.QueueSplitYield(ctx, j.tx, j.templateID, j.commodity)
+	return queueSplitYield(ctx, j.tx, j.commodity)
 }
 
 // checkYield is the mass balance, compared without dividing exactly as the
@@ -295,7 +288,7 @@ func (j *transformJob) plan(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		hash, err := chain.DataHash(outputRecord{outID, j.orgID, j.id, j.templateID, j.commodity, j.unit, out.Quantity})
+		hash, err := chain.DataHash(outputRecord{outID, j.orgID, j.id, "", j.commodity, j.unit, out.Quantity})
 		if err != nil {
 			return err
 		}
@@ -312,8 +305,8 @@ func (j *transformJob) write(ctx context.Context) (Transform, error) {
 		DataHash: j.dataHash, Inputs: j.used}
 	err := j.tx.QueryRow(ctx,
 		`INSERT INTO transforms (id, organisation_id, commodity, stage, max_yield_ppm, data_hash, created_by)
-		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid) RETURNING created_at, template_version`,
-		j.id, j.orgID, j.commodity, j.in.Stage, j.ppm, j.dataHash, j.userID).Scan(&t.CreatedAt, &t.TemplateVersion)
+		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid) RETURNING created_at`,
+		j.id, j.orgID, j.commodity, j.in.Stage, j.ppm, j.dataHash, j.userID).Scan(&t.CreatedAt)
 	if err != nil {
 		return Transform{}, err
 	}
@@ -324,7 +317,7 @@ func (j *transformJob) write(ctx context.Context) (Transform, error) {
 		return Transform{}, err
 	}
 	// The contract finds the yield by stage: always the split stage's.
-	payload := chain.Transform{TransformID: j.id, Stage: template.StageSplit, Outputs: j.queued, DataHash: j.dataHash}
+	payload := chain.Transform{TransformID: j.id, Stage: StageSplit, Outputs: j.queued, DataHash: j.dataHash}
 	for _, u := range j.used {
 		payload.Inputs = append(payload.Inputs, u.PassportID)
 		payload.InputsUsed = append(payload.InputsUsed, u.QuantityUsed)
@@ -365,11 +358,11 @@ func (j *transformJob) createOutputs(ctx context.Context) ([]Passport, error) {
 			return nil, err
 		}
 		p, err := onePassport(j.tx.Query(ctx,
-			`INSERT INTO passports AS p (id, organisation_id, transform_id, template_id, commodity, unit,
+			`INSERT INTO passports AS p (id, organisation_id, transform_id, commodity, unit,
 			                             quantity, remaining, status, data_hash, issued_by, code)
-			 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10::uuid, $11)
+			 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $6, $7, $8, $9::uuid, $10)
 			 RETURNING `+columns,
-			q.PassportID, j.orgID, j.id, j.templateID, j.commodity, j.unit, q.Quantity, StatusActive, q.DataHash, j.userID, code))
+			q.PassportID, j.orgID, j.id, j.commodity, j.unit, q.Quantity, StatusActive, q.DataHash, j.userID, code))
 		if err != nil {
 			return nil, err
 		}

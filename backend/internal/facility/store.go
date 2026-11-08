@@ -51,38 +51,32 @@ type Licence struct {
 }
 
 type Facility struct {
-	ID             string          `json:"id"`
-	OrganisationID string          `json:"organisation_id"`
-	Name           string          `json:"name"`
-	Kind           string          `json:"kind"`
-	Location       json.RawMessage `json:"location"` // GeoJSON geometry
-	AreaHa         float64         `json:"area_ha"`  // computed from the boundary; 0 for a pin
-	LicenceNumber  string          `json:"licence_number"`
-	Capacity       int64           `json:"capacity"`
-	CapacityUnit   string          `json:"capacity_unit"`
-	CapacityPeriod string          `json:"capacity_period"`
-	// CapacityUsed is what was originated here in the current period.
-	CapacityUsed    int64      `json:"capacity_used"`
-	Status          string     `json:"status"`
-	LicenceValidTo  *string    `json:"licence_valid_to"` // 2027-12-31; null for facilities registered before it was asked
-	LicenceDocument *Licence   `json:"licence_document"`
-	ApprovedAt      *time.Time `json:"approved_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID              string          `json:"id"`
+	OrganisationID  string          `json:"organisation_id"`
+	Name            string          `json:"name"`
+	Kind            string          `json:"kind"`
+	Location        json.RawMessage `json:"location"` // GeoJSON geometry
+	AreaHa          float64         `json:"area_ha"`  // computed from the boundary; 0 for a pin
+	LicenceNumber   string          `json:"licence_number"`
+	Status          string          `json:"status"`
+	LicenceValidTo  *string         `json:"licence_valid_to"` // 2027-12-31; null for facilities registered before it was asked
+	LicenceDocument *Licence        `json:"licence_document"`
+	ApprovedAt      *time.Time      `json:"approved_at"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // List is what the list endpoint lets callers search and sort by.
 var List = listq.Config{
 	Alias:  "f",
 	Search: []string{"name", "licence_number", "kind"},
-	Sort:   []string{"name", "kind", "status", "capacity", listq.ColCreatedAt},
+	Sort:   []string{"name", "kind", "status", listq.ColCreatedAt},
 }
 
 const (
 	// Area is measured on the globe (geography), in hectares.
 	columns = `f.id::text, f.organisation_id::text, f.name, f.kind, ST_AsGeoJSON(f.geom),
-	           ST_Area(f.geom::geography) / 10000, f.licence_number, f.capacity,
-	           f.capacity_unit, f.capacity_period, f.status, to_char(f.licence_valid_to, 'YYYY-MM-DD'),
+	           ST_Area(f.geom::geography) / 10000, f.licence_number, f.status, to_char(f.licence_valid_to, 'YYYY-MM-DD'),
 	           f.licence_file_name, f.licence_content_type, f.licence_size_bytes, f.licence_sha256,
 	           f.licence_storage_key, f.approved_at, f.created_at, f.updated_at`
 	gateColumn = "f.organisation_id"
@@ -96,7 +90,7 @@ func scan(row pgx.CollectableRow) (Facility, error) {
 		size                  *int64
 	)
 	err := row.Scan(&f.ID, &f.OrganisationID, &f.Name, &f.Kind, &geo, &f.AreaHa, &f.LicenceNumber,
-		&f.Capacity, &f.CapacityUnit, &f.CapacityPeriod, &f.Status, &f.LicenceValidTo,
+		&f.Status, &f.LicenceValidTo,
 		&name, &ctype, &size, &sum, &key, &f.ApprovedAt, &f.CreatedAt, &f.UpdatedAt)
 	f.Location = json.RawMessage(geo)
 	if name != nil {
@@ -129,10 +123,12 @@ type record struct {
 	Kind           string          `json:"kind"`
 	Location       json.RawMessage `json:"location"`
 	LicenceNumber  string          `json:"licence_number"`
-	Capacity       int64           `json:"capacity"`
-	CapacityUnit   string          `json:"capacity_unit"`
-	CapacityPeriod string          `json:"capacity_period"`
-	LicenceValidTo string          `json:"licence_valid_to,omitempty"` // omitted for facilities from before it was asked
+	// Facilities from before capacities were dropped declared one; their
+	// data hash covers it. New ones leave these out.
+	Capacity       int64  `json:"capacity,omitempty"`
+	CapacityUnit   string `json:"capacity_unit,omitempty"`
+	CapacityPeriod string `json:"capacity_period,omitempty"`
+	LicenceValidTo string `json:"licence_valid_to,omitempty"` // omitted for facilities from before it was asked
 }
 
 // Create stores a facility for the organisation, waiting for approval. It is
@@ -163,13 +159,18 @@ func (s Store) Create(ctx context.Context, orgID string, in Input) (Facility, er
 	return f, tx.Commit(ctx)
 }
 
-// checkKind allows curated kinds only. A kind deactivated after this check
-// still leaves a valid facility behind, which is fine: nothing references the kind list.
+// checkKind refuses a curated kind the platform deactivated. A key the
+// list doesn't hold is the business's own kind (an office, a lab) and is
+// fine. A kind deactivated after this check still leaves a valid facility
+// behind: nothing references the kind list.
 func checkKind(ctx context.Context, tx pgx.Tx, kind string) error {
-	var key string
+	var active bool
 	err := tx.QueryRow(ctx,
-		`SELECT key FROM facility_kinds WHERE key = $1 AND active AND NOT is_deleted FOR SHARE`, kind).Scan(&key)
-	if errors.Is(err, pgx.ErrNoRows) {
+		`SELECT active FROM facility_kinds WHERE key = $1 AND NOT is_deleted FOR SHARE`, kind).Scan(&active)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
+	case err == nil && !active:
 		return ErrUnknownKind
 	}
 	return err
@@ -201,19 +202,19 @@ func insertFacility(ctx context.Context, tx pgx.Tx, orgID string, in Input) (Fac
 	if err := tx.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&id); err != nil {
 		return Facility{}, err
 	}
-	hash, err := chain.DataHash(record{id, orgID, in.Name, in.Kind, in.Location, in.LicenceNumber,
-		in.Capacity, in.CapacityUnit, in.CapacityPeriod, in.LicenceValidTo})
+	hash, err := chain.DataHash(record{ID: id, OrganisationID: orgID, Name: in.Name, Kind: in.Kind,
+		Location: in.Location, LicenceNumber: in.LicenceNumber, LicenceValidTo: in.LicenceValidTo})
 	if err != nil {
 		return Facility{}, err
 	}
 	f, err := one(tx.Query(ctx,
 		fmt.Sprintf(`WITH g AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($4), %d) AS geom)
 		 INSERT INTO facilities AS f (id, organisation_id, name, kind, geom, licence_number,
-		                              capacity, capacity_unit, capacity_period, status, data_hash, licence_valid_to)
-		 SELECT $10::uuid, $1::uuid, $2, $3, g.geom, $5, $6, $7, $8, $9, $11, $12::date FROM g WHERE ST_IsValid(g.geom)
+		                              status, data_hash, licence_valid_to)
+		 SELECT $7::uuid, $1::uuid, $2, $3, g.geom, $5, $6, $8, $9::date FROM g WHERE ST_IsValid(g.geom)
 		 RETURNING `, SRID)+columns,
 		orgID, in.Name, in.Kind, string(in.Location), in.LicenceNumber,
-		in.Capacity, in.CapacityUnit, in.CapacityPeriod, StatusPending, id, chain.Hex(hash), in.LicenceValidTo))
+		StatusPending, id, chain.Hex(hash), in.LicenceValidTo))
 	if errors.Is(err, ErrNotFound) {
 		return Facility{}, ErrBadGeometry // the WHERE filtered the row out
 	}
@@ -236,10 +237,9 @@ func (s Store) Approve(ctx context.Context, id, userID string) (Facility, error)
 	defer tx.Rollback(ctx)
 
 	var status, orgID, dataHash string
-	var capacity int64
 	err = tx.QueryRow(ctx,
-		`SELECT status, organisation_id::text, data_hash, capacity FROM facilities
-		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id).Scan(&status, &orgID, &dataHash, &capacity)
+		`SELECT status, organisation_id::text, data_hash FROM facilities
+		 WHERE id = $1::uuid AND NOT is_deleted FOR UPDATE`, id).Scan(&status, &orgID, &dataHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Facility{}, ErrNotFound
 	}
@@ -256,7 +256,7 @@ func (s Store) Approve(ctx context.Context, id, userID string) (Facility, error)
 		return Facility{}, err
 	}
 	err = chain.Enqueue(ctx, tx, chain.KindFacilityRegister, id, chain.FacilityRegister{
-		FacilityID: id, OrgID: orgID, DataHash: dataHash, Capacity: capacity,
+		FacilityID: id, OrgID: orgID, DataHash: dataHash,
 	})
 	if err != nil {
 		return Facility{}, err
@@ -308,23 +308,13 @@ func (s Store) Find(ctx context.Context, q listq.Query, gate, status, kind strin
 		where = append(where, fmt.Sprintf(`f.geom && ST_MakeEnvelope($4, $5, $6, $7, %d)`, SRID))
 		args = append(args, bbox[0], bbox[1], bbox[2], bbox[3])
 	}
-	page, err := listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM facilities f", where, args, scan)
-	if err != nil {
-		return page, err
-	}
-	return page, s.withUsed(ctx, page.Data)
+	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM facilities f", where, args, scan)
 }
 
 func (s Store) Get(ctx context.Context, id, gate string) (Facility, error) {
-	f, err := one(s.Pool.Query(ctx,
+	return one(s.Pool.Query(ctx,
 		`SELECT `+columns+` FROM facilities f
 		 WHERE f.id = $1::uuid AND NOT f.is_deleted AND `+auth.GateSQL(gateColumn, 2), id, gate))
-	if err != nil {
-		return f, err
-	}
-	fs := []Facility{f}
-	err = s.withUsed(ctx, fs)
-	return fs[0], err
 }
 
 // SetStatus suspends or reactivates a facility and queues the change for the
@@ -486,9 +476,7 @@ func (s Store) DeleteKind(ctx context.Context, key string) error {
 	}
 	var used bool
 	err = tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM facilities WHERE kind = $1 AND NOT is_deleted)
-		     OR EXISTS (SELECT 1 FROM commodity_templates WHERE origin_facility_kind = $1 AND NOT is_deleted)
-	     	     OR EXISTS (SELECT 1 FROM commodity_templates WHERE draft->>'originFacilityKind' = $1 AND NOT is_deleted)`, key).Scan(&used)
+		`SELECT EXISTS (SELECT 1 FROM facilities WHERE kind = $1 AND NOT is_deleted)`, key).Scan(&used)
 	if err != nil {
 		return err
 	}

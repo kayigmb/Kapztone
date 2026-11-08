@@ -30,7 +30,7 @@
     "tabTemplates": "Templates",
     "tabFacilityKinds": "Facility kinds",
     "kindsTitle": "Facility kinds",
-    "kindsSub": "Curate the facility types used by registration and product templates.",
+    "kindsSub": "Curate the facility types offered when registering a facility. A business can still name its own.",
     "kindKey": "Key",
     "kindKeyHelp": "Lowercase letters, digits and underscores; start with a letter.",
     "kindLabel": "Name",
@@ -79,10 +79,6 @@
     "whatNext": "What happens next",
     "notAllowedTitle": "You can't issue passports.",
     "notAllowedBody": "Ask an admin of your organisation for the issue-passports permission.",
-    "evidenceCount": {
-      "$template": "{have} of {total} on file"
-    },
-    "evidenceRowMissing": "Not on file yet.",
     "nextSteps": [
       "Print a QR label for each bag or crate.",
       "Collectors and inspectors add their records against this lot.",
@@ -90,6 +86,7 @@
     ]
   },
   "facilities": {
+    "kindsTab": "Facility kinds",
     "cancel": "Cancel",
     "closeDetail": "Close facility details",
     "emptyTitle": "No facilities yet",
@@ -109,6 +106,15 @@
     "emptyBody": "Scan a QR label or type a lot code above. The lot's records are checked as soon as the code is read."
   },
   "passportDetail": {
+    "issuedBy": "Issued by",
+    "byPerson": { "$template": "By {name}" },
+    "sentReceived": { "$template": "Sent by {from} · received by {to}" },
+    "awaiting": "not yet received",
+    "qrButton": "Show QR code",
+    "qrTitle": "Passport QR code",
+    "qrBody": "Scan it to open this lot's public verification page.",
+    "qrDownload": "Download PNG",
+    "close": "Close",
     "journeyTab": "Journey",
     "evidenceTab": "Certificates and flags",
     "recordTab": "Record details",

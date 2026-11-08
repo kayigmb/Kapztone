@@ -18,13 +18,12 @@ const (
 	CheckRecord       = "record_intact"
 	CheckAnchored     = "anchored"
 	CheckOrigin       = "origin"
-	CheckCapacity     = "capacity"
 	CheckMassBalance  = "mass_balance"
 	CheckCertificates = "certificates"
 	CheckStatus       = "status"
 )
 
-var Checks = []string{CheckRecord, CheckAnchored, CheckOrigin, CheckCapacity, CheckMassBalance, CheckCertificates, CheckStatus}
+var Checks = []string{CheckRecord, CheckAnchored, CheckOrigin, CheckMassBalance, CheckCertificates, CheckStatus}
 
 // Reason codes and the message shown for each.
 const (
@@ -38,7 +37,6 @@ const (
 	FacilityAltered     = "facility_altered"
 	FacilitySuspended   = "facility_suspended"
 	OwnerNotVerified    = "owner_not_verified"
-	CapacityExceeded    = "capacity_exceeded"
 	MassBalanceBroken   = "mass_balance_broken"
 	CertificateAltered  = "certificate_altered"
 	CertificateExpired  = "certificate_expired"
@@ -67,7 +65,6 @@ var messages = map[string]string{
 	FacilityAltered:     "The origin facility's record differs from its sealed copy.",
 	FacilitySuspended:   "The origin facility is suspended.",
 	OwnerNotVerified:    "The organisation that owns the origin facility is not verified.",
-	CapacityExceeded:    "More was issued from the origin facility in the period than its capacity allows.",
 	MassBalanceBroken:   "More came out of a processing step than its inputs could yield.",
 	CertificateAltered:  "A certificate does not match the copy sealed when it was issued.",
 	CertificateExpired:  "A certificate has expired.",

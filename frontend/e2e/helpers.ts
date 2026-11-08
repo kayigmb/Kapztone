@@ -7,7 +7,9 @@ import {
 
 import { copy } from "../lib/consts";
 
-export const run = Date.now().toString(36);
+// Each worker loads this module; the random tail keeps two workers started in the same ms apart.
+export const run =
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 // Meets the password rule: upper and lower case, a number and a symbol.
 export const password = "E2e-password-123456!";
 export const pin = "135790";
@@ -42,6 +44,7 @@ export type Json = {
   name: string;
   data: Json[];
   verify_link?: string;
+  user?: { id: string }; // GET /me
 };
 
 export async function ok(
@@ -77,11 +80,13 @@ export async function business(
     }),
   );
   // Dev hands back the email confirmation link; spend it as the inbox would.
-  await ok(
-    await anon.request.post("/api/auth/email/verify", {
-      data: { token: org.verify_link!.split("/").pop() },
-    }),
-  );
+  // None comes with EMAIL_VERIFY=false: the account is ready already.
+  if (org.verify_link)
+    await ok(
+      await anon.request.post("/api/auth/email/verify", {
+        data: { token: org.verify_link.split("/").pop() },
+      }),
+    );
   await anon.close();
 
   const context = await signedIn(browser, email, password, slug);

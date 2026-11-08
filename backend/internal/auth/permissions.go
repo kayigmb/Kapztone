@@ -30,11 +30,10 @@ const (
 	CertificateRevoke = "certificate:revoke"
 	FlagCreate        = "flag:create"
 	FlagResolve       = "flag:resolve"
-	TemplateRead      = "template:read"
-	TemplateManage    = "template:manage"
 	FacilityRead      = "facility:read"
 	FacilityManage    = "facility:manage"
-	FacilitySuspend   = "facility:suspend"
+	FacilitySuspend   = "facility:suspend" // approve, suspend and reinstate facilities
+	FacilityKinds     = "facility:kinds"   // edit the list of facility kinds: platform only
 )
 
 // Audit log and reports.
@@ -47,25 +46,81 @@ const (
 var AllPermissions = []string{
 	OrgRead, OrgManage, OrgVerify, OrgSearch, DocumentRead, UserManage,
 	PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate,
-	CertificateIssue, CertificateRevoke, FlagCreate, FlagResolve, TemplateRead, TemplateManage,
-	FacilityRead, FacilityManage, FacilitySuspend,
+	CertificateIssue, CertificateRevoke, FlagCreate, FlagResolve,
+	FacilityRead, FacilityManage, FacilitySuspend, FacilityKinds,
 	AuditRead, AuditVerify, ReportRead,
 }
 
-// DefaultRoles is what each built-in role may do.
+// DefaultRoles is what each built-in role may do. Inside an organisation it
+// is narrowed further by KindPermissions (see Effective).
 var DefaultRoles = map[string][]string{
 	RoleSuperadmin: AllPermissions,
 	RoleOrgAdmin: {
 		OrgRead, OrgManage, OrgSearch, DocumentRead, UserManage,
 		PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate,
-		CertificateIssue, CertificateRevoke, FlagCreate,
-		TemplateRead, FacilityRead, FacilityManage,
+		CertificateIssue, CertificateRevoke, FlagCreate, FlagResolve,
+		FacilityRead, FacilityManage, FacilitySuspend,
 		AuditRead, ReportRead,
 	},
 	RoleMember: {
-		OrgSearch, PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate, FlagCreate,
-		TemplateRead, FacilityRead,
+		OrgSearch, PassportIssue, PassportRead, PassportRetire, HandoverCreate, HandoverAccept, TransformCreate,
+		CertificateIssue, FlagCreate, FacilityRead, ReportRead,
 	},
+}
+
+// Organisation kinds, as org.Kind* names them (org imports this package, so
+// the names are repeated here).
+const (
+	kindProducer    = "producer"
+	kindProcessor   = "processor"
+	kindTransporter = "transporter"
+	kindExporter    = "exporter"
+	kindImporter    = "importer"
+	kindCertifier   = "certifier"
+	kindRegulator   = "regulator"
+)
+
+// TradingKinds hold, hand over and transform goods. The others (certifiers
+// and regulators) inspect and judge the chain, and never trade in it.
+var TradingKinds = []string{kindProducer, kindProcessor, kindTransporter, kindExporter, kindImporter}
+
+// InspectorKinds read every organisation's passports, facilities and
+// certificates, so they can check them.
+var InspectorKinds = []string{kindCertifier, kindRegulator}
+
+// KindPermissions is the most an organisation of each kind may do, whatever
+// the role of the person acting for it.
+var KindPermissions = func() map[string][]string {
+	// org:search is in common: every page names the organisations on a record
+	// through it. Handover receivers are searched with ?receivers=true, which
+	// keeps the trading kinds only, and checkReceiver enforces the same.
+	common := []string{OrgRead, OrgManage, OrgSearch, DocumentRead, UserManage, PassportRead, FlagCreate,
+		FacilityRead, AuditRead, ReportRead}
+	trader := append([]string{HandoverCreate, HandoverAccept}, common...)
+	return map[string][]string{
+		kindProducer:    append([]string{FacilityManage, PassportIssue, PassportRetire, TransformCreate}, trader...),
+		kindProcessor:   append([]string{PassportRetire, TransformCreate}, trader...),
+		kindTransporter: trader,
+		kindExporter:    append([]string{PassportRetire, TransformCreate}, trader...),
+		kindImporter:    append([]string{PassportRetire, TransformCreate}, trader...),
+		// Inspectors register their own sites (offices, labs) to issue certificates at.
+		kindCertifier: append([]string{FacilityManage, CertificateIssue, CertificateRevoke}, common...),
+		kindRegulator: append([]string{FacilityManage, CertificateIssue, CertificateRevoke, FlagResolve}, common...),
+	}
+}()
+
+// Effective is what a role may do inside an organisation of the given kind:
+// the role's permissions that the kind also allows. An unknown kind allows
+// nothing.
+func Effective(rolePerms []string, kind string) []string {
+	allowed := KindPermissions[kind]
+	out := []string{}
+	for _, p := range rolePerms {
+		if slices.Contains(allowed, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // SyncRoles makes the database match this file: it adds missing permissions

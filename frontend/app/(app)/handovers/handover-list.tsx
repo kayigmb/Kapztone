@@ -1,25 +1,28 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
-import {
-  ArrowDownLeft,
-  ArrowLeftRight,
-  ArrowUpRight,
-  ChevronRight,
-  CircleCheck,
-  Plus,
-} from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CircleCheck, Plus } from "lucide-react";
 import Link from "next/link";
 import { parseAsStringLiteral } from "nuqs";
 
-import { ListCard } from "@/components/chaintrack/list-card";
-import { ListBar, ListPager } from "@/components/chaintrack/list-controls";
+import { ListBar } from "@/components/chaintrack/list-controls";
+import {
+  column,
+  ListTable,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { PageStats } from "@/components/chaintrack/page-stats";
 import { HandoverStatusChip } from "@/components/chaintrack/handover-status";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { endpoints, problemOf, useMe, usePaged } from "@/lib/api";
+import {
+  endpoints,
+  problemOf,
+  useMe,
+  usePaged,
+  type HandoverRow,
+} from "@/lib/api";
 import {
   copy,
   handoverBoxes,
@@ -64,6 +67,33 @@ export function HandoverList() {
   const count = (x: (typeof handoverBoxes)[number]) =>
     counts[handoverBoxes.indexOf(x)].data;
   const nameOf = (id: string) => names.data?.get(id) ?? copy.dashboard.someOrg;
+  const c = t.columns;
+  // "Bob · Kitabi Washing": the person, then the organisation.
+  const who = (person: string | null | undefined, org: string) =>
+    person ? `${person} · ${org}` : org;
+  const columns: ListColumn<HandoverRow>[] = [
+    column("party", c.party, (h) => (
+      <Link
+        href={routes.handoverDetail(h.id)}
+        className="font-semibold hover:underline"
+      >
+        {h.to_org === mine
+          ? t.from(who(h.from_user_name, h.from_name ?? nameOf(h.from_org)))
+          : h.from_org === mine
+            ? t.to(who(h.to_user_name, h.to_name ?? nameOf(h.to_org)))
+            : // The platform is neither party: both names.
+              `${h.from_name} → ${who(h.to_user_name, h.to_name ?? "")}`}
+      </Link>
+    )),
+    column("stage", c.stage, (h) => humanize(h.stage)),
+    column("quantity", c.quantity, (h) => (
+      <span className="fig">{h.quantity.toLocaleString()}</span>
+    )),
+    column("created_at", c.date, (h) => formatDate(h.created_at), {
+      sortable: true,
+    }),
+    column("status", c.status, (h) => <HandoverStatusChip h={h} mine={mine} />),
+  ];
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
@@ -123,58 +153,26 @@ export function HandoverList() {
         </TabsList>
       </Tabs>
 
-      <ListBar list={state} sorts={listSorts.date} />
-
-      <ListCard
-        title={t.tabs[tab]}
-        empty={
-          {
-            incoming: t.emptyIncoming,
-            outgoing: t.emptyOutgoing,
-            done: t.emptyDone,
-          }[tab]
-        }
-        state={
-          list.isPending
-            ? "loading"
-            : list.isError
-              ? "failed"
-              : rows.length
-                ? "ready"
-                : "empty"
-        }
+      <ListTable
+        label={t.tabs[tab]}
+        columns={columns}
+        rows={rows}
+        total={list.data?.total ?? 0}
+        list={state}
+        rowKey={(h) => h.id}
+        loading={list.isPending}
         error={list.isError ? problemOf(list.error) : undefined}
-      >
-        {rows.map((h) => (
-          <li key={h.id}>
-            <Link
-              href={routes.handoverDetail(h.id)}
-              className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-5 py-3 hover:bg-surface-sunken"
-            >
-              <span className="grid size-9 place-items-center rounded-md bg-primary-soft text-primary">
-                <ArrowLeftRight className="size-4" aria-hidden />
-              </span>
-              <span className="grid min-w-0 gap-0.5">
-                <span className="truncate text-sm font-semibold">
-                  {h.to_org === mine
-                    ? t.from(nameOf(h.from_org))
-                    : t.to(nameOf(h.to_org))}
-                </span>
-                <span className="text-small text-ink-muted">
-                  {humanize(h.stage)} ·{" "}
-                  <span className="font-mono">
-                    {h.quantity.toLocaleString()}
-                  </span>{" "}
-                  · {formatDate(h.created_at)}
-                </span>
-              </span>
-              <HandoverStatusChip h={h} mine={mine} />
-              <ChevronRight className="size-4 text-ink-muted" aria-hidden />
-            </Link>
-          </li>
-        ))}
-      </ListCard>
-      <ListPager list={state} total={list.data?.total ?? 0} />
+        empty={
+          list.isPending
+            ? copy.loading
+            : {
+                incoming: t.emptyIncoming,
+                outgoing: t.emptyOutgoing,
+                done: t.emptyDone,
+              }[tab]
+        }
+        toolbar={<ListBar list={state} sorts={listSorts.date} />}
+      />
     </main>
   );
 }

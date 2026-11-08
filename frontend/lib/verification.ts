@@ -118,6 +118,8 @@ export type View = {
     quantity: string;
     signedByBoth: boolean;
     state: "done" | "current" | "warning" | "failed";
+    /** The people, in-app only: "Sent by Alice · received by Bob". */
+    people?: string;
   }[];
   // `via`: how it went into the lot it feeds, e.g. "Washing station · 400 kg used".
   madeFrom: {

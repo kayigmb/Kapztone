@@ -19,7 +19,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/org"
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/stats"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
 )
@@ -58,7 +57,6 @@ type Deps struct {
 	Auth        *auth.Auth
 	Org         *org.Handlers
 	Facility    *facility.Handlers
-	Template    *template.Handlers
 	Passport    *passport.Handlers
 	Attestation *attestation.Handlers
 	Flag        *flag.Handlers
@@ -73,7 +71,7 @@ type Deps struct {
 const idPath = "/{" + httpx.ParamID + "}"
 
 func Routes(d Deps) []Route {
-	a, o, f, t, p := d.Auth, d.Org, d.Facility, d.Template, d.Passport
+	a, o, f, p := d.Auth, d.Org, d.Facility, d.Passport
 	c, fl, n, v, u := d.Attestation, d.Flag, d.Notify, d.Verify, d.User
 	const (
 		get, post, put, del = http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete
@@ -116,6 +114,7 @@ func Routes(d Deps) []Route {
 		{post, "/orgs" + idPath + "/verify", Permission, auth.OrgVerify, o.Review},
 		{get, "/orgs" + idPath + "/accreditations", Permission, auth.OrgRead, o.Accreditations},
 		{get, "/orgs" + idPath + "/members", Permission, auth.OrgRead, u.OrgMembers},
+		{get, "/orgs" + idPath + "/people", Permission, auth.HandoverCreate, o.People},
 		{post, "/orgs" + idPath + "/suspend", Permission, auth.OrgVerify, o.Suspend},
 		{post, "/orgs" + idPath + "/reactivate", Permission, auth.OrgVerify, o.Reactivate},
 		{put, "/orgs" + idPath + "/accreditations", Permission, auth.OrgVerify, o.SetAccreditations},
@@ -133,17 +132,10 @@ func Routes(d Deps) []Route {
 		{del, "/facilities" + idPath, Permission, auth.FacilityManage, f.Delete},
 
 		{get, "/facility-kinds", Permission, auth.FacilityRead, f.Kinds},
-		{get, "/facility-kinds/all", Permission, auth.TemplateManage, f.AllKinds},
-		{post, "/facility-kinds", Permission, auth.TemplateManage, f.CreateKind},
-		{put, "/facility-kinds/{key}", Permission, auth.TemplateManage, f.UpdateKind},
-		{del, "/facility-kinds/{key}", Permission, auth.TemplateManage, f.DeleteKind},
-
-		{post, "/templates", Permission, auth.TemplateManage, t.Create},
-		{get, "/templates", Permission, auth.TemplateRead, t.List},
-		{get, "/templates" + idPath, Permission, auth.TemplateRead, t.Get},
-		{put, "/templates" + idPath, Permission, auth.TemplateManage, t.Update},
-		{post, "/templates" + idPath + "/publish", Permission, auth.TemplateManage, t.Publish},
-		{del, "/templates" + idPath, Permission, auth.TemplateManage, t.Delete},
+		{get, "/facility-kinds/all", Permission, auth.FacilityKinds, f.AllKinds},
+		{post, "/facility-kinds", Permission, auth.FacilityKinds, f.CreateKind},
+		{put, "/facility-kinds/{key}", Permission, auth.FacilityKinds, f.UpdateKind},
+		{del, "/facility-kinds/{key}", Permission, auth.FacilityKinds, f.DeleteKind},
 
 		{post, "/passports", VerifiedPermission, auth.PassportIssue, p.Issue},
 		{get, "/passports", Permission, auth.PassportRead, p.List},

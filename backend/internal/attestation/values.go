@@ -38,6 +38,8 @@ const (
 	FormType        = "type"
 	FormValidFrom   = "valid_from"
 	FormValidTo     = "valid_to"
+	// FormIssuedAt is optional: which of the issuer's own facilities it was issued at.
+	FormIssuedAt = "issued_at_facility_id"
 )
 
 // URL parameter names.
@@ -54,6 +56,7 @@ const MaxReasonLen = 1000
 const (
 	MsgNotAccredited   = "your organisation is not accredited to issue this type of certificate today"
 	MsgSubjectNotFound = "the passport or facility this certificate is about was not found"
+	MsgIssuedAtUnknown = "issued_at_facility_id must be one of your organisation's facilities"
 	MsgAlreadyRevoked  = "this certificate is already revoked"
 	MsgReasonNeeded    = "give a reason for revoking"
 	MsgDates           = "valid_from and valid_to must be dates (2026-01-31) or RFC 3339 timestamps, with valid_to after valid_from"

@@ -28,7 +28,7 @@ const cols: Record<number, string> = {
 /**
  * A screen's breakdown: one count per card, each from the screen's own list
  * endpoint (size 1, read the total), so the counts follow the same access
- * rules as the list. ponytail: one request per card; a /counts endpoint if
+ * rules as the list. 
  * this ever gets slow.
  */
 export function PageStats({

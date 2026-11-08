@@ -14,7 +14,7 @@ import { TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { endpoints, type AccreditationRow } from "@/lib/api";
-import { copy, queryKeys, confirmCopy } from "@/lib/consts";
+import { certificateTypes, copy, queryKeys, confirmCopy } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import {
   accreditationSchema,
@@ -27,10 +27,6 @@ const t = copy.admin.accreditation;
 
 /** Which certificate types a verified certifier or regulator may issue, and for how long. */
 export function AccreditationForm({ orgId }: { orgId: string }) {
-  const types = useQuery({
-    queryKey: queryKeys.templates,
-    queryFn: endpoints.certificateTypes,
-  });
   const current = useQuery({
     queryKey: queryKeys.orgAccreditations(orgId),
     queryFn: () => endpoints.accreditations(orgId),
@@ -52,14 +48,10 @@ export function AccreditationForm({ orgId }: { orgId: string }) {
           </StatusChip>
         )}
       </header>
-      <DataWidget query={types}>
+      <DataWidget query={current}>
         {() => (
-          <DataWidget query={current}>
-            {() => (
-              // Mounted once the current accreditation is known, so the form starts from it.
-              <Form orgId={orgId} types={types.data!} current={current.data!} />
-            )}
-          </DataWidget>
+          // Mounted once the current accreditation is known, so the form starts from it.
+          <Form orgId={orgId} current={current.data!} />
         )}
       </DataWidget>
     </section>
@@ -68,17 +60,15 @@ export function AccreditationForm({ orgId }: { orgId: string }) {
 
 function Form({
   orgId,
-  types,
   current,
 }: {
   orgId: string;
-  types: string[];
   current: AccreditationRow[];
 }) {
   const client = useQueryClient();
-  // Types accredited earlier stay choosable even if no template asks for them any more.
+  // The platform's list, plus any type accredited before it (kept so it can be withdrawn).
   const choices = [
-    ...new Set([...types, ...current.map((a) => a.type)]),
+    ...new Set([...certificateTypes, ...current.map((a) => a.type)]),
   ].sort();
   const {
     control,
@@ -107,8 +97,6 @@ function Form({
         queryKey: queryKeys.orgAccreditations(orgId),
       }),
   });
-
-  if (choices.length === 0) return <Notice kind="info">{t.noTypes}</Notice>;
 
   return (
     <form

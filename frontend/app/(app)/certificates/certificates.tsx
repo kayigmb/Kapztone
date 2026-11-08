@@ -8,12 +8,19 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { parseAsStringLiteral } from "nuqs";
 
-import { CertificateTile } from "@/components/chaintrack/certificate-tile";
+import { certificateLook } from "@/components/chaintrack/certificate-tile";
 import { FieldNote } from "@/components/chaintrack/field-note";
-import { ListBar, Pager } from "@/components/chaintrack/list-controls";
+import { ListBar } from "@/components/chaintrack/list-controls";
+import {
+  actionsColumn,
+  column,
+  ListTable,
+  RowAction,
+  type ListColumn,
+} from "@/components/chaintrack/list-table";
+import { StatusChip } from "@/components/chaintrack/status";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { PageStats } from "@/components/chaintrack/page-stats";
-import { DataWidget } from "@/components/chaintrack/data-widget";
 import { Segmented } from "@/components/chaintrack/segmented";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -42,6 +49,7 @@ import {
   subjectTypes,
   type CertificateScope,
 } from "@/lib/consts";
+import { inspects } from "@/lib/dashboard";
 import { liveValidation } from "@/lib/form";
 import { useListParams, type ListParamsState } from "@/lib/list-params";
 import { revokeFormSchema, type RevokeForm } from "@/lib/schemas/certificate";
@@ -49,7 +57,6 @@ import {
   formatDate,
   humanize,
   type CertificateState,
-  type View,
 } from "@/lib/verification";
 
 const t = copy.certificates;
@@ -72,8 +79,6 @@ const listFilters = {
   status: parseAsStringLiteral(statusValues),
   scope: parseAsStringLiteral(certificateScopes),
 };
-/** Tiles sit three to a row: nine fill a page. */
-const tilesPerPage = 9;
 
 /** 30 days, as on the public page: a valid certificate inside it reads "Expiring soon". */
 export function certificateState(c: Certificate): CertificateState {
@@ -94,10 +99,12 @@ export function Certificates() {
   const list = useListParams("-created_at", listFilters);
   const platform = !me.organisation;
   // An organisation starts on what it issued if it issues, else on what's about its lots.
-  const scope: CertificateScope | undefined = platform
-    ? undefined
-    : (list.filters.scope ??
-      (canIssue ? certificateScopes[0] : certificateScopes[1]));
+  // A certifier or regulator searching looks across every organisation, to verify theirs.
+  const scope: CertificateScope | undefined =
+    platform || (inspects(me) && list.search)
+      ? undefined
+      : (list.filters.scope ??
+        (canIssue ? certificateScopes[0] : certificateScopes[1]));
   const [revoking, setRevoking] = useState<Certificate | null>(null);
 
   return (
@@ -147,23 +154,6 @@ export function Certificates() {
         ]}
       />
 
-      <ListBar list={list} sorts={listSorts.certificate}>
-        {scope && (
-          <Segmented
-            label={t.title}
-            options={scopeOptions}
-            value={scope}
-            onChange={(v) => list.setFilters({ scope: v })}
-          />
-        )}
-        <Segmented
-          label={t.headers.status}
-          options={statusFilters}
-          value={list.filters.status ?? ALL}
-          onChange={(v) => list.setFilters({ status: v || null })}
-        />
-      </ListBar>
-
       <CertificateList
         list={list}
         scope={scope}
@@ -172,6 +162,24 @@ export function Certificates() {
         canRevoke={me.permissions.includes(permissions.certificateRevoke)}
         revoking={revoking}
         onRevoke={setRevoking}
+        toolbar={
+          <ListBar list={list} sorts={listSorts.certificate}>
+            {scope && (
+              <Segmented
+                label={t.title}
+                options={scopeOptions}
+                value={scope}
+                onChange={(v) => list.setFilters({ scope: v })}
+              />
+            )}
+            <Segmented
+              label={t.headers.status}
+              options={statusFilters}
+              value={list.filters.status ?? ALL}
+              onChange={(v) => list.setFilters({ status: v || null })}
+            />
+          </ListBar>
+        }
       />
     </main>
   );
@@ -185,6 +193,7 @@ function CertificateList({
   canRevoke,
   revoking,
   onRevoke,
+  toolbar,
 }: {
   list: ListParamsState;
   scope?: CertificateScope;
@@ -193,135 +202,102 @@ function CertificateList({
   canRevoke: boolean;
   revoking: Certificate | null;
   onRevoke: (c: Certificate | null) => void;
+  toolbar: React.ReactNode;
 }) {
   // The API decides what this caller may see (issued by or about its organisation; all for the platform).
-  const query = usePaged(queryKeys.certificates, endpoints.attestationsPage, {
-    ...list.query({ scope, status }),
-    size: tilesPerPage,
-  });
-  const directory = useQuery({
-    queryKey: queryKeys.directory,
-    queryFn: endpoints.directory,
-    enabled: !!query.data?.total,
-  });
+  const query = usePaged(
+    queryKeys.certificates,
+    endpoints.attestationsPage,
+    list.query({ scope, status }),
+  );
+  const rows = query.data?.data ?? [];
   const facilities = useQuery({
     queryKey: queryKeys.facilities,
     queryFn: endpoints.facilitiesList,
-    enabled: !!query.data?.data.some(
-      (c) => c.subject_type === subjectTypes.facility,
-    ),
+    enabled: rows.some((c) => c.subject_type === subjectTypes.facility),
   });
 
-  const orgName = (id: string) => directory.data?.get(id) ?? id;
   const facilityName = (id: string) =>
     facilities.data?.find((f) => f.id === id)?.name ?? id;
   const subject = (c: Certificate) =>
     c.subject_type === subjectTypes.passport
       ? t.attachedLot(c.subject_id)
       : facilityName(c.subject_id);
+  const mayRevoke = (c: Certificate) =>
+    canRevoke &&
+    c.status !== "revoked" &&
+    (!myOrgId || c.issuer_org_id === myOrgId);
 
-  return (
-    <DataWidget
-      query={query}
-      className="py-4"
-      page={{ icon: FileText, title: copy.errors.loadTitle }}
-    >
-      {(page) =>
-        page.data.length === 0 ? (
-          <div className="grid justify-items-center gap-2 py-8 text-center">
-            <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
-              <FileText className="size-7" aria-hidden />
-            </span>
-            <h2 className="text-title">
-              {list.search
-                ? copy.list.noMatch
-                : status === ALL
-                  ? t.emptyTitle
-                  : t.emptyType}
-            </h2>
-            <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
-          </div>
-        ) : (
-          <>
-            <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {page.data.map((c) => (
-                <Row
-                  key={c.id}
-                  certificate={c}
-                  issuer={orgName(c.issuer_org_id)}
-                  subject={subject(c)}
-                  canRevoke={
-                    canRevoke && (!myOrgId || c.issuer_org_id === myOrgId)
-                  }
-                  onRevoke={onRevoke}
-                />
-              ))}
-            </ul>
-            <Pager
-              page={list.page}
-              size={tilesPerPage}
-              total={page.total}
-              onPage={list.setPage}
-            />
-            {revoking && (
-              <RevokeDialog
-                certificate={revoking}
-                onClose={() => onRevoke(null)}
-              />
-            )}
-          </>
-        )
-      }
-    </DataWidget>
-  );
-}
-
-function Row({
-  certificate: c,
-  issuer,
-  subject,
-  canRevoke,
-  onRevoke,
-}: {
-  certificate: Certificate;
-  issuer: string;
-  subject: string;
-  canRevoke: boolean;
-  onRevoke: (c: Certificate) => void;
-}) {
-  const state = certificateState(c);
-  const view: View["certificates"][number] = {
-    id: c.id,
-    type: humanize(c.type),
-    issuer,
-    state,
-    validFrom: formatDate(c.valid_from),
-    validTo: formatDate(c.valid_to),
-    note:
-      state === "revoked"
-        ? copy.verification.certificateNote.revoked(c.revoke_reason ?? null)
-        : state === "expired"
-          ? copy.verification.certificateNote.expired(formatDate(c.valid_to))
-          : undefined,
-  };
-  return (
-    <li className="grid gap-2">
-      <Link
-        href={subjectHref(c)}
-        className="rounded-md focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <CertificateTile certificate={view} />
+  const columns: ListColumn<Certificate>[] = [
+    column("type", t.headers.type, (c) => (
+      <Link href={subjectHref(c)} className="font-semibold hover:underline">
+        {humanize(c.type)}
       </Link>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <span className="text-small text-ink-muted">{subject}</span>
-        {canRevoke && c.status !== "revoked" && (
-          <Button variant="danger-outline" onClick={() => onRevoke(c)}>
-            <OctagonX aria-hidden />
-            {t.revoke}
-          </Button>
-        )}
-      </div>
-    </li>
+    )),
+    column("issuer", t.headers.issuer, (c) =>
+      // "Issuer · the site it was issued at", when it said.
+      c.issued_at_name
+        ? `${c.issuer_name} · ${c.issued_at_name}`
+        : c.issuer_name,
+    ),
+    column("subject", t.headers.attached, (c) => (
+      <span className="break-all">{subject(c)}</span>
+    )),
+    column(
+      "valid_to",
+      t.headers.valid,
+      (c) => `${formatDate(c.valid_from)} – ${formatDate(c.valid_to)}`,
+      { sortable: true },
+    ),
+    column("status", t.headers.status, (c) => {
+      const state = certificateState(c);
+      const look = certificateLook[state];
+      return (
+        <StatusChip tone={look.tone} icon={look.icon}>
+          {copy.verification.certificate[state]}
+        </StatusChip>
+      );
+    }),
+    ...(canRevoke
+      ? [
+          actionsColumn<Certificate>((c) =>
+            mayRevoke(c) ? (
+              <RowAction
+                label={t.revoke}
+                icon={OctagonX}
+                danger
+                onClick={() => onRevoke(c)}
+              />
+            ) : null,
+          ),
+        ]
+      : []),
+  ];
+
+  return (
+    <>
+      <ListTable
+        label={t.title}
+        columns={columns}
+        rows={rows}
+        total={query.data?.total ?? 0}
+        list={list}
+        rowKey={(c) => c.id}
+        loading={query.isPending}
+        error={query.isError ? problemOf(query.error) : undefined}
+        empty={
+          list.search
+            ? copy.list.noMatch
+            : status === ALL
+              ? t.emptyTitle
+              : t.emptyType
+        }
+        toolbar={toolbar}
+      />
+      {revoking && (
+        <RevokeDialog certificate={revoking} onClose={() => onRevoke(null)} />
+      )}
+    </>
   );
 }
 

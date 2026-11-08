@@ -12,7 +12,8 @@ import { copy } from "@/lib/consts";
 import { type CertificateState, type View } from "@/lib/verification";
 import { tone, type Tone } from "./tone";
 
-const states: Record<
+/** How each certificate state looks: tone, icon and tile border. */
+export const certificateLook: Record<
   CertificateState,
   { tone: Tone; icon: LucideIcon; border: string }
 > = {
@@ -27,7 +28,7 @@ export function CertificateTile({
 }: {
   certificate: View["certificates"][number];
 }) {
-  const s = states[c.state];
+  const s = certificateLook[c.state];
   const Badge = s.icon;
   return (
     <article

@@ -258,7 +258,7 @@ function Passport({ v }: { v: View }) {
             </div>
           </Card>
           {v.origins.map((o) => (
-            <OriginCard key={o.id} origin={o} v={v} />
+            <OriginCard key={o.id} origin={o} />
           ))}
           <section className="flex gap-3 rounded-lg bg-navy-900 p-5 text-hero-ink">
             <span className="grid size-9 shrink-0 place-items-center rounded-md bg-hero-line text-hero-accent">
@@ -787,15 +787,8 @@ function CertificatesCard({ v }: { v: View }) {
   );
 }
 
-function OriginCard({
-  origin: o,
-  v,
-}: {
-  origin: View["origins"][number];
-  v: View;
-}) {
+function OriginCard({ origin: o }: { origin: View["origins"][number] }) {
   const Icon = facilityIcons[firstWord(o.kind)] ?? Factory;
-  const capacity = v.checks.find((c) => c.name === "capacity");
   return (
     <Card className="grid gap-4 p-5 lg:p-6">
       <span className="eyebrow">{t.originEyebrow}</span>
@@ -816,28 +809,10 @@ function OriginCard({
         />
       )}
       <dl className="border-t border-border text-sm">
-        <div className="grid grid-cols-[--spacing(27)_1fr] items-center gap-2 border-b border-border py-3">
+        <div className="grid grid-cols-[--spacing(27)_1fr] items-center gap-2 py-3">
           <dt className="text-ink-muted">{t.operator}</dt>
           <dd className="font-medium">{o.owner}</dd>
         </div>
-        {capacity && (
-          <div className="grid grid-cols-[--spacing(27)_1fr] items-center gap-2 py-3">
-            <dt className="text-ink-muted">{t.capacityCheck}</dt>
-            <dd
-              className={cn(
-                "flex items-center gap-1.5 font-semibold",
-                tone[verdictTone[capacity.result]].fg,
-              )}
-            >
-              {capacity.result === "verified" ? (
-                <CircleCheck className="size-4" aria-hidden />
-              ) : (
-                <ShieldAlert className="size-4" aria-hidden />
-              )}
-              {t.result[capacity.result]}
-            </dd>
-          </div>
-        )}
       </dl>
     </Card>
   );

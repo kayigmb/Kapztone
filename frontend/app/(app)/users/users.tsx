@@ -34,7 +34,7 @@ import { Notice } from "@/components/chaintrack/notice";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { PageStats } from "@/components/chaintrack/page-stats";
 import { StatusChip } from "@/components/chaintrack/status";
-import { TextField } from "@/components/chaintrack/text-field";
+import { besideFieldMd, TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -55,6 +55,7 @@ import {
   copy,
   memberRoles,
   memberStatus,
+  permissions,
   queryKeys,
   confirmCopy,
   routes,
@@ -108,7 +109,9 @@ export function Users() {
               },
         ]}
       />
-      {!platform && <Invite />}
+      {!platform && me.permissions.includes(permissions.userManage) && (
+        <Invite />
+      )}
       {platform ? (
         <AllUsers list={list} myId={me.user.id} />
       ) : (
@@ -428,7 +431,7 @@ function Invite() {
       <form
         onSubmit={handleSubmit((v) => send.mutate(v))}
         noValidate
-        className="grid gap-3 md:grid-cols-[1fr_12rem_auto] md:items-end"
+        className="grid gap-3 md:grid-cols-[1fr_12rem_auto] md:items-start"
       >
         <TextField
           label={t.inviteEmail}
@@ -466,7 +469,12 @@ function Invite() {
             )}
           />
         </div>
-        <Button type="submit" loading={send.isPending}>
+        {/* Tops aligned, so an error under one field moves nothing else; the label row (1.25rem + gap) sits above the button. */}
+        <Button
+          type="submit"
+          loading={send.isPending}
+          className={besideFieldMd}
+        >
           {t.sendInvite}
         </Button>
       </form>

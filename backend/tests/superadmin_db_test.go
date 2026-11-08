@@ -31,8 +31,8 @@ func TestSuperadminInsideOrganisation(t *testing.T) {
 	if got.Organisation == nil || got.Organisation.ID != acme.ID || got.Role != auth.RoleSuperadmin {
 		t.Fatalf("superadmin at acme's address: %+v", got)
 	}
-	if !slices.Equal(got.Permissions, slices.Sorted(slices.Values(auth.DefaultRoles[auth.RoleOrgAdmin]))) {
-		t.Fatalf("superadmin inside an organisation should hold its admin's permissions, got %v", got.Permissions)
+	if !slices.Equal(got.Permissions, slices.Sorted(slices.Values(auth.Effective(auth.DefaultRoles[auth.RoleOrgAdmin], org.KindProducer)))) {
+		t.Fatalf("superadmin inside an organisation should hold what its admin may do there, got %v", got.Permissions)
 	}
 	if got := me(root, "/me"); got.Organisation != nil || !slices.Contains(got.Permissions, auth.OrgVerify) {
 		t.Fatalf("superadmin at the bare address should keep the platform scope: %+v", got)

@@ -104,9 +104,22 @@ type File struct {
 // error. The form's other fields can be read once it returns. The caller
 // closes the file and removes r.MultipartForm.
 func Parse(w http.ResponseWriter, r *http.Request) (multipart.File, *multipart.FileHeader, bool) {
+	return parse(w, r, false)
+}
+
+// ParseOptional is Parse for a form whose file may be left out: then it
+// returns no file and true, and the form's other fields can be read.
+func ParseOptional(w http.ResponseWriter, r *http.Request) (multipart.File, *multipart.FileHeader, bool) {
+	return parse(w, r, true)
+}
+
+func parse(w http.ResponseWriter, r *http.Request, optional bool) (multipart.File, *multipart.FileHeader, bool) {
 	// The body limit leaves room for the multipart envelope around the file.
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBytes+1<<20)
 	file, header, err := r.FormFile(FormFile)
+	if optional && errors.Is(err, http.ErrMissingFile) {
+		return nil, nil, true
+	}
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {

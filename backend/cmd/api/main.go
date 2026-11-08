@@ -27,7 +27,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/passport"
 	"github.com/kayigmb/chaintrack/backend/internal/server"
 	"github.com/kayigmb/chaintrack/backend/internal/stats"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 	"github.com/kayigmb/chaintrack/backend/internal/user"
 	"github.com/kayigmb/chaintrack/backend/internal/verify"
@@ -124,6 +123,8 @@ func newAuth(cfg config.Config, pg auth.PgStore, store auth.CachedStore, c *cach
 		Dev:         cfg.Dev,
 		Secrets:     cfg.Secrets,
 		Limiter:     limiter(cfg.RateLimit, c),
+		// EMAIL_VERIFY=false: sign-up needs no confirmation link.
+		SkipEmailVerify: !cfg.EmailVerify,
 	}
 }
 
@@ -137,9 +138,8 @@ func handlers(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, files 
 		Ping: pool.Ping,
 		Auth: a,
 		Org: &org.Handlers{Store: org.Store{Pool: pool}, Files: files, InvalidateOrg: store.InvalidateOrg,
-			Secrets: cfg.Secrets, SendVerify: a.SendVerifyTo, AppURL: cfg.AppURL, Slug: a.Slug, Cache: c},
+			Secrets: cfg.Secrets, SendVerify: a.SendVerifyTo, NoEmailConfirm: a.SkipEmailVerify, AppURL: cfg.AppURL, Slug: a.Slug, Cache: c},
 		Facility: &facility.Handlers{Store: facility.Store{Pool: pool}, Files: files},
-		Template: &template.Handlers{Store: template.Store{Pool: pool}},
 		Passport: &passport.Handlers{Store: passports, PIN: a.CheckPIN, Files: files,
 			// Rejected handovers and the rules flag passports, in the same transaction.
 			RaiseFlag: flag.RaiseFlag},
@@ -194,7 +194,7 @@ func serve(ctx context.Context, cfg config.Config, h http.Handler) {
 			slog.Warn("shutdown", logx.KeyError, err)
 		}
 	}()
-	slog.Info("api listening", "port", cfg.Port, "mode", server.Mode(cfg.Dev), "rate_limits", !cfg.Dev, "chain_id", cfg.ChainID.String(),
+	slog.Info("api listening", "port", cfg.Port, "mode", server.Mode(cfg.Dev), "rate_limits", cfg.RateLimit, "email_verify", cfg.EmailVerify, "chain_id", cfg.ChainID.String(),
 		"bucket", cfg.Storage.Bucket, "ipfs", cfg.PinataJWT != "", "smtp", cfg.SMTP != nil)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		logx.Fatal("start-up", err)

@@ -4,11 +4,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Circle, CircleCheck, FileText, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { FieldNote } from "@/components/chaintrack/field-note";
+import { FileDrop } from "@/components/chaintrack/file-drop";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { useRecordTitle } from "@/components/chaintrack/record-title";
 import { Notice } from "@/components/chaintrack/notice";
@@ -16,7 +17,7 @@ import { Notice } from "@/components/chaintrack/notice";
 import { SelectInput } from "@/components/chaintrack/select-input";
 import { SigningPanel } from "@/components/chaintrack/signing";
 import { StatusChip } from "@/components/chaintrack/status";
-import { TextField } from "@/components/chaintrack/text-field";
+import { besideField, TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { endpoints, problemOf, useMe } from "@/lib/api";
 import { copy, queryKeys, routes, subjectTypes } from "@/lib/consts";
@@ -58,6 +59,12 @@ export function IssueCertificate() {
     queryFn: () => endpoints.accreditations(orgId),
     enabled: !!orgId,
   });
+  // The issuer's own sites, to say where the certificate was issued.
+  const sites = useQuery({
+    queryKey: [...queryKeys.facilities, "own"],
+    queryFn: endpoints.facilities,
+    enabled: !!orgId,
+  });
   const now = today();
   const types = (accredited.data ?? [])
     .filter(
@@ -78,6 +85,7 @@ export function IssueCertificate() {
       subject_type: subjectTypes.passport,
       subject_id: "",
       type: "",
+      issued_at_facility_id: "",
       valid_from: now,
       valid_to: inAYear(),
     },
@@ -101,20 +109,12 @@ export function IssueCertificate() {
   });
 
   const v = lot.data;
-  const subjects = v
-    ? [
-        {
-          type: subjectTypes.passport,
-          id: v.passport.id,
-          label: `${t.attachPassport} · ${v.passport.code ?? v.passport.id}`,
-        },
-        ...v.origins.map((o) => ({
-          type: subjectTypes.facility,
-          id: o.facility.id,
-          label: `${t.attachFacility} · ${o.facility.name}`,
-        })),
-      ]
-    : [];
+  // A certificate always belongs to the lot found: its passport is the subject.
+  const lotId = v?.passport.id ?? "";
+  useEffect(() => {
+    setValue("subject_type", subjectTypes.passport);
+    setValue("subject_id", lotId, { shouldValidate: !!lotId });
+  }, [lotId, setValue]);
   const checks = [
     {
       ok: !!v,
@@ -128,7 +128,11 @@ export function IssueCertificate() {
         !!form.valid_from && !!form.valid_to && form.valid_to > form.valid_from,
       label: t.checkDates,
     },
-    { ok: form.file instanceof File, label: t.checkFile },
+    // Never blocks: with no upload, ChainTrack writes the document.
+    {
+      ok: true,
+      label: form.file instanceof File ? t.checkFile : t.checkGenerated,
+    },
   ];
 
   return (
@@ -148,37 +152,6 @@ export function IssueCertificate() {
                 ) : null
               }
             </DataWidget>
-          )}
-
-          {v && (
-            <fieldset className="grid gap-2">
-              <legend className="mb-1.5 text-sm font-semibold">
-                {t.attach}
-              </legend>
-              {subjects.map((s) => {
-                const on = form.subject_id === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => {
-                      setValue("subject_type", s.type);
-                      setValue("subject_id", s.id, { shouldValidate: true });
-                    }}
-                    className={cn(
-                      "min-h-tap rounded-md border px-4 text-left text-sm font-semibold",
-                      on
-                        ? "border-primary bg-primary-soft text-primary"
-                        : "border-border text-ink-muted hover:border-primary",
-                    )}
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-              <FieldNote error={errors.subject_id?.message} />
-            </fieldset>
           )}
 
           <form
@@ -212,6 +185,28 @@ export function IssueCertificate() {
               )}
               <FieldNote error={errors.type?.message} help={t.typeHelp} />
             </label>
+            {(sites.data ?? []).length > 0 && (
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold">{t.issuedAt}</span>
+                <Controller
+                  control={control}
+                  name="issued_at_facility_id"
+                  render={({ field }) => (
+                    <SelectInput
+                      label={t.issuedAt}
+                      placeholder={t.issuedAtNone}
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      options={sites.data!.map((f) => ({
+                        value: f.id,
+                        label: f.name,
+                      }))}
+                    />
+                  )}
+                />
+                <FieldNote help={t.issuedAtHelp} />
+              </label>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <TextField
                 label={t.validFrom}
@@ -227,28 +222,15 @@ export function IssueCertificate() {
                 {...register("valid_to")}
               />
             </div>
-            <label className="grid gap-1.5">
-              <span className="text-sm font-semibold">{t.document}</span>
-              <span className="text-small text-ink-muted">
-                {t.documentHelp}
-              </span>
-              <input
-                type="file"
-                accept="application/pdf,image/png,image/jpeg"
-                className="min-h-tap text-sm"
-                aria-invalid={errors.file ? true : undefined}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) setValue("file", f, { shouldValidate: true });
-                }}
-              />
-              <FieldNote
-                error={
-                  errors.file?.message ??
-                  (errors.file ? t.documentMissing : undefined)
-                }
-              />
-            </label>
+            <FileDrop
+              label={t.document}
+              help={t.documentHelp}
+              prompt={t.documentDrop}
+              accept="application/pdf,image/png,image/jpeg"
+              file={form.file instanceof File ? form.file : undefined}
+              onFile={(f) => setValue("file", f, { shouldValidate: true })}
+              error={errors.file?.message}
+            />
           </form>
         </section>
 
@@ -328,7 +310,7 @@ function FindLot({ onFound }: { onFound: (ref: string) => void }) {
     <div className="grid gap-3">
       <form
         noValidate
-        className="grid grid-cols-[1fr_auto] items-end gap-2"
+        className="grid grid-cols-[1fr_auto] items-start gap-2"
         onSubmit={handleSubmit((x) => onFound(x.code))}
       >
         <TextField
@@ -339,7 +321,12 @@ function FindLot({ onFound }: { onFound: (ref: string) => void }) {
           error={errors.code?.message}
           {...register("code")}
         />
-        <Button type="submit" variant="secondary" aria-label={copy.scan.open}>
+        <Button
+          type="submit"
+          variant="secondary"
+          aria-label={copy.scan.open}
+          className={besideField}
+        >
           <Search aria-hidden />
         </Button>
       </form>

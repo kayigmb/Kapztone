@@ -11,6 +11,8 @@ import { useForm, useWatch } from "react-hook-form";
 import { DataWidget } from "@/components/chaintrack/data-widget";
 import { PageHeader } from "@/components/chaintrack/page-header";
 import { Notice } from "@/components/chaintrack/notice";
+import { FieldNote } from "@/components/chaintrack/field-note";
+import { SelectInput } from "@/components/chaintrack/select-input";
 
 import {
   PlaceAndPhotos,
@@ -23,7 +25,13 @@ import { TextField } from "@/components/chaintrack/text-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { endpoints, problemOf, useMe, type PassportDetail } from "@/lib/api";
-import { copy, passportStatus, queryKeys, routes } from "@/lib/consts";
+import {
+  copy,
+  passportStatus,
+  queryKeys,
+  roleLabel,
+  routes,
+} from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import { isPartial } from "@/lib/handover";
 import {
@@ -38,13 +46,39 @@ import { formatQuantity, humanize } from "@/lib/verification";
 import { LotScanner } from "../scan/scan";
 
 const t = copy.handover;
-type Receiver = { id: string; name: string; kind: string };
+type Receiver = {
+  id: string;
+  name: string;
+  kind: string;
+  /** The person there it goes to. */
+  person?: { id: string; name: string };
+};
+/** "Bob · Kitabi Washing": who, at which organisation. */
+const receiverLabel = (r: Receiver) =>
+  r.person ? `${r.person.name} · ${r.name}` : r.name;
 
+/** A fresh flow each round: "Hand over another lot" starts over, on the same page. */
 export function HandoverFlow() {
+  const router = useRouter();
+  const [round, setRound] = useState(0);
+  return (
+    <Flow
+      key={round}
+      // After the first round, start without a lot (the URL's ?passport= may not have cleared yet).
+      fresh={round > 0}
+      onAnother={() => {
+        router.replace(routes.handover());
+        setRound((r) => r + 1);
+      }}
+    />
+  );
+}
+
+function Flow({ fresh, onAnother }: { fresh: boolean; onAnother: () => void }) {
   const params = useSearchParams();
   const router = useRouter();
   const me = useMe().data!;
-  const [ref, setRef] = useState(params.get("passport") ?? "");
+  const [ref, setRef] = useState(fresh ? "" : (params.get("passport") ?? ""));
   const [step, setStep] = useState(ref ? 1 : 0);
   const [details, setDetails] = useState<HandoverForm>();
   const [place, setPlace] = useState<Place>();
@@ -113,6 +147,7 @@ export function HandoverFlow() {
                 place={place}
                 photos={photos}
                 onBack={() => setStep(2)}
+                onAnother={onAnother}
               />
             )}
           </main>
@@ -309,6 +344,12 @@ function PickReceiver({
     queryKey: [...queryKeys.directory, "search", search],
     queryFn: () => endpoints.directorySearch(search),
   });
+  // Then the person there: an admin or a member.
+  const people = useQuery({
+    queryKey: [...queryKeys.directory, "people", selected?.id],
+    queryFn: () => endpoints.orgPeople(selected!.id),
+    enabled: !!selected,
+  });
   return (
     <section className="grid gap-4">
       <h2 className="text-title">{t.receiver}</h2>
@@ -338,7 +379,7 @@ function PickReceiver({
                     type="button"
                     role="radio"
                     aria-checked={selected?.id === o.id}
-                    onClick={() => onPick(o)}
+                    onClick={() => selected?.id !== o.id && onPick(o)}
                     className={cn(
                       "grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg border px-4 py-3 text-left",
                       selected?.id === o.id
@@ -362,11 +403,44 @@ function PickReceiver({
           )
         }
       </DataWidget>
+      {selected && (
+        <DataWidget query={people}>
+          {(list) =>
+            list.length === 0 ? (
+              <Notice kind="info">{t.personEmpty}</Notice>
+            ) : (
+              <div className="grid gap-1.5">
+                <span className="text-sm font-semibold">
+                  {t.person(selected.name)}
+                </span>
+                <SelectInput
+                  label={t.person(selected.name)}
+                  placeholder={t.personPlaceholder}
+                  value={selected.person?.id ?? ""}
+                  onChange={(id) => {
+                    const who = list.find((x) => x.id === id);
+                    if (who)
+                      onPick({
+                        ...selected,
+                        person: { id: who.id, name: who.name },
+                      });
+                  }}
+                  options={list.map((x) => ({
+                    value: x.id,
+                    label: `${x.name} · ${roleLabel[x.role] ?? humanize(x.role)}`,
+                  }))}
+                />
+                <FieldNote help={t.personHelp} />
+              </div>
+            )
+          }
+        </DataWidget>
+      )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="secondary" onClick={onBack}>
           {t.back}
         </Button>
-        <Button onClick={onNext} disabled={!selected}>
+        <Button onClick={onNext} disabled={!selected?.person}>
           {t.review}
         </Button>
       </div>
@@ -381,6 +455,7 @@ function Sign({
   place,
   photos,
   onBack,
+  onAnother,
 }: {
   p: PassportDetail;
   details: HandoverForm;
@@ -388,6 +463,7 @@ function Sign({
   place: Place;
   photos: File[];
   onBack: () => void;
+  onAnother: () => void;
 }) {
   const client = useQueryClient();
   const quantity = handoverQuantity(details, p.remaining);
@@ -397,6 +473,7 @@ function Sign({
         p.id,
         {
           to_org: receiver.id,
+          to_user: receiver.person!.id,
           stage: details.stage,
           quantity,
           note: details.note,
@@ -425,11 +502,21 @@ function Sign({
         </span>
         <h2 className="text-page">{t.sentTitle}</h2>
         <p className="text-sm text-ink-muted">
-          {t.sentBody(formatQuantity(quantity, p.unit), receiver.name)}
+          {t.sentBody(
+            formatQuantity(quantity, p.unit),
+            receiverLabel(receiver),
+          )}
         </p>
-        <ol className="grid gap-1 text-sm">
-          {t.stepsNext.map((s) => (
-            <li key={s}>{s}</li>
+        <ol className="grid gap-2 text-sm">
+          {t.stepsNext.map((s, i) => (
+            <li key={s} className="flex items-center gap-2">
+              {i === 0 ? (
+                <CircleCheck className="size-4 text-verified" aria-hidden />
+              ) : (
+                <Clock className="size-4 text-ink-subtle" aria-hidden />
+              )}
+              <span className={i === 0 ? "" : "text-ink-muted"}>{s}</span>
+            </li>
           ))}
         </ol>
         <div className="flex flex-wrap gap-2">
@@ -439,12 +526,9 @@ function Sign({
           >
             {copy.receiver.open}
           </Link>
-          <Link
-            href={routes.handover()}
-            className={buttonVariants({ variant: "ghost" })}
-          >
+          <Button variant="ghost" onClick={onAnother}>
             {t.another}
-          </Link>
+          </Button>
         </div>
       </section>
     );
@@ -462,13 +546,13 @@ function Sign({
             value: formatQuantity(quantity, p.unit),
             mono: true,
           },
-          { label: t.facts.to, value: receiver.name },
+          { label: t.facts.to, value: receiverLabel(receiver) },
           { label: t.stage, value: humanize(details.stage) },
           ...(details.note
             ? [{ label: t.facts.where, value: details.note, wide: true }]
             : []),
         ]}
-        meaning={t.meaning(receiver.name)}
+        meaning={t.meaning(receiverLabel(receiver))}
         button={t.sign}
         busy={send.isPending}
         error={send.isError ? problemOf(send.error) : undefined}

@@ -34,8 +34,6 @@ import {
   flagStatus,
   flagTabs,
   listSorts,
-  orgAdminRole,
-  orgStatus,
   permissions,
   queryKeys,
   routes,
@@ -282,7 +280,7 @@ function Investigation({ f }: { f: Flag }) {
     queryKey: queryKeys.verify(f.passport_id),
     queryFn: () => endpoints.verify(f.passport_id),
   });
-  // Descendants are readable to the platform; a regulator may not see another organisation's tree.
+  // Descendants are readable to the platform and to inspectors (certifiers, regulators).
   const tree = useQuery({
     queryKey: [...queryKeys.flag(f.id), "descendants"],
     queryFn: () => endpoints.genealogy(f.passport_id, "descendants"),
@@ -317,11 +315,8 @@ function Investigation({ f }: { f: Flag }) {
     },
   });
   const code = lot.data?.passport.code ?? f.passport_id;
-  const investigator =
-    me.permissions.includes(permissions.flagResolve) ||
-    (me.role === orgAdminRole &&
-      me.organisation?.kind === "regulator" &&
-      me.organisation.status === orgStatus.verified);
+  // flag:resolve reaches a regulator's admins only: GET /me is already narrowed by kind and role.
+  const resolver = me.permissions.includes(permissions.flagResolve);
 
   return (
     <section className="grid min-w-0 gap-5 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
@@ -360,10 +355,10 @@ function Investigation({ f }: { f: Flag }) {
         ]}
       />
 
-      {f.status === flagStatus.open && !investigator && (
+      {f.status === flagStatus.open && !resolver && (
         <Notice kind="info">{t.resolveNotYours}</Notice>
       )}
-      {f.status === flagStatus.open && investigator && (
+      {f.status === flagStatus.open && resolver && (
         <>
           <div className="flex flex-wrap gap-2">
             {f.assignee_user_id === me.user.id ? (

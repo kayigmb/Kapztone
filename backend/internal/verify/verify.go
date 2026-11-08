@@ -175,8 +175,16 @@ func (h *Handlers) Run(ctx context.Context, id string) (Result, error) {
 	if res.Passport, err = h.Passports.Get(ctx, id, ""); err != nil {
 		return res, err
 	}
+	// The public page names organisations, never the people in them.
+	res.Passport.IssuedByName = nil
+	for i := range res.Passport.Events {
+		res.Passport.Events[i].By, res.Passport.Events[i].ReceivedBy = nil, nil
+	}
 	if res.Genealogy, err = h.Passports.Genealogy(ctx, id, "", passport.DirectionAncestors); err != nil {
 		return res, err
+	}
+	for i := range res.Genealogy.Nodes {
+		res.Genealogy.Nodes[i].IssuedByName = nil
 	}
 	if err := v.all(res.Genealogy.Nodes); err != nil {
 		return res, err

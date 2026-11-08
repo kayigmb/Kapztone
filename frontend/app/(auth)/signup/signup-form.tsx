@@ -128,7 +128,11 @@ export function SignUpForm() {
           <CircleCheck className="size-8" aria-hidden />
         </span>
         <h2 className="text-section">{t.created}</h2>
-        <p className="text-ink-muted">{t.createdSub}</p>
+        <p className="text-ink-muted">
+          {create.data?.data.email_confirmed
+            ? t.createdSubNoEmail
+            : t.createdSub}
+        </p>
         <p className="code break-all">{site}</p>
         <Button
           block

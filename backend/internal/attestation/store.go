@@ -20,6 +20,7 @@ var (
 	ErrNotFound        = errors.New("not found")
 	ErrNotAccredited   = errors.New("not accredited")
 	ErrSubjectNotFound = errors.New("subject not found")
+	ErrIssuedAtUnknown = errors.New("issued-at facility not the issuer's")
 	ErrAlreadyRevoked  = errors.New("already revoked")
 )
 
@@ -38,9 +39,14 @@ type Attestation struct {
 	SizeBytes   int64  `json:"size_bytes"`
 	StorageKey  string `json:"-"`
 	// IPFSCID is set when the file was also pinned to IPFS.
-	IPFSCID      *string    `json:"ipfs_cid"`
-	CertNumber   *string    `json:"cert_number,omitempty"`
-	Notes        *string    `json:"notes,omitempty"`
+	IPFSCID    *string `json:"ipfs_cid"`
+	CertNumber *string `json:"cert_number,omitempty"`
+	Notes      *string `json:"notes,omitempty"`
+	// IssuedAtFacilityID is the issuer's own facility it was issued at, if named.
+	IssuedAtFacilityID *string `json:"issued_at_facility_id"`
+	IssuedAtName       *string `json:"issued_at_name"`
+	// IssuerName saves a list looking each issuer up.
+	IssuerName   string     `json:"issuer_name"`
 	Status       string     `json:"status"`
 	RevokeReason *string    `json:"revoke_reason"`
 	RevokedAt    *time.Time `json:"revoked_at"`
@@ -64,7 +70,9 @@ const (
 	columnsFmt     = `a.id::text, a.issuer_org_id::text, a.subject_type, a.subject_id::text, a.type,
 	                  a.valid_from, a.valid_to, a.doc_hash, a.file_name, a.content_type, a.size_bytes,
 	                  a.storage_key, a.ipfs_cid, a.cert_number, a.notes, ` + shownStatusFmt + `, a.revoke_reason, a.revoked_at,
-	                  a.tx_hash, a.revoke_tx_hash, a.anchored_at, a.created_at, a.updated_at`
+	                  a.tx_hash, a.revoke_tx_hash, a.anchored_at, a.created_at, a.updated_at,
+	                  a.issued_at_facility_id::text, (SELECT f.name FROM facilities f WHERE f.id = a.issued_at_facility_id),
+	                  (SELECT o.name FROM organisations o WHERE o.id = a.issuer_org_id)`
 )
 
 func columns(validArg, expiredArg int) string { return fmt.Sprintf(columnsFmt, validArg, expiredArg) }
@@ -73,7 +81,8 @@ func scan(row pgx.CollectableRow) (Attestation, error) {
 	var a Attestation
 	err := row.Scan(&a.ID, &a.IssuerOrgID, &a.SubjectType, &a.SubjectID, &a.Type, &a.ValidFrom, &a.ValidTo,
 		&a.DocHash, &a.FileName, &a.ContentType, &a.SizeBytes, &a.StorageKey, &a.IPFSCID, &a.CertNumber, &a.Notes, &a.Status,
-		&a.RevokeReason, &a.RevokedAt, &a.TxHash, &a.RevokeTxHash, &a.AnchoredAt, &a.CreatedAt, &a.UpdatedAt)
+		&a.RevokeReason, &a.RevokedAt, &a.TxHash, &a.RevokeTxHash, &a.AnchoredAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.IssuedAtFacilityID, &a.IssuedAtName, &a.IssuerName)
 	return a, err
 }
 
@@ -122,11 +131,13 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 	docHash := "0x" + f.SHA256
 	a, err := one(tx.Query(ctx,
 		`INSERT INTO attestations AS a (issuer_org_id, subject_type, subject_id, type, valid_from, valid_to, doc_hash,
-		                                storage_key, file_name, content_type, size_bytes, cert_number, notes, status, issued_by)
-		 VALUES ($3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($15,''), NULLIF($16,''), $1, $14::uuid)
+		                                storage_key, file_name, content_type, size_bytes, cert_number, notes, status, issued_by,
+		                                issued_at_facility_id)
+		 VALUES ($3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($15,''), NULLIF($16,''), $1, $14::uuid,
+		         NULLIF($17,'')::uuid)
 		 RETURNING `+columns(1, 2),
 		StatusValid, StatusExpired, orgID, in.SubjectType, in.SubjectID, in.Type, in.ValidFrom, in.ValidTo, docHash,
-		f.Key, f.Name, f.ContentType, f.Size, userID, nilIfEmpty(in.CertNumber), nilIfEmpty(in.Notes)))
+		f.Key, f.Name, f.ContentType, f.Size, userID, nilIfEmpty(in.CertNumber), nilIfEmpty(in.Notes), in.IssuedAt))
 	if err != nil {
 		return Attestation{}, err
 	}
@@ -143,16 +154,19 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in Input, f uplo
 	return a, tx.Commit(ctx)
 }
 
-// checkIssuer needs a verified issuer accredited for the type today, and a
-// subject that exists. subjectTable only holds the validated subject types.
+// checkIssuer needs a verified issuer accredited for the type today, a
+// subject that exists, and, if named, an issued-at facility of the issuer's
+// own. subjectTable only holds the validated subject types.
 func checkIssuer(ctx context.Context, tx pgx.Tx, orgID string, in Input) error {
-	var accredited, exists bool
+	var accredited, exists, site bool
 	err := tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM organisations o JOIN accreditations ac ON ac.organisation_id = o.id
 		                WHERE o.id = $1::uuid AND o.status = $2 AND NOT o.is_deleted
 		                  AND ac.cert_type = $4 AND NOT ac.is_deleted AND now() BETWEEN ac.valid_from AND ac.valid_to),
-		        EXISTS (SELECT 1 FROM `+subjectTable[in.SubjectType]+` WHERE id = $3::uuid AND NOT is_deleted)`,
-		orgID, auth.OrgVerified, in.SubjectID, in.Type).Scan(&accredited, &exists)
+		        EXISTS (SELECT 1 FROM `+subjectTable[in.SubjectType]+` WHERE id = $3::uuid AND NOT is_deleted),
+		        $5 = '' OR EXISTS (SELECT 1 FROM facilities WHERE id = NULLIF($5, '')::uuid
+		                           AND organisation_id = $1::uuid AND NOT is_deleted)`,
+		orgID, auth.OrgVerified, in.SubjectID, in.Type, in.IssuedAt).Scan(&accredited, &exists, &site)
 	switch {
 	case err != nil:
 		return err
@@ -160,6 +174,8 @@ func checkIssuer(ctx context.Context, tx pgx.Tx, orgID string, in Input) error {
 		return ErrNotAccredited
 	case !exists:
 		return ErrSubjectNotFound
+	case !site:
+		return ErrIssuedAtUnknown
 	}
 	return nil
 }

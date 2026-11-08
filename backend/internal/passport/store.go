@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,39 +21,14 @@ var (
 	ErrFacilitySuspended = errors.New("facility suspended")
 	ErrFacilityPending   = errors.New("facility pending approval")
 	ErrLicenceExpired    = errors.New("facility licence expired")
-	ErrTemplateNotFound  = errors.New("template not found")
-	ErrKindMismatch      = errors.New("facility kind mismatch")
-	ErrUnitMismatch      = errors.New("unit mismatch")
 	ErrNotHolder         = errors.New("not holder")
 	ErrNotActive         = errors.New("passport not active")
 	ErrOpenHandover      = errors.New("open handover exists")
 	ErrReceiverInvalid   = errors.New("receiver invalid")
 	ErrHandoverClosed    = errors.New("handover closed")
 	ErrHandoverStale     = errors.New("handover stale")
+	ErrNotRecipient      = errors.New("handover sent to someone else")
 )
-
-// EvidenceError lists the evidence the template asks for that has no valid
-// certificate on the origin facility yet.
-type EvidenceError struct {
-	Missing []string
-}
-
-func (e EvidenceError) Error() string {
-	return fmt.Sprintf("this product needs evidence that is missing: %s. Attach a valid certificate of each first",
-		strings.Join(e.Missing, ", "))
-}
-
-// CapacityError says by how much an issue would exceed the facility's
-// capacity for the period, and the most that can still be issued.
-type CapacityError struct {
-	Requested, Available int64
-	Unit                 string
-}
-
-func (e CapacityError) Error() string {
-	return fmt.Sprintf("capacity exceeded by %d %s; at most %d %s can still be issued from this facility in this period",
-		e.Requested-e.Available, e.Unit, e.Available, e.Unit)
-}
 
 type Passport struct {
 	ID string `json:"id"`
@@ -63,21 +37,27 @@ type Passport struct {
 	OrganisationID string `json:"organisation_id"` // current holder
 	// FacilityID and Period are set on a passport issued at an origin
 	// facility; TransformID on one made by a transform. Never both.
-	FacilityID    *string    `json:"facility_id"`
-	TransformID   *string    `json:"transform_id"`
-	TemplateID    string     `json:"template_id"`
-	Commodity     string     `json:"commodity"`
-	Unit          string     `json:"unit"`
-	Quantity      int64      `json:"quantity"`
-	Remaining     int64      `json:"remaining"`
-	Period        *int64     `json:"period"`
-	Status        string     `json:"status"`
-	DataHash      string     `json:"data_hash"`
-	HandoverCount int64      `json:"handover_count"`
-	TxHash        *string    `json:"tx_hash"`
-	AnchoredAt    *time.Time `json:"anchored_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	FacilityID  *string `json:"facility_id"`
+	TransformID *string `json:"transform_id"`
+	// TemplateID is set on passports from before products needed no
+	// template; it stays only because their data hash covers it.
+	TemplateID    string `json:"-"`
+	Commodity     string `json:"commodity"`
+	Unit          string `json:"unit"`
+	Quantity      int64  `json:"quantity"`
+	Remaining     int64  `json:"remaining"`
+	Period        *int64 `json:"period"`
+	Status        string `json:"status"`
+	DataHash      string `json:"data_hash"`
+	HandoverCount int64  `json:"handover_count"`
+	// HolderName is the holding organisation's name; IssuedByName the person
+	// who issued or made the lot.
+	HolderName   string     `json:"holder_name"`
+	IssuedByName *string    `json:"issued_by_name,omitempty"`
+	TxHash       *string    `json:"tx_hash"`
+	AnchoredAt   *time.Time `json:"anchored_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 	// Events is the journey so far; filled when one passport is fetched.
 	Events []Event `json:"events,omitempty"`
 }
@@ -91,6 +71,13 @@ type Event struct {
 	DataHash  string    `json:"data_hash"`
 	TxHash    *string   `json:"tx_hash"`
 	CreatedAt time.Time `json:"created_at"`
+	// By is the person who did it (issued, sent, transformed, flagged,
+	// revoked); ReceivedBy the one who signed a handover's receipt.
+	By         *string `json:"by,omitempty"`
+	ReceivedBy *string `json:"received_by,omitempty"`
+	// The organisations' names, so the journey reads without lookups.
+	FromName *string `json:"from_name"`
+	ToName   *string `json:"to_name"`
 }
 
 type Location struct {
@@ -120,9 +107,11 @@ var (
 )
 
 const (
-	columns = `p.id::text, p.code, p.organisation_id::text, p.facility_id::text, p.transform_id::text, p.template_id::text, p.commodity,
+	columns = `p.id::text, p.code, p.organisation_id::text, p.facility_id::text, p.transform_id::text, COALESCE(p.template_id::text, ''), p.commodity,
 	           p.unit, p.quantity, p.remaining, p.period, p.status, p.data_hash, p.handover_count,
-	           p.tx_hash, p.anchored_at, p.created_at, p.updated_at`
+	           p.tx_hash, p.anchored_at, p.created_at, p.updated_at,
+	           (SELECT o.name FROM organisations o WHERE o.id = p.organisation_id),
+	           (SELECT u.name FROM users u WHERE u.id = p.issued_by)`
 
 	// An awaiting handover past its deadline reads as expired ($%[1]d = awaiting, $%[2]d = expired).
 	handoverColumnsFmt = `h.id::text, h.passport_id::text, h.from_org::text, h.to_org::text, h.stage, h.quantity, h.note,
@@ -130,7 +119,12 @@ const (
 	           CASE WHEN h.status = $%[1]d AND h.deadline < now() THEN $%[2]d ELSE h.status END,
 	           true, h.sig_to IS NOT NULL, h.reject_reason, h.reject_reasons, h.responded_at, h.tx_hash, h.anchored_at,
 	           h.created_at, h.updated_at, h.split_from::text, h.lat, h.lon, h.received_quantity,
-	           h.receiver_lat, h.receiver_lon, h.template_version, h.seal_number, h.checklist`
+	           h.receiver_lat, h.receiver_lon, h.seal_number, h.checklist,
+	           (SELECT o.name FROM organisations o WHERE o.id = h.from_org),
+	           (SELECT o.name FROM organisations o WHERE o.id = h.to_org),
+	           (SELECT u.name FROM users u WHERE u.id = h.created_by), h.to_user::text,
+	           (SELECT u.name FROM users u WHERE u.id = h.to_user),
+	           (SELECT u.name FROM users u WHERE u.id = h.responded_by)`
 
 	// visibleFmt: who may see a passport. Its holder, anyone it passed through,
 	// and the receiver of a handover still awaiting an answer (they must be
@@ -150,13 +144,29 @@ func scan(row pgx.CollectableRow) (Passport, error) {
 	var p Passport
 	err := row.Scan(&p.ID, &p.Code, &p.OrganisationID, &p.FacilityID, &p.TransformID, &p.TemplateID, &p.Commodity, &p.Unit,
 		&p.Quantity, &p.Remaining, &p.Period, &p.Status, &p.DataHash, &p.HandoverCount,
-		&p.TxHash, &p.AnchoredAt, &p.CreatedAt, &p.UpdatedAt)
+		&p.TxHash, &p.AnchoredAt, &p.CreatedAt, &p.UpdatedAt, &p.HolderName, &p.IssuedByName)
 	return p, err
 }
 
+// eventColumns: a journey event and the people in it, found through what it
+// refers to (ref_id): the passport issued, the handover, the transform, the flag.
+var eventColumns = `e.id::text, e.kind, e.from_org::text, e.to_org::text, e.quantity, e.data_hash, e.tx_hash, e.created_at,
+	(SELECT u.name FROM users u WHERE u.id = CASE e.kind
+	   WHEN '` + EventIssue + `' THEN (SELECT issued_by FROM passports WHERE id = e.ref_id)
+	   WHEN '` + EventHandover + `' THEN (SELECT created_by FROM handovers WHERE id = e.ref_id)
+	   WHEN '` + EventTransform + `' THEN (SELECT created_by FROM transforms WHERE id = e.ref_id)
+	   WHEN '` + EventFlag + `' THEN (SELECT raised_by FROM flags WHERE id = e.ref_id)
+	   WHEN '` + EventRevoke + `' THEN (SELECT resolved_by FROM flags WHERE id = e.ref_id)
+	 END),
+	(SELECT u.name FROM handovers h JOIN users u ON u.id = h.responded_by
+	 WHERE e.kind = '` + EventHandover + `' AND h.id = e.ref_id),
+	(SELECT o.name FROM organisations o WHERE o.id = e.from_org),
+	(SELECT o.name FROM organisations o WHERE o.id = e.to_org)`
+
 func scanEvent(row pgx.CollectableRow) (Event, error) {
 	var e Event
-	err := row.Scan(&e.ID, &e.Kind, &e.FromOrg, &e.ToOrg, &e.Quantity, &e.DataHash, &e.TxHash, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.Kind, &e.FromOrg, &e.ToOrg, &e.Quantity, &e.DataHash, &e.TxHash, &e.CreatedAt,
+		&e.By, &e.ReceivedBy, &e.FromName, &e.ToName)
 	return e, err
 }
 
@@ -192,7 +202,7 @@ type issueRecord struct {
 	ID             string `json:"id"`
 	OrganisationID string `json:"organisation_id"`
 	FacilityID     string `json:"facility_id"`
-	TemplateID     string `json:"template_id"`
+	TemplateID     string `json:"template_id,omitempty"` // older passports only
 	Commodity      string `json:"commodity"`
 	Unit           string `json:"unit"`
 	Quantity       int64  `json:"quantity"`
@@ -200,8 +210,8 @@ type issueRecord struct {
 }
 
 // Issue creates an origin passport after checking every rule the contract
-// will check again: the facility is the organisation's and active, it suits
-// the commodity, and its capacity for the period is not exceeded.
+// will check again: the facility is the organisation's, active and licensed.
+// What was produced (commodity, unit, quantity) is the producer's declaration.
 func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, now time.Time) (Passport, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -209,24 +219,14 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 	}
 	defer tx.Rollback(ctx)
 
-	f, err := lockOrigin(ctx, tx, orgID, in.FacilityID, now)
-	if err != nil {
+	if err := lockOrigin(ctx, tx, orgID, in.FacilityID, now); err != nil {
 		return Passport{}, err
 	}
-	commodity, unit, err := originTemplate(ctx, tx, in, f)
-	if err != nil {
+	if err := queueSplitYield(ctx, tx, in.Commodity); err != nil {
 		return Passport{}, err
 	}
-	period := facility.PeriodFor(f.period, now)
-	used, err := facility.CapacityUsed(ctx, tx, []string{in.FacilityID}, []int64{period})
-	if err != nil {
-		return Passport{}, err
-	}
-	if available := f.capacity - used[in.FacilityID]; in.Quantity > available {
-		return Passport{}, CapacityError{Requested: in.Quantity, Available: available, Unit: unit}
-	}
-	rec := issueRecord{OrganisationID: orgID, FacilityID: in.FacilityID, TemplateID: in.TemplateID,
-		Commodity: commodity, Unit: unit, Quantity: in.Quantity, Period: period}
+	rec := issueRecord{OrganisationID: orgID, FacilityID: in.FacilityID,
+		Commodity: in.Commodity, Unit: in.Unit, Quantity: in.Quantity, Period: int64(now.UTC().Year())}
 	p, err := insertIssued(ctx, tx, rec, userID, now)
 	if err != nil {
 		return Passport{}, err
@@ -234,61 +234,28 @@ func (s Store) Issue(ctx context.Context, orgID, userID string, in IssueInput, n
 	return p, tx.Commit(ctx)
 }
 
-type originFacility struct {
-	kind, unit, period string
-	capacity           int64
-}
-
-// lockOrigin locks the facility, so concurrent issues queue up and two of them
-// cannot both fit into the last of the capacity. It must be active and licensed
+// lockOrigin checks the facility is the organisation's, active and licensed
 // (a licence is valid through its last day).
-func lockOrigin(ctx context.Context, tx pgx.Tx, orgID, facilityID string, now time.Time) (originFacility, error) {
-	var f originFacility
+func lockOrigin(ctx context.Context, tx pgx.Tx, orgID, facilityID string, now time.Time) error {
 	var status string
 	var licenceValidTo *time.Time
 	err := tx.QueryRow(ctx,
-		`SELECT kind, status, capacity, capacity_unit, capacity_period, licence_valid_to FROM facilities
-		 WHERE id = $1::uuid AND organisation_id = $2::uuid AND NOT is_deleted FOR UPDATE`,
-		facilityID, orgID).Scan(&f.kind, &status, &f.capacity, &f.unit, &f.period, &licenceValidTo)
+		`SELECT status, licence_valid_to FROM facilities
+		 WHERE id = $1::uuid AND organisation_id = $2::uuid AND NOT is_deleted FOR SHARE`,
+		facilityID, orgID).Scan(&status, &licenceValidTo)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return f, ErrFacilityNotFound
+		return ErrFacilityNotFound
 	case err != nil:
-		return f, err
+		return err
 	case status == facility.StatusPending:
-		return f, ErrFacilityPending
+		return ErrFacilityPending
 	case status != facility.StatusActive:
-		return f, ErrFacilitySuspended
+		return ErrFacilitySuspended
 	case licenceValidTo != nil && now.UTC().Format(facility.DateLayout) > licenceValidTo.Format(facility.DateLayout):
-		return f, ErrLicenceExpired
+		return ErrLicenceExpired
 	}
-	return f, nil
-}
-
-// originTemplate loads the template (the product), checks it fits the
-// facility, and checks the facility holds the evidence the template asks for.
-func originTemplate(ctx context.Context, tx pgx.Tx, in IssueInput, f originFacility) (commodity, unit string, err error) {
-	var (
-		originKind string
-		evidence   []string
-	)
-	err = tx.QueryRow(ctx,
-		`SELECT commodity, unit, origin_facility_kind, required_evidence FROM commodity_templates
-		 WHERE id = $1::uuid AND NOT is_deleted`, in.TemplateID).Scan(&commodity, &unit, &originKind, &evidence)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		return "", "", ErrTemplateNotFound
-	case err != nil:
-		return "", "", err
-	case originKind != f.kind:
-		return "", "", ErrKindMismatch
-	case unit != f.unit:
-		return "", "", ErrUnitMismatch
-	}
-	if err := requireEvidence(ctx, tx, evidence, in.FacilityID); err != nil {
-		return "", "", err
-	}
-	return commodity, unit, nil
+	return nil
 }
 
 // insertIssued writes the passport, its ISSUE trace event and its chain item.
@@ -307,11 +274,11 @@ func insertIssued(ctx context.Context, tx pgx.Tx, rec issueRecord, userID string
 		return Passport{}, err
 	}
 	p, err := onePassport(tx.Query(ctx,
-		`INSERT INTO passports AS p (id, organisation_id, facility_id, template_id, commodity, unit,
+		`INSERT INTO passports AS p (id, organisation_id, facility_id, commodity, unit,
 		                             quantity, remaining, period, status, data_hash, issued_by, code)
-		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $7, $8, $9, $10, $11::uuid, $12)
+		 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $6, $7, $8, $9, $10::uuid, $11)
 		 RETURNING `+columns,
-		rec.ID, rec.OrganisationID, rec.FacilityID, rec.TemplateID, rec.Commodity, rec.Unit, rec.Quantity, rec.Period,
+		rec.ID, rec.OrganisationID, rec.FacilityID, rec.Commodity, rec.Unit, rec.Quantity, rec.Period,
 		StatusActive, dataHash, userID, code))
 	if err != nil {
 		return Passport{}, err
@@ -329,9 +296,16 @@ func insertIssued(ctx context.Context, tx pgx.Tx, rec issueRecord, userID string
 
 func visible(n int) string { return fmt.Sprintf(visibleFmt, n) }
 
-func (s Store) Find(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Passport], error) {
+// Find lists the passports the gate may see. involved widens it to every lot
+// the organisation was party to a handover of, even one rejected or cancelled.
+func (s Store) Find(ctx context.Context, q listq.Query, gate, status string, involved bool) (listq.Page[Passport], error) {
+	where := visible(1)
+	if involved {
+		where = `(` + where + ` OR EXISTS (SELECT 1 FROM handovers h WHERE h.passport_id = p.id AND NOT h.is_deleted
+		           AND (h.from_org = NULLIF($1, '')::uuid OR h.to_org = NULLIF($1, '')::uuid)))`
+	}
 	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM passports p",
-		[]string{visible(1), `($2 = '' OR p.status = $2)`}, []any{gate, status}, scan)
+		[]string{where, `($2 = '' OR p.status = $2)`}, []any{gate, status}, scan)
 }
 
 // Get returns one passport with its journey.
@@ -342,8 +316,8 @@ func (s Store) Get(ctx context.Context, id, gate string) (Passport, error) {
 		return Passport{}, err
 	}
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id::text, kind, from_org::text, to_org::text, quantity, data_hash, tx_hash, created_at
-		 FROM trace_events WHERE passport_id = $1::uuid AND NOT is_deleted ORDER BY created_at, id`, id)
+		`SELECT `+eventColumns+` FROM trace_events e
+		 WHERE e.passport_id = $1::uuid AND NOT e.is_deleted ORDER BY e.created_at, e.id`, id)
 	if err != nil {
 		return Passport{}, err
 	}

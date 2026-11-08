@@ -26,13 +26,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { parseAsString } from "nuqs";
 
 import { useConfirm } from "@/components/chaintrack/confirm";
-import { CapacityMeter } from "@/components/chaintrack/capacity-meter";
+import { FacilityKindsManager } from "@/components/chaintrack/facility-kinds-manager";
 import {
   Choice,
   ListBar,
   ListPager,
 } from "@/components/chaintrack/list-controls";
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageStats } from "@/components/chaintrack/page-stats";
 import { MapView, type Shape } from "@/components/chaintrack/map";
 import { Notice } from "@/components/chaintrack/notice";
@@ -48,7 +49,6 @@ import {
   type Facility,
 } from "@/lib/api";
 import {
-  capacityPeriods,
   copy,
   facilityStatus,
   listSorts,
@@ -76,8 +76,6 @@ const kindIcon: Record<string, LucideIcon> = {
   processing_plant: Factory,
   warehouse: Warehouse,
 };
-const periodLabel = (period: string) =>
-  capacityPeriods.find((p) => p.value === period)?.label ?? humanize(period);
 
 const stateChip: Record<
   FacilityState,
@@ -163,7 +161,10 @@ export function Facilities() {
   });
 
   const selected = picked.data;
-  const mayManage = me.permissions.includes(permissions.facilityManage);
+  // The platform holds facility:manage but registers no facility of its own.
+  const mayManage =
+    !!me.organisation && me.permissions.includes(permissions.facilityManage);
+  const mayCurateKinds = me.permissions.includes(permissions.facilityKinds);
   const maySuspend = me.permissions.includes(permissions.facilitySuspend);
   const org = me.organisation?.name ?? copy.shell.platform;
   const filtered = !!(list.search || kind);
@@ -194,122 +195,159 @@ export function Facilities() {
               )
             }
           />
-          <PageStats
-            queryKey={queryKeys.facilities}
-            fetch={endpoints.facilitiesPage}
-            cards={[
-              { key: "total", ...copy.stats.facilities.total, icon: Factory },
-              {
-                key: "active",
-                ...copy.stats.facilities.active,
-                icon: CircleCheck,
-                filters: { status: facilityStatus.active },
-              },
-              {
-                key: "pending",
-                ...copy.stats.facilities.pending,
-                icon: Clock,
-                whenAny: "attention",
-                filters: { status: facilityStatus.pending },
-              },
-              {
-                key: "suspended",
-                ...copy.stats.facilities.suspended,
-                icon: CircleX,
-                filters: { status: facilityStatus.suspended },
-              },
-            ]}
-          />
+          {(() => {
+            const listing = (
+              <>
+                <PageStats
+                  queryKey={queryKeys.facilities}
+                  fetch={endpoints.facilitiesPage}
+                  cards={[
+                    {
+                      key: "total",
+                      ...copy.stats.facilities.total,
+                      icon: Factory,
+                    },
+                    {
+                      key: "active",
+                      ...copy.stats.facilities.active,
+                      icon: CircleCheck,
+                      filters: { status: facilityStatus.active },
+                    },
+                    {
+                      key: "pending",
+                      ...copy.stats.facilities.pending,
+                      icon: Clock,
+                      whenAny: "attention",
+                      filters: { status: facilityStatus.pending },
+                    },
+                    {
+                      key: "suspended",
+                      ...copy.stats.facilities.suspended,
+                      icon: CircleX,
+                      filters: { status: facilityStatus.suspended },
+                    },
+                  ]}
+                />
 
-          {total === 0 && !filtered ? (
-            <div className="grid justify-items-center gap-2 px-4 py-12 text-center">
-              <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
-                <Inbox className="size-7" aria-hidden />
-              </span>
-              <h2 className="text-title">{local.emptyTitle}</h2>
-              <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
-              {mayManage && (
-                <Link
-                  href={routes.facilityNew}
-                  className={cn(buttonVariants(), "mt-2")}
-                >
-                  <Plus aria-hidden />
-                  {t.register}
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6">
-              <div className="grid min-w-0 content-start gap-3">
-                <ListBar list={list} sorts={listSorts.name}>
-                  <Choice
-                    label={t.filterLabel}
-                    options={kindOptions}
-                    value={kind}
-                    onChange={(v) =>
-                      list.setFilters({
-                        kind: (v || null) as FacilityKind | null,
-                        facility: null,
-                      })
-                    }
-                  />
-                </ListBar>
-                {rows.length === 0 ? (
-                  <p className="rounded-lg border border-border bg-surface p-4 text-ink-muted">
-                    {filtered ? copy.list.noMatch : t.emptyType}
-                  </p>
+                {total === 0 && !filtered ? (
+                  <div className="grid justify-items-center gap-2 px-4 py-12 text-center">
+                    <span className="grid size-14 place-items-center rounded-full bg-surface-sunken text-ink-muted">
+                      <Inbox className="size-7" aria-hidden />
+                    </span>
+                    <h2 className="text-title">{local.emptyTitle}</h2>
+                    <p className="max-w-[48ch] text-ink-muted">{t.empty}</p>
+                    {mayManage && (
+                      <Link
+                        href={routes.facilityNew}
+                        className={cn(buttonVariants(), "mt-2")}
+                      >
+                        <Plus aria-hidden />
+                        {t.register}
+                      </Link>
+                    )}
+                  </div>
                 ) : (
-                  <ul className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-card">
-                    {rows.map((f) => (
-                      <Row
-                        key={f.id}
-                        f={f}
-                        selected={f.id === selectedId}
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6">
+                    <div className="grid min-w-0 content-start gap-3">
+                      <ListBar list={list} sorts={listSorts.name}>
+                        <Choice
+                          label={t.filterLabel}
+                          options={kindOptions}
+                          value={kind}
+                          onChange={(v) =>
+                            list.setFilters({
+                              kind: (v || null) as FacilityKind | null,
+                              facility: null,
+                            })
+                          }
+                        />
+                      </ListBar>
+                      {rows.length === 0 ? (
+                        <p className="rounded-lg border border-border bg-surface p-4 text-ink-muted">
+                          {filtered ? copy.list.noMatch : t.emptyType}
+                        </p>
+                      ) : (
+                        <ul className="grid divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-card">
+                          {rows.map((f) => (
+                            <Row
+                              key={f.id}
+                              f={f}
+                              selected={f.id === selectedId}
+                              kindLabel={kindLabel}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                      <ListPager list={list} total={total} />
+                    </div>
+                    {selected ? (
+                      <Detail
+                        f={selected}
+                        mayManage={mayManage}
+                        maySuspend={maySuspend}
                         kindLabel={kindLabel}
                       />
-                    ))}
-                  </ul>
+                    ) : (
+                      <section className="grid min-w-0 content-start gap-3 rounded-lg border border-border bg-surface p-4 shadow-card">
+                        <MapView
+                          label={t.mapLabel}
+                          shapes={rows.flatMap(shapeOf)}
+                          className="h-72 overflow-hidden rounded-md lg:h-96"
+                        />
+                        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-small text-ink-muted">
+                          <li className="flex items-center gap-1.5">
+                            <CircleCheck
+                              className="size-4 text-primary"
+                              aria-hidden
+                            />
+                            {t.legend.active}
+                          </li>
+                          <li className="flex items-center gap-1.5">
+                            <Clock
+                              className="size-4 text-pending"
+                              aria-hidden
+                            />
+                            {t.legend.pending}
+                          </li>
+                          <li className="flex items-center gap-1.5">
+                            <OctagonX
+                              className="size-4 text-danger"
+                              aria-hidden
+                            />
+                            {t.legend.inactive}
+                          </li>
+                        </ul>
+                        <p className="text-small text-ink-subtle">
+                          {local.selectPrompt}
+                        </p>
+                      </section>
+                    )}
+                  </div>
                 )}
-                <ListPager list={list} total={total} />
-              </div>
-              {selected ? (
-                <Detail
-                  f={selected}
-                  mayManage={mayManage}
-                  maySuspend={maySuspend}
-                  kindLabel={kindLabel}
-                />
-              ) : (
-                <section className="grid min-w-0 content-start gap-3 rounded-lg border border-border bg-surface p-4 shadow-card">
-                  <MapView
-                    label={t.mapLabel}
-                    shapes={rows.flatMap(shapeOf)}
-                    className="h-72 overflow-hidden rounded-md lg:h-96"
-                  />
-                  <ul className="flex flex-wrap gap-x-4 gap-y-1 text-small text-ink-muted">
-                    <li className="flex items-center gap-1.5">
-                      <CircleCheck
-                        className="size-4 text-primary"
-                        aria-hidden
-                      />
-                      {t.legend.active}
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Clock className="size-4 text-pending" aria-hidden />
-                      {t.legend.pending}
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <OctagonX className="size-4 text-danger" aria-hidden />
-                      {t.legend.inactive}
-                    </li>
-                  </ul>
-                  <p className="text-small text-ink-subtle">
-                    {local.selectPrompt}
-                  </p>
-                </section>
-              )}
-            </div>
-          )}
+              </>
+            );
+            return (
+              <>
+                {mayCurateKinds ? (
+                  // The platform also curates the kinds: its own tab, not under the list.
+                  <Tabs defaultValue="facilities">
+                    <TabsList>
+                      <TabsTrigger value="facilities">{t.title}</TabsTrigger>
+                      <TabsTrigger value="kinds">{local.kindsTab}</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="facilities" className="mt-4 grid gap-6">
+                      {listing}
+                    </TabsContent>
+                    <TabsContent value="kinds" className="mt-4">
+                      <FacilityKindsManager />
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  listing
+                )}
+              </>
+            );
+          })()}
         </main>
       )}
     </DataWidget>
@@ -328,10 +366,6 @@ function Row({
 }) {
   const params = useSearchParams();
   const Icon = kindIcon[f.kind] ?? MapPin;
-  const pct =
-    f.capacity > 0
-      ? Math.min(100, Math.round((f.capacity_used / f.capacity) * 100))
-      : 0;
   const next = new URLSearchParams(params);
   next.set("facility", f.id);
   return (
@@ -355,19 +389,6 @@ function Row({
               {kindLabel(f.kind)} ·{" "}
               <span className="font-mono">{f.licence_number}</span>
             </span>
-            <span
-              className="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-sunken sm:block"
-              aria-hidden
-            >
-              <span
-                className={cn(
-                  "block h-full",
-                  pct >= 90 ? "bg-warning" : "bg-primary",
-                )}
-                style={{ width: `${pct}%` }}
-              />
-            </span>
-            <span className="hidden font-mono sm:inline">{pct}%</span>
           </span>
         </span>
         <FacilityChip f={f} />
@@ -462,7 +483,10 @@ function Detail({
       <KeyValue
         facts={[
           { label: t.new.kind, value: kindLabel(f.kind) },
-          { label: t.detail.licence, value: f.licence_number, mono: true },
+          // Older facilities give a licence number; new ones rely on the document.
+          ...(f.licence_number
+            ? [{ label: t.detail.licence, value: f.licence_number, mono: true }]
+            : []),
           {
             label: t.detail.licenceValid,
             value: f.licence_valid_to
@@ -470,22 +494,6 @@ function Detail({
               : t.detail.licenceUnknown,
           },
           { label: local.areaLabel, value: t.detail.area(f.area_ha) },
-          {
-            label: t.detail.declared,
-            value: t.detail.declaredOf(
-              f.capacity,
-              f.capacity_unit,
-              periodLabel(f.capacity_period),
-            ),
-          },
-          {
-            label: local.issuedLabel,
-            value: t.detail.issued(
-              f.capacity_used,
-              f.capacity_unit,
-              periodLabel(f.capacity_period),
-            ),
-          },
           coords
             ? {
                 label: t.detail.coordinates,
@@ -506,12 +514,6 @@ function Detail({
         />
       )}
 
-      <CapacityMeter
-        title={t.detail.declared}
-        used={f.capacity_used}
-        max={f.capacity}
-        unit={f.capacity_unit}
-      />
       {note && <Notice kind={pending ? "info" : "warning"}>{note}</Notice>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

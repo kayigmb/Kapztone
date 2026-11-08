@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import {
   facilityFormSchema,
@@ -10,12 +10,9 @@ const nextYear = `${new Date().getFullYear() + 1}-12-31`;
 const good: FacilityForm = {
   name: "Kitabi Washing Station",
   kind: "washing_station",
-  licence_number: "RBS-2024-118",
   licence_valid_to: nextYear,
-  capacity: 12000,
-  capacity_unit: "kg",
-  capacity_period: "season",
   location: { type: "Point", coordinates: [29.37, -2.95] },
+  licence: new File(["%PDF-1.4"], "licence.pdf", { type: "application/pdf" }),
 };
 
 test("registration: accepts a pin or a closed boundary", () => {
@@ -42,14 +39,17 @@ test("registration: each backend rule has a refused case, on the right field", (
   assert.deepEqual(bad({ name: "  " }), ["name"]);
   assert.deepEqual(bad({ name: "a".repeat(201) }), ["name"]);
   assert.deepEqual(bad({ kind: "has space" }), ["kind"]);
-  assert.deepEqual(bad({ licence_number: "" }), ["licence_number"]);
+  assert.deepEqual(bad({ kind: "inspection_office" }), []); // a type of one's own
+  assert.deepEqual(bad({ licence: undefined }), ["licence"]); // the document is the proof
+  assert.deepEqual(
+    bad({
+      licence: new File(["x"], "a.exe", { type: "application/x-msdownload" }),
+    }),
+    ["licence"],
+  );
   assert.deepEqual(bad({ licence_valid_to: "2000-01-01" }), [
     "licence_valid_to",
   ]);
-  assert.deepEqual(bad({ capacity: 0 }), ["capacity"]);
-  assert.deepEqual(bad({ capacity: 12.5 }), ["capacity"]);
-  assert.deepEqual(bad({ capacity_unit: "" }), ["capacity_unit"]);
-  assert.deepEqual(bad({ capacity_period: "week" }), ["capacity_period"]);
   assert.deepEqual(bad({ location: undefined }), ["location"]);
   assert.deepEqual(
     bad({ location: { type: "Point", coordinates: [181, 0] } }),
@@ -70,10 +70,4 @@ test("registration: each backend rule has a refused case, on the right field", (
     }),
     ["location"],
   );
-});
-
-test("capacity typed as text coerces to a number", () => {
-  const res = facilityFormSchema.safeParse({ ...good, capacity: "400" });
-  assert.ok(res.success);
-  assert.equal(res.data.capacity, 400);
 });

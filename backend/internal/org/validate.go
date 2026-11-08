@@ -9,7 +9,6 @@ import (
 
 	"github.com/kayigmb/chaintrack/backend/internal/auth"
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Registration is what a new business submits: itself and its first user.
@@ -87,7 +86,6 @@ type Grant struct {
 
 // ParseGrants checks the full set of accreditations sent for an organisation.
 // It returns the first problem as a message that is safe to show, or "".
-// Whether each type is one a template asks for is checked by the store.
 func ParseGrants(in []AccreditationInput) ([]Grant, string) {
 	grants := make([]Grant, 0, len(in))
 	for _, a := range in {
@@ -95,8 +93,8 @@ func ParseGrants(in []AccreditationInput) ([]Grant, string) {
 		from, okFrom := httpx.ParseTime(a.ValidFrom)
 		to, okTo := httpx.ParseTime(a.ValidTo)
 		switch {
-		case !template.ValidKey(a.Type):
-			return nil, "type must be " + template.KeyRule
+		case !httpx.ValidKey(a.Type):
+			return nil, "type must be " + httpx.KeyRule
 		case slices.ContainsFunc(grants, func(g Grant) bool { return g.Type == a.Type }):
 			return nil, MsgDuplicateType + ": " + a.Type
 		case !okFrom || !okTo || !to.After(from) || from.Unix() < 0: // the chain holds times as unsigned seconds

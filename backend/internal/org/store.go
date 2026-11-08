@@ -22,7 +22,6 @@ var (
 	ErrEmailTaken  = errors.New("email taken")
 	ErrNoDocuments = errors.New("no documents")
 	ErrNotIssuer   = errors.New("not an issuer")
-	ErrUnknownType = errors.New("unknown certificate type")
 	ErrWrongStatus = errors.New("wrong status for this change")
 )
 
@@ -207,12 +206,38 @@ type Listing struct {
 	Slug string `json:"slug"`
 }
 
+// Person is someone a lot can be handed to: a name and role, nothing more.
+type Person struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+// People lists the active people of a verified trading organisation, the
+// ones a handover can be sent to. An organisation that may not receive goods
+// lists nobody.
+func (s Store) People(ctx context.Context, orgID string) ([]Person, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT u.id::text, u.name, r.name FROM userscope us
+		 JOIN users u ON u.id = us.user_id AND u.status = $2 AND NOT u.is_deleted
+		 JOIN roles r ON r.id = us.role_id
+		 JOIN organisations o ON o.id = us.organisation_id AND o.status = $3 AND o.kind = ANY($4) AND NOT o.is_deleted
+		 WHERE us.organisation_id = $1::uuid AND NOT us.is_deleted
+		 ORDER BY r.name = $5 DESC, u.name`,
+		orgID, auth.UserActive, StatusVerified, auth.TradingKinds, auth.RoleOrgAdmin)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[Person])
+}
+
 // Directory lists verified organisations other than the caller's own,
-// optionally of one kind.
-func (s Store) Directory(ctx context.Context, q listq.Query, ownID, kind string) (listq.Page[Listing], error) {
-	where := []string{`o.status = $1`, `($2 = '' OR o.id <> NULLIF($2, '')::uuid)`, `($3 = '' OR o.kind = $3)`}
+// optionally of one kind, or only those that may receive a handover.
+func (s Store) Directory(ctx context.Context, q listq.Query, ownID, kind string, receivers bool) (listq.Page[Listing], error) {
+	where := []string{`o.status = $1`, `($2 = '' OR o.id <> NULLIF($2, '')::uuid)`, `($3 = '' OR o.kind = $3)`,
+		`(NOT $4 OR o.kind = ANY($5))`}
 	return listq.Fetch(ctx, s.Pool, q, DirectoryList, "SELECT o.id::text, o.name, o.kind, o.slug", "FROM organisations o",
-		where, []any{StatusVerified, ownID, kind}, pgx.RowToStructByPos[Listing])
+		where, []any{StatusVerified, ownID, kind, receivers, auth.TradingKinds}, pgx.RowToStructByPos[Listing])
 }
 
 func (s Store) Get(ctx context.Context, id, gate string) (Organisation, error) {
@@ -409,9 +434,6 @@ func (s Store) Accreditations(ctx context.Context, orgID string) ([]Accreditatio
 	return accreditationsOf(ctx, s.Pool, orgID)
 }
 
-// evidenceKeys are the certificate types a live template asks for.
-const evidenceKeys = `SELECT DISTINCT unnest(required_evidence) FROM commodity_templates WHERE NOT is_deleted`
-
 // SetAccreditations replaces an organisation's accreditations with grants.
 // Only what changed is written, and each change is queued for the chain in
 // the same transaction; a withdrawn type is queued with no window (valid_to 0).
@@ -424,9 +446,6 @@ func (s Store) SetAccreditations(ctx context.Context, orgID string, grants []Gra
 	defer tx.Rollback(ctx)
 
 	if err := lockIssuer(ctx, tx, orgID, len(grants) > 0); err != nil {
-		return nil, err
-	}
-	if err := checkTypes(ctx, tx, grants); err != nil {
 		return nil, err
 	}
 	current, err := accreditationsOf(ctx, tx, orgID)
@@ -457,23 +476,6 @@ func lockIssuer(ctx context.Context, tx pgx.Tx, orgID string, granting bool) err
 	}
 	if granting && (status != StatusVerified || !slices.Contains(IssuerKinds, kind)) {
 		return ErrNotIssuer
-	}
-	return nil
-}
-
-func checkTypes(ctx context.Context, tx pgx.Tx, grants []Grant) error {
-	rows, err := tx.Query(ctx, evidenceKeys)
-	if err != nil {
-		return err
-	}
-	known, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return err
-	}
-	for _, g := range grants {
-		if !slices.Contains(known, g.Type) {
-			return ErrUnknownType
-		}
 	}
 	return nil
 }

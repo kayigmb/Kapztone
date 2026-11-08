@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   CircleCheck,
@@ -10,15 +10,15 @@ import {
   PenLine,
   ShieldCheck,
 } from "lucide-react";
-import QRCode from "qrcode";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { PageHeader } from "@/components/chaintrack/page-header";
+import { QrImage } from "@/components/chaintrack/qr-image";
 import { Notice } from "@/components/chaintrack/notice";
 import { KeyValue } from "@/components/chaintrack/passport-card";
 import { StatusChip } from "@/components/chaintrack/status";
-import { TextField } from "@/components/chaintrack/text-field";
+import { besideFieldMd, TextField } from "@/components/chaintrack/text-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -115,7 +115,7 @@ function Details({ me }: { me: Me }) {
       <form
         onSubmit={handleSubmit((v) => save.mutate(v))}
         noValidate
-        className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end"
+        className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start"
       >
         <TextField
           label={t.name}
@@ -128,6 +128,7 @@ function Details({ me }: { me: Me }) {
           variant="secondary"
           disabled={!isDirty}
           loading={save.isPending}
+          className={besideFieldMd}
         >
           {t.saveName}
         </Button>
@@ -416,7 +417,7 @@ function CodeForm({
         reset();
       })}
       noValidate
-      className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end"
+      className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start"
     >
       <TextField
         label={label}
@@ -428,30 +429,14 @@ function CodeForm({
         error={errors.code?.message}
         {...register("code")}
       />
-      <Button type="submit" variant={variant} disabled={pending}>
+      <Button
+        type="submit"
+        variant={variant}
+        disabled={pending}
+        className={besideFieldMd}
+      >
         {submit}
       </Button>
     </form>
-  );
-}
-
-// The setup link as a QR code, drawn in the browser; nothing leaves the page.
-function QrImage({ text }: { text: string }) {
-  const qr = useQuery({
-    queryKey: ["qr", text],
-    queryFn: () => QRCode.toDataURL(text, { margin: 1, width: 192 }),
-    staleTime: Infinity,
-  });
-  return qr.data ? (
-    // eslint-disable-next-line @next/next/no-img-element -- a data: URL, nothing for next/image to optimise
-    <img
-      src={qr.data}
-      alt=""
-      width={192}
-      height={192}
-      className="rounded-md bg-surface p-2 ring-1 ring-border"
-    />
-  ) : (
-    <span className="size-48 animate-pulse rounded-md bg-surface-sunken" />
   );
 }

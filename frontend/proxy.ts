@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 // An address naming no organisation (nope.chaintrack.app) gets the "no such
 // organisation" page instead of a sign-in form for nobody. The API decides
 // (GET /address); answers are kept per host for a minute.
-// ponytail: per-instance cache; share it only if the web app runs as several replicas.
 const known = new Map<
   string,
   { exists: boolean; home: string; until: number }

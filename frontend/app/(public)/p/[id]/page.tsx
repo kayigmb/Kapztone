@@ -7,7 +7,6 @@ import { VerificationView } from "./verification-view";
 const t = copy.verification;
 
 // A shared lot link previews the lot and its verdict; lots stay out of search results.
-// ponytail: one more API call per view; the API caches /verify for a minute.
 export async function generateMetadata({
   params,
 }: PageProps<"/p/[id]">): Promise<Metadata> {

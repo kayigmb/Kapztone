@@ -84,6 +84,7 @@ export function JourneyTimeline({ steps }: { steps: View["journey"] }) {
                   (s.parties.to ?? s.parties.from)
                 )}
               </p>
+              {s.people && <p className="text-sm text-ink-muted">{s.people}</p>}
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="fig rounded-sm border border-border bg-bg px-2 py-0.5 text-sm">
                   {s.quantity}

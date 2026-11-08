@@ -4,8 +4,6 @@ package passport
 
 import (
 	"time"
-
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 )
 
 // Every value in this file is declared here once and referenced everywhere
@@ -35,12 +33,19 @@ const (
 
 var HandoverStatuses = []string{HandoverAwaiting, HandoverCompleted, HandoverRejected, HandoverCancelled, HandoverExpired}
 
-// Journey event kinds: the template's event names, plus the two things that
-// can happen to a passport at any stage.
+// StageSplit is the one stage the contract knows, at a yield of 1: every
+// transform, and every part of a lot cut off before a handover, runs at it.
+const StageSplit = "split"
+
+// DefaultHandoverTolerance is the weight difference, in percent, a receiver
+// may accept.
+const DefaultHandoverTolerance = 1.0
+
+// Journey event kinds.
 const (
-	EventIssue     = template.EventIssue
-	EventHandover  = template.EventHandover
-	EventTransform = template.EventTransform
+	EventIssue     = "ISSUE"
+	EventHandover  = "HANDOVER"
+	EventTransform = "TRANSFORM"
 	EventFlag      = "FLAG"
 	EventRevoke    = "REVOKE"
 	// EventRetire closes the journey: the lot reached its final buyer.
@@ -66,6 +71,8 @@ const (
 	MaxNoteLen = 1000
 	// MaxStageLen bounds the free label of a handover or transform.
 	MaxStageLen = 60
+	// MaxUnitLen bounds a passport's unit (kg, t, bags...).
+	MaxUnitLen = 16
 	// DefaultTransformStage labels a transform given no label.
 	DefaultTransformStage = "processing"
 
@@ -116,6 +123,7 @@ var PhotoTypes = []string{"image/png", "image/jpeg"}
 // Fields of a handover sent as a multipart form (with photos); the same names as in JSON.
 const (
 	FieldToOrg            = "to_org"
+	FieldToUser           = "to_user"
 	FieldStage            = "stage"
 	FieldQuantity         = "quantity"
 	FieldNote             = "note"
@@ -138,13 +146,11 @@ const (
 	MsgFacilitySuspended = "this facility is suspended and cannot originate goods"
 	MsgFacilityPending   = "this facility is waiting for approval and cannot originate goods yet"
 	MsgLicenceExpired    = "this facility's licence has expired; upload the renewed licence before issuing"
-	MsgTemplateNotFound  = "commodity template not found"
-	MsgKindMismatch      = "this commodity cannot originate at this kind of facility"
-	MsgUnitMismatch      = "the facility's capacity unit differs from the commodity's unit"
 	MsgNotHolder         = "your organisation does not hold this passport"
 	MsgNotActive         = "this passport is no longer active"
 	MsgOpenHandover      = "this passport already has a handover awaiting the receiver"
-	MsgReceiverInvalid   = "the receiving organisation must be a different, verified organisation"
+	MsgNotRecipient      = "this handover was sent to someone else in your organisation; they or an admin can sign it"
+	MsgReceiverInvalid   = "the receiving organisation must be a different, verified organisation that trades goods (not a certifier or regulator)"
 	MsgHandoverClosed    = "this handover is no longer awaiting an answer"
 	MsgHandoverStale     = "the passport changed since this handover was created; start a new one"
 	MsgInputNotHeld      = "your organisation does not hold every input passport"

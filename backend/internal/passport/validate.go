@@ -11,17 +11,23 @@ import (
 // IssueInput is what a producer submits to issue an origin passport.
 type IssueInput struct {
 	FacilityID string `json:"facility_id"`
-	TemplateID string `json:"template_id"`
-	Quantity   int64  `json:"quantity"` // whole number, in the template's unit
+	Commodity  string `json:"commodity"` // what was produced: coffee, cocoa, gold...
+	Unit       string `json:"unit"`
+	Quantity   int64  `json:"quantity"` // whole number, in Unit
 }
 
-// Validate returns the first problem as a message that is safe to show, or "".
-func (in IssueInput) Validate() string {
+// Validate tidies the input and returns the first problem as a message that
+// is safe to show, or "".
+func (in *IssueInput) Validate() string {
+	in.Commodity = strings.ToLower(strings.Join(strings.Fields(in.Commodity), "_"))
+	in.Unit = strings.TrimSpace(in.Unit)
 	switch {
 	case !httpx.IsUUID(in.FacilityID):
 		return "facility_id is required"
-	case !httpx.IsUUID(in.TemplateID):
-		return "template_id is required"
+	case !httpx.ValidKey(in.Commodity):
+		return "commodity must be " + httpx.KeyRule
+	case in.Unit == "" || len(in.Unit) > MaxUnitLen:
+		return fmt.Sprintf("unit is required, up to %d characters", MaxUnitLen)
 	case in.Quantity <= 0:
 		return "quantity must be a whole number above 0"
 	}
@@ -33,6 +39,8 @@ func (in IssueInput) Validate() string {
 type HandoverInput struct {
 	ToOrganisationID string `json:"to_organisation_id"`
 	ToOrg            string `json:"to_org"` // the same, under its shorter name
+	// ToUser is the person there it goes to: they or their admins answer it.
+	ToUser string `json:"to_user"`
 	// Stage is an optional label for the move: transport, storage, sale...
 	Stage string `json:"stage"`
 	// Quantity is how much is handed over; unset means all that remains.
@@ -54,6 +62,8 @@ func (in *HandoverInput) Validate() string {
 	switch {
 	case !httpx.IsUUID(in.ToOrganisationID):
 		return "to_org is required"
+	case !httpx.IsUUID(in.ToUser):
+		return "to_user is required: the person in the receiving organisation"
 	case len(in.Stage) > MaxStageLen:
 		return fmt.Sprintf("stage may be up to %d characters", MaxStageLen)
 	case in.Quantity != nil && *in.Quantity <= 0:

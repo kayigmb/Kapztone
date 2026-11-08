@@ -24,7 +24,7 @@ type FacilityRegister struct {
 	FacilityID string `json:"facility_id"`
 	OrgID      string `json:"org_id"`
 	DataHash   string `json:"data_hash"`
-	Capacity   int64  `json:"capacity"`
+	Capacity   int64  `json:"capacity,omitempty"` // 0: no declared capacity (see sendFacilityRegister)
 }
 
 type FacilitySuspended struct {

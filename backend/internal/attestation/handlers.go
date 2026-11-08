@@ -13,7 +13,6 @@ import (
 	"github.com/kayigmb/chaintrack/backend/internal/httpx"
 	"github.com/kayigmb/chaintrack/backend/internal/listq"
 	"github.com/kayigmb/chaintrack/backend/internal/logx"
-	"github.com/kayigmb/chaintrack/backend/internal/template"
 	"github.com/kayigmb/chaintrack/backend/internal/upload"
 )
 
@@ -37,13 +36,15 @@ type Input struct {
 	ValidTo     time.Time
 	CertNumber  string
 	Notes       string
+	IssuedAt    string // optional: one of the issuer's facilities
 }
 
 // ParseInput reads and checks the form fields. get returns one field's
 // value. It returns the first problem as a message that is safe to show, or "".
 func ParseInput(get func(string) string) (Input, string) {
 	in := Input{SubjectType: get(FormSubjectType), SubjectID: get(FormSubjectID), Type: strings.TrimSpace(get(FormType)),
-		CertNumber: strings.TrimSpace(get("cert_number")), Notes: strings.TrimSpace(get("notes"))}
+		CertNumber: strings.TrimSpace(get("cert_number")), Notes: strings.TrimSpace(get("notes")),
+		IssuedAt: strings.TrimSpace(get(FormIssuedAt))}
 	from, okFrom := httpx.ParseTime(get(FormValidFrom))
 	to, okTo := httpx.ParseTime(get(FormValidTo))
 	in.ValidFrom, in.ValidTo = from, to
@@ -52,12 +53,14 @@ func ParseInput(get func(string) string) (Input, string) {
 		return in, FormSubjectType + " must be one of: " + strings.Join(SubjectTypes, ", ")
 	case !httpx.IsUUID(in.SubjectID):
 		return in, FormSubjectID + " is required"
-	case !template.ValidKey(in.Type):
-		return in, FormType + " must be " + template.KeyRule
+	case !httpx.ValidKey(in.Type):
+		return in, FormType + " must be " + httpx.KeyRule
 	case !okFrom || !okTo || !to.After(from) || from.Unix() < 0: // the chain holds times as unsigned seconds
 		return in, MsgDates
 	case len(in.CertNumber) > 64:
 		return in, "cert_number may be up to 64 characters"
+	case in.IssuedAt != "" && !httpx.IsUUID(in.IssuedAt):
+		return in, FormIssuedAt + " must be an id"
 	case len(in.Notes) > 2000:
 		return in, "notes may be up to 2000 characters"
 	}
@@ -74,6 +77,8 @@ func respond(w http.ResponseWriter, status int, message, what string, v any, err
 		httpx.Error(w, http.StatusForbidden, MsgNotAccredited)
 	case errors.Is(err, ErrSubjectNotFound):
 		httpx.Error(w, http.StatusBadRequest, MsgSubjectNotFound)
+	case errors.Is(err, ErrIssuedAtUnknown):
+		httpx.Error(w, http.StatusBadRequest, MsgIssuedAtUnknown)
 	case errors.Is(err, ErrAlreadyRevoked):
 		httpx.Error(w, http.StatusConflict, MsgAlreadyRevoked)
 	default:
@@ -91,20 +96,30 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 	if !h.PIN(w, r) {
 		return
 	}
-	file, header, ok := upload.Parse(w, r)
+	// The signed document is optional: without one, ChainTrack writes it.
+	file, header, ok := upload.ParseOptional(w, r)
 	if !ok {
 		return
 	}
-	defer file.Close()
-	defer r.MultipartForm.RemoveAll()
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
 
 	in, msg := ParseInput(r.FormValue)
 	if msg != "" {
+		if file != nil {
+			file.Close()
+		}
 		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
-	f, ok := upload.Store(w, r, h.Files, file, header)
-	if !ok {
+	var f upload.File
+	if file != nil {
+		defer file.Close()
+		if f, ok = upload.Store(w, r, h.Files, file, header); !ok {
+			return
+		}
+	} else if f, ok = h.generate(w, r, o.ID, in); !ok {
 		return
 	}
 	a, err := h.Store.Issue(r.Context(), o.ID, auth.CurrentUser(r.Context()).ID, in, f)
@@ -114,6 +129,28 @@ func (h *Handlers) Issue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, http.StatusCreated, MsgIssued, h.pinIssued(r.Context(), a))
+}
+
+// generate writes and stores the certificate PDF for an issue that came
+// without a document, or writes the error.
+func (h *Handlers) generate(w http.ResponseWriter, r *http.Request, orgID string, in Input) (upload.File, bool) {
+	facts, err := h.Store.Facts(r.Context(), orgID, in)
+	if err != nil {
+		httpx.ServerError(w, "read certificate facts", err)
+		return upload.File{}, false
+	}
+	pdf, err := Document(in, facts, time.Now())
+	if err != nil {
+		httpx.ServerError(w, "write certificate", err)
+		return upload.File{}, false
+	}
+	key, sum, err := h.Files.SaveBytes(r.Context(), pdf, "application/pdf")
+	if err != nil {
+		httpx.ServerError(w, "save certificate", err)
+		return upload.File{}, false
+	}
+	return upload.File{Key: key, SHA256: sum, Name: DocumentName(in.Type), ContentType: "application/pdf",
+		Size: int64(len(pdf))}, true
 }
 
 // pinIssued copies a recorded certificate to IPFS, so a refused file is never
@@ -179,12 +216,17 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, ParamIssuerID+" must be an id")
 		return
 	}
+	// Inspectors look up others' certificates (by search, or those on a lot or
+	// facility they opened); ?scope= keeps to their own.
+	if scope == "" && (q.Search != "" || subjectID != "") && auth.Inspects(r) {
+		gate = ""
+	}
 	page, err := h.Store.Find(r.Context(), q, Filter{Gate: gate, Scope: scope, SubjectID: subjectID, IssuerID: issuerID, Status: status})
 	respond(w, http.StatusOK, "", "list certificates", page, err)
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	gate, ok := auth.Gate(w, r)
+	gate, ok := auth.InspectGate(w, r)
 	if !ok {
 		return
 	}
@@ -198,7 +240,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 
 // Download streams the certificate's file.
 func (h *Handlers) Download(w http.ResponseWriter, r *http.Request) {
-	gate, ok := auth.Gate(w, r)
+	gate, ok := auth.InspectGate(w, r)
 	if !ok {
 		return
 	}

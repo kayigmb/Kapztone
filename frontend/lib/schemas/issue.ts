@@ -1,13 +1,20 @@
 import { z } from "zod";
 
 import { copy } from "../consts.ts";
-import type { Facility } from "../api.ts";
 
 const v = copy.validation;
 
 export const issueFormSchema = z.object({
   facility_id: z.string().trim().min(1, v.facility),
-  template_id: z.string().trim().min(1, v.template),
+  // The API turns it into a key (Green coffee → green_coffee): letters first, then letters, digits, spaces or _.
+  commodity: z
+    .string()
+    .trim()
+    .min(1, v.commodity)
+    .max(50, v.tooLong(50))
+    .regex(/^(|[A-Za-z][A-Za-z0-9_ ]*)$/, v.commodity), // empty is min's to report
+  // A common unit, or the producer's own (crates, lb…); the API takes 1 to 16 characters.
+  unit: z.string().trim().min(1, v.unit).max(16, v.tooLong(16)),
   quantity: z.coerce
     .number({ message: v.quantity })
     .int(v.quantity)
@@ -17,25 +24,3 @@ export const issueFormSchema = z.object({
 export type IssueForm = z.infer<typeof issueFormSchema>;
 /** What the form holds before zod coerces it (numbers typed as text). */
 export type IssueFormInput = z.input<typeof issueFormSchema>;
-
-/** How much of a facility's capacity is still free this period. */
-export function capacityLeft(
-  facility: Pick<Facility, "capacity" | "capacity_used">,
-): number {
-  return Math.max(0, facility.capacity - facility.capacity_used);
-}
-
-/** Issuing more than the facility's remaining capacity is refused by the API with the numbers in the message; this mirrors that limit so the form can block the button and say why before the PIN is asked for. */
-export function issueBlock(
-  facility: Pick<Facility, "capacity" | "capacity_used">,
-  quantity: number,
-): { over: true; left: number; capacity: number; capacityUsed: number } | null {
-  const left = capacityLeft(facility);
-  if (quantity <= left) return null;
-  return {
-    over: true,
-    left,
-    capacity: facility.capacity,
-    capacityUsed: facility.capacity_used,
-  };
-}

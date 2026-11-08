@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,20 +16,19 @@ import (
 
 // A facility originates goods only once approved and while its licence runs;
 // every refusal by a rule is counted for the blocked report; the volume
-// report counts exports; transforms record the template version they used.
+// report counts exports.
 func TestFacilityRulesAndReports(t *testing.T) {
 	w := newPassportWorld(t)
 	e := w.e
 	ctx := context.Background()
-	tplIn := withoutOriginEvidence(coffeeTemplate("coffee_" + e.suffix))
-	tpl := w.template(t, tplIn)
+	tpl := coffee("coffee_" + e.suffix)
 
 	// ---- Pending and expired facilities originate nothing.
 	rec := post(e, w.prodTok, as(w.prodSlug, "/facilities"), facilityInput(newPlot()))
 	want(t, "second facility", rec, http.StatusCreated)
 	pending := decodeTo[facility.Facility](t, rec)
 	issueAt := func(facilityID string, q int64) *httptest.ResponseRecorder {
-		return post(e, w.prodTok, as(w.prodSlug, "/passports"), passport.IssueInput{FacilityID: facilityID, TemplateID: tpl.ID, Quantity: q})
+		return post(e, w.prodTok, as(w.prodSlug, "/passports"), passport.IssueInput{FacilityID: facilityID, Commodity: tpl.Commodity, Unit: tpl.Unit, Quantity: q})
 	}
 	rec = issueAt(pending.ID, 10)
 	want(t, "issue at a pending facility", rec, http.StatusConflict)
@@ -47,12 +45,10 @@ func TestFacilityRulesAndReports(t *testing.T) {
 	want(t, "issue on the licence's last day", issueAt(w.plot.ID, 10), http.StatusCreated)
 
 	// ---- Refusals by a rule are counted, though their own transaction rolls back.
-	want(t, "over capacity", issueAt(w.plot.ID, w.plot.Capacity*1000), http.StatusConflict)
-
 	rec = issueAt(w.plot.ID, 1000)
 	want(t, "issue", rec, http.StatusCreated)
 	lot := decodeTo[passport.Passport](t, rec)
-	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, Stage: stageWashing})
+	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: stageWashing})
 	want(t, "handover", rec, http.StatusCreated)
 	want(t, "accept", post(e, w.procTok, as(w.procSlug, "/handovers/"+decodeTo[passport.Handover](t, rec).ID+"/accept"), received(decodeTo[passport.Handover](t, rec))), http.StatusOK)
 	transform := func(out int64) *httptest.ResponseRecorder {
@@ -61,19 +57,10 @@ func TestFacilityRulesAndReports(t *testing.T) {
 	}
 	want(t, "mass balance breach", transform(501), http.StatusConflict)
 
-	// A new template version: the transform records the one it was judged by.
-	edited := tpl.Input // the same rules, a new version all the same
-	body, _ := json.Marshal(edited)
-	want(t, "save a draft", do(e.h, http.MethodPut, "/templates/"+tpl.ID, w.root, string(body)), http.StatusOK)
-	want(t, "publish", post(e, w.root, "/templates/"+tpl.ID+"/publish", nil), http.StatusOK)
-	rec = transform(50)
-	want(t, "transform", rec, http.StatusCreated)
-	if tr := decodeTo[passport.Transform](t, rec); tr.TemplateVersion == nil || *tr.TemplateVersion != 2 {
-		t.Fatalf("transform template version: %s", rec.Body)
-	}
+	want(t, "transform", transform(50), http.StatusCreated)
 
 	// ---- Export: a completed handover at a stage that allows EXPORT.
-	rec = post(e, w.procTok, as(w.procSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.producer.ID, Stage: "export"})
+	rec = post(e, w.procTok, as(w.procSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.producer.ID, ToUser: e.personIn(w.producer.ID), Stage: "export"})
 	want(t, "export handover", rec, http.StatusCreated)
 	exp := decodeTo[passport.Handover](t, rec)
 	want(t, "accept export", post(e, w.prodTok, as(w.prodSlug, "/handovers/"+exp.ID+"/accept"), received(exp)), http.StatusOK)
@@ -85,7 +72,7 @@ func TestFacilityRulesAndReports(t *testing.T) {
 	}
 
 	// A rejected handover counts too.
-	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, Stage: "import"})
+	rec = post(e, w.prodTok, as(w.prodSlug, "/passports/"+lot.ID+"/handovers"), passport.HandoverInput{ToOrg: w.processor.ID, ToUser: e.personIn(w.processor.ID), Stage: "import"})
 	want(t, "handover to reject", rec, http.StatusCreated)
 	want(t, "reject", post(e, w.procTok, as(w.procSlug, "/handovers/"+decodeTo[passport.Handover](t, rec).ID+"/reject"),
 		passport.RejectInput{Reasons: []string{passport.RejectNotExpected}}), http.StatusOK)
@@ -105,16 +92,15 @@ func TestFacilityRulesAndReports(t *testing.T) {
 		}
 		return out
 	}
-	if got := blocked(w.prodTok, w.prodSlug); got[audit.RuleCapacity] != 1 || got[audit.RuleEvidence] != 0 ||
-		got[audit.RuleMassBalance] != 0 || got[audit.RuleHandoverRejected] != 1 {
+	if got := blocked(w.prodTok, w.prodSlug); got[audit.RuleMassBalance] != 0 || got[audit.RuleHandoverRejected] != 1 {
 		t.Fatalf("producer's blocked report: %v", got)
 	}
-	if got := blocked(w.procTok, w.procSlug); got[audit.RuleMassBalance] != 1 || got[audit.RuleCapacity] != 0 || got[audit.RuleHandoverRejected] != 1 {
+	if got := blocked(w.procTok, w.procSlug); got[audit.RuleMassBalance] != 1 || got[audit.RuleHandoverRejected] != 1 {
 		t.Fatalf("processor's blocked report: %v", got)
 	}
 	rec = do(e.h, http.MethodGet, as(w.prodSlug, "/reports/blocked?format=csv"), w.prodTok, "")
 	want(t, "blocked csv", rec, http.StatusOK)
-	if !strings.HasPrefix(rec.Body.String(), strings.Join(audit.BlockedColumns, ",")+"\n"+audit.RuleCapacity+",1\n") {
+	if !strings.HasPrefix(rec.Body.String(), strings.Join(audit.BlockedColumns, ",")+"\n"+audit.RuleMassBalance+",0\n") {
 		t.Fatalf("blocked csv: %q", rec.Body)
 	}
 	want(t, "blocked in another format", do(e.h, http.MethodGet, as(w.prodSlug, "/reports/blocked?format=xml"), w.prodTok, ""), http.StatusBadRequest)

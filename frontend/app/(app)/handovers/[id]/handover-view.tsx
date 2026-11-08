@@ -39,10 +39,13 @@ import {
 import {
   copy,
   handoverStatus,
+  permissions,
   queryKeys,
   rejectReasons,
   routes,
   type RejectReason,
+  orgAdminRole,
+  superadminRole,
 } from "@/lib/consts";
 import { liveValidation } from "@/lib/form";
 import { tolerancePct, weigh } from "@/lib/handover";
@@ -97,11 +100,30 @@ export function HandoverView({ id }: { id: string }) {
   const unit = p?.unit ?? "";
   const tolerance = tolerancePct;
   const mine = me.organisation?.id;
-  const sender = names.data?.get(hv.from_org) ?? copy.dashboard.someOrg;
-  const receiver = names.data?.get(hv.to_org) ?? copy.dashboard.someOrg;
+  // "Alice · Acme Farm": the person, then the organisation.
+  const withPerson = (person: string | null | undefined, org: string) =>
+    person ? `${person} · ${org}` : org;
+  const sender = withPerson(
+    hv.from_user_name,
+    hv.from_name ?? names.data?.get(hv.from_org) ?? copy.dashboard.someOrg,
+  );
+  const receiver = withPerson(
+    hv.to_user_name,
+    hv.to_name ?? names.data?.get(hv.to_org) ?? copy.dashboard.someOrg,
+  );
   const open = hv.status === handoverStatus.awaiting;
-  const iReceive = open && hv.to_org === mine;
-  const iSent = open && hv.from_org === mine;
+  const may = (p: string) => me.permissions.includes(p);
+  // Sent to a person: they or their organisation's admins answer it.
+  const named =
+    !hv.to_user ||
+    hv.to_user === me.user.id ||
+    me.role === orgAdminRole ||
+    me.role === superadminRole;
+  const iReceive =
+    open && hv.to_org === mine && named && may(permissions.handoverAccept);
+  const forSomeoneElse =
+    open && hv.to_org === mine && !named && may(permissions.handoverAccept);
+  const iSent = open && hv.from_org === mine && may(permissions.handoverCreate);
 
   return (
     <main className="grid w-full content-start gap-6 p-4 lg:p-8">
@@ -113,9 +135,17 @@ export function HandoverView({ id }: { id: string }) {
           <p className="text-sm text-ink-muted">
             {hv.to_org === mine ? t.from(sender) : t.to(receiver)}
           </p>
+          {hv.responded_by_name && (
+            <p className="text-sm text-ink-muted">
+              {t.answeredBy(hv.responded_by_name)}
+            </p>
+          )}
         </div>
         <HandoverStatusChip h={hv} mine={mine} />
       </header>
+      {forSomeoneElse && (
+        <Notice kind="info">{t.forSomeoneElse(hv.to_user_name ?? "")}</Notice>
+      )}
 
       <section className="grid gap-4 rounded-lg border border-border bg-surface p-4 shadow-card lg:p-6">
         <div className="flex flex-wrap gap-2">

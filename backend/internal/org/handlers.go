@@ -28,6 +28,8 @@ type Handlers struct {
 	// SendVerify emails a new account the link that confirms its email; nil sends nothing.
 	// It returns the link in dev only (see auth.SendVerifyTo).
 	SendVerify func(ctx context.Context, email string) (devLink string)
+	// NoEmailConfirm (EMAIL_VERIFY=false): a new account is ready at once.
+	NoEmailConfirm bool
 	// AppURL is the platform's address; organisations live on its subdomains.
 	AppURL string
 	// Slug names the organisation a request's address points at ("" for the bare one).
@@ -99,9 +101,25 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.OK(w, http.StatusCreated, MsgRegistered, struct {
 			Organisation
-			VerifyLink string `json:"verify_link,omitempty"` // dev only
-		}{o, link})
+			VerifyLink     string `json:"verify_link,omitempty"` // dev only
+			EmailConfirmed bool   `json:"email_confirmed"`       // no confirmation link needed
+		}{o, link, h.NoEmailConfirm})
 	}
+}
+
+// People lists who in an organisation a lot can be handed to (names and
+// roles only), for the handover's receiver step.
+func (h *Handlers) People(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.URLID(w, r)
+	if !ok {
+		return
+	}
+	people, err := h.Store.People(r.Context(), id)
+	if err != nil {
+		httpx.ServerError(w, "list people", err)
+		return
+	}
+	httpx.OK(w, http.StatusOK, "", people)
 }
 
 // EmailAvailability lets sign-up catch a duplicate before the final submit.
@@ -216,8 +234,9 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, http.StatusOK, "", page)
 }
 
-// Directory lets a verified organisation find others to hand lots to. It
-// shows only what a receiver needs to be recognised: name, kind, address.
+// Directory lets a verified organisation find others (to hand lots to, or
+// to name the parties on a record). It shows only what is needed to
+// recognise one: name, kind, address.
 func (h *Handlers) Directory(w http.ResponseWriter, r *http.Request) {
 	q, ok := listq.FromRequest(w, r, DirectoryList)
 	if !ok {
@@ -241,7 +260,8 @@ func (h *Handlers) Directory(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNoOrgSelected)
 		return
 	}
-	page, err := h.Store.Directory(r.Context(), q, own, kind)
+	receivers := r.URL.Query().Get(ParamReceivers) == "true"
+	page, err := h.Store.Directory(r.Context(), q, own, kind, receivers)
 	if err != nil {
 		httpx.ServerError(w, "list directory", err)
 		return
@@ -361,8 +381,6 @@ func (h *Handlers) SetAccreditations(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, ErrNotIssuer):
 		httpx.Error(w, http.StatusConflict, MsgNotIssuer)
-	case errors.Is(err, ErrUnknownType):
-		httpx.Error(w, http.StatusBadRequest, MsgUnknownCertType)
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound)
 	case err != nil:

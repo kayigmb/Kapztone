@@ -223,15 +223,22 @@ func RaiseFlag(ctx context.Context, tx pgx.Tx, orgID, userID, holder, passportID
 }
 
 // Find returns the flags an organisation raised (all of them for the platform).
+// visible: the flags the gate ($n, "" for the platform) may see: raised by
+// that organisation, or assigned to one of its people.
+func visible(n int) string {
+	return fmt.Sprintf(`(%[2]s OR EXISTS (SELECT 1 FROM userscope us WHERE us.user_id = f.assignee_user_id
+		AND us.organisation_id = NULLIF($%[1]d, '')::uuid AND NOT us.is_deleted))`, n, auth.GateSQL(gateColumn, n))
+}
+
 func (s Store) Find(ctx context.Context, q listq.Query, gate, status string) (listq.Page[Flag], error) {
 	return listq.Fetch(ctx, s.Pool, q, List, "SELECT "+columns, "FROM flags f",
-		[]string{auth.GateSQL(gateColumn, 1), `($2 = '' OR f.status = $2 OR ($2 = $3 AND f.status <> $4))`},
+		[]string{visible(1), `($2 = '' OR f.status = $2 OR ($2 = $3 AND f.status <> $4))`},
 		[]any{gate, status, StatusResolved, StatusOpen}, scan)
 }
 
 func (s Store) Get(ctx context.Context, id, gate string) (Flag, error) {
 	return one(s.Pool.Query(ctx,
-		`SELECT `+columns+` FROM flags f WHERE f.id = $1::uuid AND NOT f.is_deleted AND `+auth.GateSQL(gateColumn, 2), id, gate))
+		`SELECT `+columns+` FROM flags f WHERE f.id = $1::uuid AND NOT f.is_deleted AND `+visible(2), id, gate))
 }
 
 // Assign names who looks into a flag (nil: nobody). The assignee must be an
@@ -307,31 +314,20 @@ type Handlers struct {
 	Auth *auth.Auth
 }
 
-// investigator reports whether the caller looks into flags for the whole
-// platform: the superadmin (flag:resolve), or anyone acting for a verified
-// regulator. For flags only, they are not limited to their own organisation.
-func investigator(r *http.Request) bool {
-	s := auth.CurrentScope(r.Context())
-	if slices.Contains(s.Permissions, auth.FlagResolve) {
-		return true
-	}
-	o := s.Organisation
-	return o != nil && o.Kind == org.KindRegulator && o.Status == auth.OrgVerified
-}
-
-// resolver reports whether the caller may assign and resolve flags: the
-// superadmin, or an admin of a verified regulator. Confirming a flag revokes
-// whole passport trees, so a regulator's other members only look.
+// resolver reports whether the caller may assign and resolve flags
+// (flag:resolve): the superadmin, or an admin of a regulator, since the kind
+// layer gives it to regulators only and the role layer to admins only.
+// Confirming a flag revokes whole passport trees, so a regulator's other
+// members only look. The organisation must still be verified.
 func resolver(r *http.Request) bool {
 	s := auth.CurrentScope(r.Context())
-	return slices.Contains(s.Permissions, auth.FlagResolve) || (investigator(r) && s.Role == auth.RoleOrgAdmin)
+	return slices.Contains(s.Permissions, auth.FlagResolve) &&
+		(s.Organisation == nil || s.Organisation.Status == auth.OrgVerified)
 }
 
-// gate is auth.Gate, widened to every organisation for an investigator.
+// gate is auth.Gate: the platform sees every flag, an organisation those it
+// raised or that were assigned to one of its people (see visible).
 func gate(w http.ResponseWriter, r *http.Request) (string, bool) {
-	if investigator(r) {
-		return "", true
-	}
 	return auth.Gate(w, r)
 }
 
@@ -410,13 +406,31 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, "", "get flag", f, err)
 }
 
+// visibleID reads the {id} of a flag the caller may see (404 otherwise): a
+// regulator acts only on flags raised by it or assigned to its people.
+func (h *Handlers) visibleID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	g, ok := gate(w, r)
+	if !ok {
+		return "", false
+	}
+	id, ok := httpx.URLID(w, r)
+	if !ok {
+		return "", false
+	}
+	if _, err := h.Store.Get(r.Context(), id, g); err != nil {
+		respond(w, http.StatusOK, "", "find flag", nil, err)
+		return "", false
+	}
+	return id, true
+}
+
 // Assign answers PUT /flags/{id}/assignee {"user_id": "…" | null}: a resolver only.
 func (h *Handlers) Assign(w http.ResponseWriter, r *http.Request) {
 	if !resolver(r) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
 		return
 	}
-	id, ok := httpx.URLID(w, r)
+	id, ok := h.visibleID(w, r)
 	if !ok {
 		return
 	}
@@ -440,7 +454,7 @@ func (h *Handlers) Resolve(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, auth.MsgNotAllowed)
 		return
 	}
-	id, ok := httpx.URLID(w, r)
+	id, ok := h.visibleID(w, r)
 	if !ok {
 		return
 	}
