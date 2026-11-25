@@ -47,7 +47,7 @@
     "title": "Have a ChainTrack label?",
     "body": "Scan the QR code, or type the lot code printed under it, to see its verified journey.",
     "label": "Lot code",
-    "placeholder": "Lot code, e.g. ACME-2026-0412",
+    "placeholder": "Lot code, e.g. ACME-2026-11-25-000412",
     "submit": "Verify now"
   },
   "how": {

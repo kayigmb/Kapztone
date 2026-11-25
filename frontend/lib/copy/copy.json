@@ -515,7 +515,7 @@
     "hint": "Point the camera at the QR label on the bag, box or document.",
     "noCamera": "The camera isn't available here. Type the lot code instead.",
     "codeLabel": "Lot code",
-    "codeHint": "Printed under the QR code, e.g. ACME-2026-0412",
+    "codeHint": "Printed under the QR code, e.g. ACME-2026-11-25-000412",
     "open": "Open passport",
     "close": "Close"
   },

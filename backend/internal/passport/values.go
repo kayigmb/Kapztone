@@ -3,6 +3,8 @@
 package passport
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,9 +54,26 @@ const (
 	EventRetire = "RETIRE"
 )
 
-// CodeFormat writes a lot code: organisation address in capitals, year, and
-// the organisation's count for that year, at least four digits (ACME-2026-0412).
-const CodeFormat = "%s-%d-%04d"
+// ShortCode is a lot code's prefix: the first four letters or digits of the
+// organisation's address, in capitals (processor → PROC).
+func ShortCode(slug string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(slug) {
+		if b.Len() == 4 {
+			break
+		}
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// LotCode writes a lot code: prefix, the day, and the prefix's count for the
+// year in six digits (PROC-2026-11-25-000004).
+func LotCode(slug string, day time.Time, n int) string {
+	return fmt.Sprintf("%s-%s-%06d", ShortCode(slug), day.UTC().Format("2006-01-02"), n)
+}
 
 // Genealogy directions.
 const (

@@ -588,12 +588,17 @@ function QrDialog({
 
 type Direction = "upstream" | "downstream";
 const directions: Direction[] = ["upstream", "downstream"];
+/** The API's words for the two tabs (GET /passports/{id}/genealogy?direction=). */
+const apiDirection = {
+  upstream: "ancestors",
+  downstream: "descendants",
+} as const satisfies Record<Direction, string>;
 
 function Genealogy({ id, unit }: { id: string; unit: string }) {
   const [direction, setDirection] = useState<Direction>("upstream");
   const query = useQuery({
     queryKey: [...queryKeys.passport(id), "genealogy", direction],
-    queryFn: () => endpoints.genealogy(id, direction),
+    queryFn: () => endpoints.genealogy(id, apiDirection[direction]),
   });
 
   return (

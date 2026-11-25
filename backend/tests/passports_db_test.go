@@ -83,11 +83,11 @@ func TestLotCodesAndRetire(t *testing.T) {
 		want(t, "issue", rec, http.StatusCreated)
 		lots = append(lots, decodeTo[passport.Passport](t, rec))
 	}
-	year := time.Now().UTC().Year()
-	for i, p := range lots {
-		if wantCode := fmt.Sprintf(passport.CodeFormat, strings.ToUpper(w.prodSlug), year, i+1); p.Code != wantCode {
-			t.Fatalf("lot %d code = %q, want %q", i, p.Code, wantCode)
-		}
+	// PREFIX-YYYY-MM-DD-NNNNNN, numbered one after the other (the count is
+	// the prefix's for the year, so it carries on across test runs).
+	first := codeNumber(t, lots[0].Code, w.prodSlug)
+	if codeNumber(t, lots[1].Code, w.prodSlug) != first+1 {
+		t.Fatalf("codes not consecutive: %s, %s", lots[0].Code, lots[1].Code)
 	}
 
 	// The code works in place of the id, in any case.
@@ -135,10 +135,8 @@ func TestLotCodesAndRetire(t *testing.T) {
 		Outputs: []passport.TransformOutput{{Quantity: 30_000}, {Quantity: 20_000}}})
 	want(t, "transform", rec, http.StatusCreated)
 	tr := decodeTo[passport.Transform](t, rec)
-	for i, out := range tr.Outputs {
-		if wantCode := fmt.Sprintf(passport.CodeFormat, strings.ToUpper(w.procSlug), year, i+1); out.Code != wantCode {
-			t.Fatalf("output %d code = %q, want %q", i, out.Code, wantCode)
-		}
+	if a, b := codeNumber(t, tr.Outputs[0].Code, w.procSlug), codeNumber(t, tr.Outputs[1].Code, w.procSlug); b != a+1 {
+		t.Fatalf("output codes not consecutive: %s, %s", tr.Outputs[0].Code, tr.Outputs[1].Code)
 	}
 
 	// Retire: only the holder, only once, and nothing after it.
@@ -272,5 +270,30 @@ func TestSigningPINOnSigningActions(t *testing.T) {
 	want(t, "issue without a PIN set", rec, http.StatusForbidden)
 	if msg := errorOf(t, rec); msg != auth.MsgPINNotSet {
 		t.Fatalf("no-PIN message = %q", msg)
+	}
+}
+
+// codeNumber checks a lot code is the slug's prefix, today and six digits,
+// and returns the number.
+func codeNumber(t *testing.T, code, slug string) int {
+	t.Helper()
+	var n int
+	if _, err := fmt.Sscanf(code[len(code)-6:], "%06d", &n); err != nil ||
+		code != passport.LotCode(slug, time.Now(), n) {
+		t.Fatalf("code %q is not %s-<today>-NNNNNN", code, passport.ShortCode(slug))
+	}
+	return n
+}
+
+func TestLotCodeFormat(t *testing.T) {
+	day := time.Date(2026, 11, 25, 23, 0, 0, 0, time.UTC)
+	for slug, want := range map[string]string{
+		"processor":  "PROC-2026-11-25-000004",
+		"e2e-wash-x": "E2EW-2026-11-25-000004",
+		"ab":         "AB-2026-11-25-000004",
+	} {
+		if got := passport.LotCode(slug, day, 4); got != want {
+			t.Errorf("LotCode(%q) = %q, want %q", slug, got, want)
+		}
 	}
 }

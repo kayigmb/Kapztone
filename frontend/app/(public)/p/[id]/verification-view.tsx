@@ -69,7 +69,7 @@ const facilityIcons: Record<string, LucideIcon> = {
 };
 const firstWord = (s: string) => s.split(/[\s_]/)[0];
 
-// A passport id, or a lot code (ACME-2026-0412).
+// A passport id, or a lot code (ACME-2026-11-25-000412).
 const reference =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9][A-Za-z0-9-]{2,79})$/i;
 

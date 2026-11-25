@@ -3,7 +3,6 @@ package passport
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -54,18 +53,17 @@ func noOpenHandover(ctx context.Context, tx pgx.Tx, passportID string) error {
 // The number shows how many lots the organisation made that year; accepted
 // for the MVP.
 func nextCode(ctx context.Context, tx pgx.Tx, orgID string, now time.Time) (string, error) {
-	year := now.UTC().Year()
-	var (
-		slug string
-		n    int
-	)
+	var slug string
+	if err := tx.QueryRow(ctx, `SELECT slug FROM organisations WHERE id = $1::uuid`, orgID).Scan(&slug); err != nil {
+		return "", err
+	}
+	// Counted per prefix, not per organisation: two that share one never collide.
+	var n int
 	err := tx.QueryRow(ctx,
-		`WITH c AS (
-		   INSERT INTO lot_counters (organisation_id, year, next) VALUES ($1::uuid, $2, 2)
-		   ON CONFLICT (organisation_id, year) WHERE NOT is_deleted DO UPDATE SET next = lot_counters.next + 1
-		   RETURNING next - 1 AS n)
-		 SELECT o.slug, c.n FROM c, organisations o WHERE o.id = $1::uuid`, orgID, year).Scan(&slug, &n)
-	return fmt.Sprintf(CodeFormat, strings.ToUpper(slug), year, n), err
+		`INSERT INTO code_counters (prefix, year, next) VALUES ($1, $2, 2)
+		 ON CONFLICT (prefix, year) WHERE NOT is_deleted DO UPDATE SET next = code_counters.next + 1
+		 RETURNING next - 1`, ShortCode(slug), now.UTC().Year()).Scan(&n)
+	return LotCode(slug, now, n), err
 }
 
 // Resolve turns a passport id or lot code into the id. Anything that is not
