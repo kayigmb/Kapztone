@@ -376,7 +376,7 @@ export type ActionKey =
 export const dashboards = {
   trader: {
     tiles: ["passportsHeld", "incoming", "outgoing", "openFlags"],
-    actions: ["scan", "handover", "transform"],
+    actions: ["scan", "handover", "transform", "registerFacility"],
     main: ["incoming", "passports"],
     side: [],
   },

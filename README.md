@@ -24,8 +24,9 @@ Every lot (coffee, cocoa, minerals, medicines, any commodity) gets a passport at
 
 Organisations register, upload KYB documents and are verified by the platform. Their kinds are:
 
-- **Producer**: registers its own facilities and issues passports from them; also hands over and transforms.
+- **Producer**: issues passports from its own facilities; also hands over and transforms.
 - **Processor, transporter, exporter, importer**: hold and move lots (transporters do not transform or retire).
+- **Every organisation** registers its own facilities (farm, depot, yard, office, lab) to show where it works; the platform approves each one.
 - **Certifier**: issues certificates for the types it is accredited for, optionally naming which of its own facilities (office, lab) it was issued at. It looks another organisation's lot up by its code or QR, and finds another's certificates by search, rather than listing them all.
 - **Regulator**: everything a certifier does, plus resolving the flags the platform assigns to it.
 - **Platform admin** (superadmin): approves organisations and facilities, accredits issuers, assigns flags to regulators, curates facility kinds and runs reports.
@@ -43,7 +44,7 @@ A person's permissions are their role's permissions narrowed by their organisati
 | org:read, org:manage, document:read, user:manage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | org:search (directory; `?receivers=true` lists trading kinds only) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | facility:read (own facilities; one linked from a passport opens by id) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| facility:manage (register own facilities) | ✅ | | | | ✅ | ✅ |
+| facility:manage (register own facilities: farms, depots, yards, offices, labs) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | passport:issue | ✅ | | | | | |
 | passport:read (certifiers and regulators open another organisation's lot by its code or QR) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | passport:retire | ✅ | ✅ | | ✅ | | |

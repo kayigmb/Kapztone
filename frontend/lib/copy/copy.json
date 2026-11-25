@@ -536,7 +536,7 @@
     "register": "Register facility",
     "filterLabel": "Type",
     "filterAll": "All types",
-    "empty": "No facilities yet. A facility is where your goods originate or are handled: a plot, a site, a station or a warehouse. Register one before issuing passports.",
+    "empty": "No facilities yet. A facility is a place your organisation works from: a plot, a depot, a yard, a warehouse, an office or a lab. Register one to show where you operate; producers issue passports from theirs.",
     "emptyType": "No facilities of this type.",
     "active": "Active",
     "suspended": "Suspended",

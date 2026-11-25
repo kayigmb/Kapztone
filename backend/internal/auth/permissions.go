@@ -94,18 +94,20 @@ var KindPermissions = func() map[string][]string {
 	// org:search is in common: every page names the organisations on a record
 	// through it. Handover receivers are searched with ?receivers=true, which
 	// keeps the trading kinds only, and checkReceiver enforces the same.
+	// facility:manage is in common: every organisation registers its own sites
+	// (farms, depots, yards, offices, labs) to show where it works; only
+	// producers issue passports from them.
 	common := []string{OrgRead, OrgManage, OrgSearch, DocumentRead, UserManage, PassportRead, FlagCreate,
-		FacilityRead, AuditRead, ReportRead}
+		FacilityRead, FacilityManage, AuditRead, ReportRead}
 	trader := append([]string{HandoverCreate, HandoverAccept}, common...)
 	return map[string][]string{
-		kindProducer:    append([]string{FacilityManage, PassportIssue, PassportRetire, TransformCreate}, trader...),
+		kindProducer:    append([]string{PassportIssue, PassportRetire, TransformCreate}, trader...),
 		kindProcessor:   append([]string{PassportRetire, TransformCreate}, trader...),
 		kindTransporter: trader,
 		kindExporter:    append([]string{PassportRetire, TransformCreate}, trader...),
 		kindImporter:    append([]string{PassportRetire, TransformCreate}, trader...),
-		// Inspectors register their own sites (offices, labs) to issue certificates at.
-		kindCertifier: append([]string{FacilityManage, CertificateIssue, CertificateRevoke}, common...),
-		kindRegulator: append([]string{FacilityManage, CertificateIssue, CertificateRevoke, FlagResolve}, common...),
+		kindCertifier:   append([]string{CertificateIssue, CertificateRevoke}, common...),
+		kindRegulator:   append([]string{CertificateIssue, CertificateRevoke, FlagResolve}, common...),
 	}
 }()
 

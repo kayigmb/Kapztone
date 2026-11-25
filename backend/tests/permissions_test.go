@@ -12,19 +12,19 @@ import (
 // README.md). The platform-only permissions (org:verify, audit:verify,
 // facility:kinds, facility:suspend) appear in no kind.
 var kindTable = map[string][]string{
-	org.KindProducer: {auth.FacilityManage, auth.PassportIssue, auth.PassportRetire, auth.TransformCreate,
+	org.KindProducer: {auth.PassportIssue, auth.PassportRetire, auth.TransformCreate,
 		auth.HandoverCreate, auth.HandoverAccept},
 	org.KindProcessor:   {auth.PassportRetire, auth.TransformCreate, auth.HandoverCreate, auth.HandoverAccept},
 	org.KindTransporter: {auth.HandoverCreate, auth.HandoverAccept},
 	org.KindExporter:    {auth.PassportRetire, auth.TransformCreate, auth.HandoverCreate, auth.HandoverAccept},
 	org.KindImporter:    {auth.PassportRetire, auth.TransformCreate, auth.HandoverCreate, auth.HandoverAccept},
-	org.KindCertifier:   {auth.FacilityManage, auth.CertificateIssue, auth.CertificateRevoke},
-	org.KindRegulator:   {auth.FacilityManage, auth.CertificateIssue, auth.CertificateRevoke, auth.FlagResolve},
+	org.KindCertifier:   {auth.CertificateIssue, auth.CertificateRevoke},
+	org.KindRegulator:   {auth.CertificateIssue, auth.CertificateRevoke, auth.FlagResolve},
 }
 
 // Every kind may also do these.
 var everyKind = []string{auth.OrgRead, auth.OrgManage, auth.OrgSearch, auth.DocumentRead, auth.UserManage,
-	auth.PassportRead, auth.FlagCreate, auth.FacilityRead, auth.AuditRead, auth.ReportRead}
+	auth.PassportRead, auth.FlagCreate, auth.FacilityRead, auth.FacilityManage, auth.AuditRead, auth.ReportRead}
 
 // What a member may never do, whatever the kind.
 var adminOnly = []string{auth.OrgRead, auth.OrgManage, auth.DocumentRead, auth.UserManage, auth.AuditRead,
