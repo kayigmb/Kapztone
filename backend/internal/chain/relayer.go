@@ -275,12 +275,14 @@ func revertReason(err error) (string, bool) {
 					}
 				}
 			}
+			return err.Error(), true // revert data the ABIs don't name
 		}
-		return err.Error(), true
 	}
 	if strings.Contains(err.Error(), "execution reverted") {
 		return err.Error(), true
 	}
+	// Any other node error (an unfunded sender, a nonce clash) is not the
+	// contract refusing: the item stays pending and is retried.
 	return "", false
 }
 
